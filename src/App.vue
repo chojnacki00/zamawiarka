@@ -18,7 +18,7 @@
         <label class="supplier-form-label" for="login-username">Nazwa użytkownika</label>
         <input
           id="login-username"
-          v-model="authForm.username"
+          v-model="authForm.email"
           type="text"
           class="login-input"
           placeholder="Wpisz nazwę użytkownika"
@@ -84,7 +84,7 @@
     v-if="currentCompany"
     style="margin-top:8px; font-size:14px; color:#6b7280;"
   >
-    Konto: <strong>{{ currentCompany.username }}</strong>
+    Konto: <strong>{{ currentCompany.companyName }}</strong>
   </div>
 
   <div style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">
@@ -3330,6 +3330,8 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
+import { auth } from './firebase.js'
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
 
 export default {
 
@@ -3350,31 +3352,13 @@ export default {
     
 
     const authForm = ref({
-      username: '',
-      password: ''
-    })
+  username: '',
+  email: '',
+  password: ''
+})
 
 
-        const testAccounts = [
-      {
-        username: 'restauracja1',
-        password: 'Test123!',
-        companyId: 'restauracja1',
-        companyName: 'Restauracja 1'
-      },
-      {
-        username: 'restauracja2',
-        password: 'Test123!',
-        companyId: 'restauracja2',
-        companyName: 'Restauracja 2'
-      },
-      {
-        username: 'manager',
-        password: 'Manager123!',
-        companyId: 'manager-lokal',
-        companyName: 'Manager Lokal'
-      }
-    ]
+        
 
 
 
@@ -3386,58 +3370,68 @@ export default {
         .replace(/[^a-z0-9-_]/g, '')
     }
 
-        const handleLogin = () => {
-      const username = String(authForm.value.username || '').trim().toLowerCase()
-      const password = String(authForm.value.password || '').trim()
+        const handleLogin = async () => {
+          try {
+  if (authForm.value.email && authForm.value.password) {
+    await signInWithEmailAndPassword(
+  auth,
+  authForm.value.email,
+  authForm.value.password
+)
 
-      authError.value = ''
+const email = String(authForm.value.email || '').trim().toLowerCase()
+const name = email.split('@')[0]
 
-      if (!username) {
-        authError.value = 'Wpisz nazwę użytkownika'
-        return
-      }
+const companyId = buildCompanyIdFromUsername(name)
 
-      if (!password) {
-        authError.value = 'Wpisz hasło'
-        return
-      }
+const session = {
+  username: email,
+  companyId,
+  companyName: name
+}
 
-      const foundAccount = testAccounts.find(account =>
-        account.username.toLowerCase() === username
-      )
+isLoggedIn.value = true
+currentCompany.value = session
 
-      if (!foundAccount) {
-        authError.value = 'Konto nie istnieje'
-        return
-      }
+localStorage.setItem('gm_auth_session', JSON.stringify(session))
 
-      if (foundAccount.password !== password) {
-        authError.value = 'Nieprawidłowe hasło'
-        return
-      }
+loadCompanyDataFromStorage()
 
-      const session = {
-        username: foundAccount.username,
-        companyId: foundAccount.companyId,
-        companyName: foundAccount.companyName
-      }
+authForm.value = {
+  username: '',
+  email: '',
+  password: ''
+}
 
-      isLoggedIn.value = true
-      currentCompany.value = session
 
-      localStorage.setItem('gm_auth_session', JSON.stringify(session))
+return
+  }
+} catch (error) {
+  console.error('Firebase login error:', error.message)
+}
+      const email = String(authForm.value.email || '').trim().toLowerCase()
+const password = String(authForm.value.password || '').trim()
 
-      loadCompanyDataFromStorage()
+authError.value = ''
 
-      authForm.value = {
-        username: '',
-        password: ''
-      }
+if (!email) {
+  authError.value = 'Wpisz e-mail'
+  return
+}
+
+if (!password) {
+  authError.value = 'Wpisz hasło'
+  return
+}
+
+authError.value = 'Nieprawidłowy e-mail lub hasło'
     }
 
       
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+      await signOut(auth)
+
       resetCompanyDataState()
 
       isLoggedIn.value = false
@@ -3445,9 +3439,10 @@ export default {
       authError.value = ''
 
       authForm.value = {
-        username: '',
-        password: ''
-      }
+  username: '',
+  email: authForm.value.email,
+  password: ''
+}
 
       localStorage.removeItem('gm_auth_session')
     }
