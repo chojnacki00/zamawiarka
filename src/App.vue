@@ -3330,8 +3330,9 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
-import { auth } from './firebase.js'
+import { auth, db } from './firebase.js'
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 export default {
 
@@ -3356,6 +3357,44 @@ export default {
   email: '',
   password: ''
 })
+
+
+const createEmptyCloudState = () => ({
+  suppliers: [],
+  towary: [],
+  warehouses: [],
+  orderTimings: [],
+  units: [],
+  categories: [],
+  whoOrders: [],
+  ordersRegister: [],
+  cart: {},
+  customCartItems: []
+})
+
+const getUserStateDocRef = (uid) => {
+  return doc(db, 'users', uid, 'app', 'state')
+}
+
+const loadUserStateFromFirestore = async (uid) => {
+  const stateRef = getUserStateDocRef(uid)
+  const snapshot = await getDoc(stateRef)
+
+  if (!snapshot.exists()) {
+    return createEmptyCloudState()
+  }
+
+  return {
+    ...createEmptyCloudState(),
+    ...snapshot.data()
+  }
+}
+
+const saveUserStateToFirestore = async (uid, state) => {
+  const stateRef = getUserStateDocRef(uid)
+
+  await setDoc(stateRef, state, { merge: true })
+}
 
 
         
@@ -3395,7 +3434,7 @@ currentCompany.value = session
 
 localStorage.setItem('gm_auth_session', JSON.stringify(session))
 
-loadCompanyDataFromStorage()
+await loadCompanyDataWithFallback()
 
 authForm.value = {
   username: '',
@@ -3454,6 +3493,55 @@ authError.value = 'Nieprawidłowy e-mail lub hasło'
 
 
 
+
+
+    const collectAppState = () => ({
+  suppliers: suppliers.value,
+  towary: towary.value,
+  warehouses: warehouses.value,
+  orderTimings: orderTimings.value,
+  units: units.value,
+  categories: categories.value,
+  whoOrders: whoOrders.value,
+  ordersRegister: ordersRegister.value,
+  cart: cart.value,
+  customCartItems: customCartItems.value
+})
+
+const applyAppState = (state) => {
+  const safeState = {
+    ...createEmptyCloudState(),
+    ...(state || {})
+  }
+
+  suppliers.value = safeState.suppliers
+  towary.value = safeState.towary
+  warehouses.value = safeState.warehouses
+  orderTimings.value = safeState.orderTimings
+  units.value = safeState.units
+  categories.value = safeState.categories
+  whoOrders.value = safeState.whoOrders
+  ordersRegister.value = safeState.ordersRegister
+  cart.value = safeState.cart
+  customCartItems.value = safeState.customCartItems
+}
+
+
+const saveAllAppStateToCloud = async () => {
+  const uid = auth.currentUser?.uid
+
+  if (!uid) return
+
+  try {
+    const appState = collectAppState()
+    await saveUserStateToFirestore(uid, appState)
+  } catch (error) {
+    console.error('Błąd zapisu do Firestore:', error)
+  }
+}
+
+
+
   const resetCompanyDataState = () => {
   suppliers.value = []
 
@@ -3494,6 +3582,8 @@ const loadCompanyDataFromStorage = () => {
   const savedCategories = localStorage.getItem(getCompanyStorageKey('categories'))
   const savedWhoOrders = localStorage.getItem(getCompanyStorageKey('whoOrders'))
   const savedOrdersRegister = localStorage.getItem(getCompanyStorageKey('ordersRegister'))
+  const savedCart = localStorage.getItem(getCompanyStorageKey('cart'))
+  const savedCustomCartItems = localStorage.getItem(getCompanyStorageKey('customCartItems'))
 
   if (savedSuppliers) {
     suppliers.value = JSON.parse(savedSuppliers)
@@ -3525,6 +3615,33 @@ const loadCompanyDataFromStorage = () => {
 
   if (savedOrdersRegister) {
     ordersRegister.value = JSON.parse(savedOrdersRegister)
+  }
+
+  if (savedCart) {
+  cart.value = JSON.parse(savedCart)
+}
+
+if (savedCustomCartItems) {
+  customCartItems.value = JSON.parse(savedCustomCartItems)
+}
+}
+
+const loadCompanyDataWithFallback = async () => {
+  const uid = auth.currentUser?.uid
+
+  if (!uid) {
+    resetCompanyDataState()
+    return
+  }
+
+  try {
+    const cloudState = await loadUserStateFromFirestore(uid)
+
+    resetCompanyDataState()
+    applyAppState(cloudState)
+  } catch (error) {
+    console.error('Błąd ładowania z Firestore:', error)
+    resetCompanyDataState()
   }
 }
 
@@ -5679,24 +5796,27 @@ const generatePdfFromRegister = async (order) => {
 
 
 // =========================
-// LOCAL STORAGE - ODCZYT
+// START APLIKACJI - ODTWORZENIE SESJI I ŁADOWANIE Z FIRESTORE
 // =========================
-onMounted(() => {
-  const savedAuthSession = localStorage.getItem('gm_auth_session')
+onMounted(async () => {
+  const user = auth.currentUser
 
-  if (savedAuthSession) {
-    try {
-      const parsedSession = JSON.parse(savedAuthSession)
+  if (!user) return
 
-      if (parsedSession?.companyId) {
-        isLoggedIn.value = true
-        currentCompany.value = parsedSession
-        loadCompanyDataFromStorage()
-      }
-    } catch (error) {
-      localStorage.removeItem('gm_auth_session')
-    }
+  isLoggedIn.value = true
+
+  const email = String(user.email || '').trim().toLowerCase()
+  const name = email ? email.split('@')[0] : 'użytkownik'
+
+  const companyId = buildCompanyIdFromUsername(name)
+
+  currentCompany.value = {
+    username: email,
+    companyId,
+    companyName: name
   }
+
+  await loadCompanyDataWithFallback()
 })
 
 // =========================
@@ -5751,6 +5871,57 @@ watch(whoOrders, (val) => {
 watch(ordersRegister, (val) => {
   if (!currentCompany.value?.companyId) return
   localStorage.setItem(getCompanyStorageKey('ordersRegister'), JSON.stringify(val))
+}, { deep: true })
+
+watch(cart, (val) => {
+  if (!currentCompany.value?.companyId) return
+  localStorage.setItem(getCompanyStorageKey('cart'), JSON.stringify(val))
+}, { deep: true })
+
+watch(customCartItems, (val) => {
+  if (!currentCompany.value?.companyId) return
+  localStorage.setItem(getCompanyStorageKey('customCartItems'), JSON.stringify(val))
+}, { deep: true })
+
+
+watch(suppliers, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(towary, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(warehouses, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(orderTimings, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(units, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(categories, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(whoOrders, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(ordersRegister, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(cart, async () => {
+  await saveAllAppStateToCloud()
+}, { deep: true })
+
+watch(customCartItems, async () => {
+  await saveAllAppStateToCloud()
 }, { deep: true })
 
 
