@@ -3486,10 +3486,7 @@ authError.value = 'Nieprawidłowy e-mail lub hasło'
       localStorage.removeItem('gm_auth_session')
     }
 
-        const getCompanyStorageKey = (key) => {
-      const companyId = currentCompany.value?.companyId || 'no-company'
-      return `gm_${companyId}_${key}`
-    }
+    
 
 
 
@@ -3569,62 +3566,7 @@ const saveAllAppStateToCloud = async () => {
   expandedOrderId.value = null
 }
 
-const loadCompanyDataFromStorage = () => {
-  if (!currentCompany.value?.companyId) return
 
-  resetCompanyDataState()
-
-  const savedSuppliers = localStorage.getItem(getCompanyStorageKey('suppliers'))
-  const savedTowary = localStorage.getItem(getCompanyStorageKey('towary'))
-  const savedWarehouses = localStorage.getItem(getCompanyStorageKey('warehouses'))
-  const savedOrderTimings = localStorage.getItem(getCompanyStorageKey('orderTimings'))
-  const savedUnits = localStorage.getItem(getCompanyStorageKey('units'))
-  const savedCategories = localStorage.getItem(getCompanyStorageKey('categories'))
-  const savedWhoOrders = localStorage.getItem(getCompanyStorageKey('whoOrders'))
-  const savedOrdersRegister = localStorage.getItem(getCompanyStorageKey('ordersRegister'))
-  const savedCart = localStorage.getItem(getCompanyStorageKey('cart'))
-  const savedCustomCartItems = localStorage.getItem(getCompanyStorageKey('customCartItems'))
-
-  if (savedSuppliers) {
-    suppliers.value = JSON.parse(savedSuppliers)
-  }
-
-  if (savedTowary) {
-    towary.value = JSON.parse(savedTowary)
-  }
-
-  if (savedWarehouses) {
-    warehouses.value = JSON.parse(savedWarehouses)
-  }
-
-  if (savedOrderTimings) {
-    orderTimings.value = JSON.parse(savedOrderTimings)
-  }
-
-  if (savedUnits) {
-    units.value = JSON.parse(savedUnits)
-  }
-
-  if (savedCategories) {
-    categories.value = JSON.parse(savedCategories)
-  }
-
-  if (savedWhoOrders) {
-    whoOrders.value = JSON.parse(savedWhoOrders)
-  }
-
-  if (savedOrdersRegister) {
-    ordersRegister.value = JSON.parse(savedOrdersRegister)
-  }
-
-  if (savedCart) {
-  cart.value = JSON.parse(savedCart)
-}
-
-if (savedCustomCartItems) {
-  customCartItems.value = JSON.parse(savedCustomCartItems)
-}
-}
 
 const loadCompanyDataWithFallback = async () => {
   const uid = auth.currentUser?.uid
