@@ -5833,55 +5833,10 @@ watch(tempSelectedCartSupplier, () => {
 
 
 
-watch(suppliers, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('suppliers'), JSON.stringify(val))
-}, { deep: true })
-
-watch(towary, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('towary'), JSON.stringify(val))
-}, { deep: true })
-
-watch(warehouses, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('warehouses'), JSON.stringify(val))
-}, { deep: true })
-
-watch(orderTimings, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('orderTimings'), JSON.stringify(val))
-}, { deep: true })
-
-watch(units, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('units'), JSON.stringify(val))
-}, { deep: true })
-
-watch(categories, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('categories'), JSON.stringify(val))
-}, { deep: true })
-
-watch(whoOrders, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('whoOrders'), JSON.stringify(val))
-}, { deep: true })
-
-watch(ordersRegister, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('ordersRegister'), JSON.stringify(val))
-}, { deep: true })
-
-watch(cart, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('cart'), JSON.stringify(val))
-}, { deep: true })
-
-watch(customCartItems, (val) => {
-  if (!currentCompany.value?.companyId) return
-  localStorage.setItem(getCompanyStorageKey('customCartItems'), JSON.stringify(val))
-}, { deep: true })
+// =========================
+// LOCAL STORAGE - ZAPIS WYŁĄCZONY
+// aplikacja zapisuje już stan do Firestore
+// =========================
 
 
 watch(suppliers, async () => {
