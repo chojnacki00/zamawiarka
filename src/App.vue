@@ -53,12 +53,18 @@
         {{ authError }}
       </div>
 
-      <button
-        class="login-button"
-        type="submit"
-      >
-        Zaloguj
-      </button>
+  <button
+  class="login-button"
+  type="submit"
+  :disabled="isLoggingIn"
+  :class="{ 'login-button-loading': isLoggingIn }"
+>
+  <span v-if="!isLoggingIn">Zaloguj</span>
+  <span v-else class="login-button-content">
+    <span class="login-spinner"></span>
+    <span>Logowanie...</span>
+  </span>
+</button>
     </form>
   </div>
 
@@ -80,7 +86,7 @@
 <div v-if="currentScreen === 'home'">
   <h1>GastroManager</h1>
 
-  <div>wersja 1.0.7</div>
+  <div>wersja 1.1.1</div>
 
   <div
     v-if="currentCompany"
@@ -3353,6 +3359,7 @@ export default {
     // =========================
     const isLoggedIn = ref(false)
     const authError = ref('')
+    const isLoggingIn = ref(false)
     const currentCompany = ref(null)
     
 
@@ -3422,36 +3429,36 @@ const saveUserStateToFirestore = async (uid, state) => {
     return
   }
 
-  try {
-    await signInWithEmailAndPassword(auth, email, password)
+  isLoggingIn.value = true
 
-  authForm.value = {
-  email: '',
-  password: ''
-}
+  try {
+        await signInWithEmailAndPassword(auth, email, password)
+
+    authForm.value = {
+      email: '',
+      password: ''
+    }
   } catch (error) {
     console.error('Firebase login error:', error.message)
     authError.value = 'Nieprawidłowy e-mail lub hasło'
+  } finally {
+    isLoggingIn.value = false
   }
 }
 
-      
+const handleLogout = async () => {
+  await signOut(auth)
 
-    const handleLogout = async () => {
-      await signOut(auth)
+  resetCompanyDataState()
 
-      resetCompanyDataState()
+  isLoggedIn.value = false
+  currentCompany.value = null
+  authError.value = ''
 
-      isLoggedIn.value = false
-      currentCompany.value = null
-      authError.value = ''
-
-     authForm.value = {
-  email: '',
-  password: ''
-}
-
-      
+  authForm.value = {
+    email: '',
+    password: ''
+  }
 }
 
     
@@ -3505,6 +3512,19 @@ const saveAllAppStateToCloud = async () => {
   }
 }
 
+const isHydrating = ref(false)
+let saveTimeout = null
+
+const scheduleSave = () => {
+  if (isHydrating.value) return
+
+  clearTimeout(saveTimeout)
+
+  saveTimeout = setTimeout(() => {
+    saveAllAppStateToCloud()
+  }, 500)
+}
+
 
 
   const resetCompanyDataState = () => {
@@ -3537,14 +3557,16 @@ const saveAllAppStateToCloud = async () => {
 
 
 const loadCompanyDataWithFallback = async () => {
-  const uid = auth.currentUser?.uid
-
-  if (!uid) {
-    resetCompanyDataState()
-    return
-  }
+  isHydrating.value = true
 
   try {
+    const uid = auth.currentUser?.uid
+
+    if (!uid) {
+      resetCompanyDataState()
+      return
+    }
+
     const cloudState = await loadUserStateFromFirestore(uid)
 
     resetCompanyDataState()
@@ -3552,6 +3574,8 @@ const loadCompanyDataWithFallback = async () => {
   } catch (error) {
     console.error('Błąd ładowania z Firestore:', error)
     resetCompanyDataState()
+  } finally {
+    isHydrating.value = false
   }
 }
 
@@ -5748,50 +5772,59 @@ watch(tempSelectedCartSupplier, () => {
 // =========================
 
 
-watch(suppliers, async () => {
-  await saveAllAppStateToCloud()
+watch(suppliers, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(towary, async () => {
-  await saveAllAppStateToCloud()
+watch(towary, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(warehouses, async () => {
-  await saveAllAppStateToCloud()
+watch(warehouses, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(orderTimings, async () => {
-  await saveAllAppStateToCloud()
+watch(orderTimings, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(units, async () => {
-  await saveAllAppStateToCloud()
+watch(units, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(categories, async () => {
-  await saveAllAppStateToCloud()
+watch(categories, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(whoOrders, async () => {
-  await saveAllAppStateToCloud()
+watch(whoOrders, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(ordersRegister, async () => {
-  await saveAllAppStateToCloud()
+watch(ordersRegister, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(cart, async () => {
-  await saveAllAppStateToCloud()
+watch(cart, () => {
+  scheduleSave()
 }, { deep: true })
 
-watch(customCartItems, async () => {
-  await saveAllAppStateToCloud()
+watch(customCartItems, () => {
+  scheduleSave()
 }, { deep: true })
+
+
+watch(
+  () => [authForm.value.email, authForm.value.password],
+  () => {
+    authError.value = ''
+  }
+)
 
 
 
     return {
       isLoggedIn,
+      isLoggingIn,
       authForm,
       authError,
       currentCompany,
@@ -6507,7 +6540,49 @@ html, body, #app {
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
+  align-items: center;
+  transition: all 0.15s ease;
 }
+
+.login-button:active {
+  transform: scale(0.97);
+}
+
+
+.login-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
+.login-button-loading {
+  background: #9ca3af; /* szary */
+  transform: scale(0.98);
+}
+
+.login-button-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.login-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: login-spin 0.7s linear infinite;
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+
 
 .login-button:active {
   transform: scale(0.98);
