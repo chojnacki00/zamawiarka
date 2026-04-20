@@ -15,20 +15,20 @@
       <div class="login-subtitle">Zaloguj się do swojej restauracji</div>
 
       <div class="supplier-form-group" style="margin-top:20px;">
-        <label class="supplier-form-label" for="login-username">Nazwa użytkownika</label>
-        <input
-          id="login-username"
-          v-model="authForm.email"
-          type="text"
-          class="login-input"
-          placeholder="Wpisz nazwę użytkownika"
-          name="username"
-          autocomplete="username"
-          autocapitalize="none"
-          autocorrect="off"
-          spellcheck="false"
-        />
-      </div>
+  <label class="supplier-form-label" for="login-email">E-mail</label>
+  <input
+    id="login-email"
+    v-model="authForm.email"
+    type="email"
+    class="login-input"
+    placeholder="Wpisz e-mail"
+    name="email"
+    autocomplete="email"
+    autocapitalize="none"
+    autocorrect="off"
+    spellcheck="false"
+  />
+</div>
 
       <div class="supplier-form-group">
         <label class="supplier-form-label" for="login-password">Hasło</label>
@@ -66,10 +66,10 @@
        APP / KONTENER GŁÓWNY
   ========================== -->
   <div
-    v-else
-    class="app"
-    style="padding:20px; font-family:sans-serif; max-width:500px; margin:auto;"
-  >
+  v-else
+  class="app"
+  style="padding:20px; font-family:sans-serif; max-width:500px; margin:auto;"
+>
 
 
   
@@ -79,6 +79,8 @@
 ========================== -->
 <div v-if="currentScreen === 'home'">
   <h1>GastroManager</h1>
+
+  <div>wersja 1.0.7</div>
 
   <div
     v-if="currentCompany"
@@ -295,7 +297,7 @@
 <!-- =========================
      WIDOK: ZRÓB ZAMÓWIENIE
 ========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'produkty'">
+<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'produkty'" class="screen-with-topbar">
 
   <!-- =========================
        NAGŁÓWEK
@@ -504,7 +506,7 @@
     <!-- =========================
        LISTA PRODUKTÓW
   ========================== -->
-  <div class="towary-list-wrap">
+  <div class="towary-list-wrap scroll-area">
     <div v-if="filteredProducts.length === 0" class="empty-state">
       <div class="empty-title">Brak produktów</div>
       <div class="empty-subtitle">Zmień wyszukiwanie lub filtry</div>
@@ -593,9 +595,9 @@
        MODAL FILTRÓW
   ========================== -->
   <div
-    v-if="showFiltersModal"
-    style="position:fixed; inset:0; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; padding:20px;"
-  >
+  v-if="showFiltersModal"
+  style="position:fixed; inset:0; z-index:400; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; padding:20px;"
+>
     <div style="background:white; width:100%; max-width:420px; border-radius:16px; padding:20px;">
       
       <h3 style="margin-top:0;">FILTRY</h3>
@@ -733,7 +735,7 @@ selectedWhoOrders !== 'wszystkie'
 <!-- =========================
      WIDOK: KOSZYK
 ========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'koszyk'">
+<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'koszyk'" class="screen-with-topbar">
   <div class="towary-topbar">
     <!-- WIERSZ STANDARDOWY -->
     <div v-if="!showCartSearch" class="towary-topbar-row">
@@ -1004,9 +1006,11 @@ selectedWhoOrders !== 'wszystkie'
   </div>
 </div>
 
-<div v-if="cartItems.length === 0">Koszyk jest pusty</div>
+<div v-if="cartItems.length === 0" class="scroll-area">
+  Koszyk jest pusty
+</div>
 
-<div v-else>
+<div v-else class="scroll-area">
   <!-- CHMURKI FILTRÓW KOSZYKA -->
   <div
     v-if="
@@ -1253,7 +1257,7 @@ selectedWhoOrders !== 'wszystkie'
     <!-- =========================
      WIDOK: REJESTR ZAMÓWIEŃ
 ========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'historia'">
+<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'historia'" class="screen-with-topbar">
   <div class="towary-topbar">
     <div class="towary-topbar-row">
       <div class="towary-topbar-left">
@@ -1270,7 +1274,7 @@ selectedWhoOrders !== 'wszystkie'
     </div>
   </div>
 
-  <div class="towary-list-wrap">
+  <div class="towary-list-wrap scroll-area">
     <div v-if="ordersRegister.length === 0" class="empty-state">
       <div class="empty-title">Brak zamówień</div>
       <div class="empty-subtitle">Wygenerowane zamówienia pojawią się tutaj</div>
@@ -1539,7 +1543,7 @@ selectedWhoOrders !== 'wszystkie'
            LISTA TOWARÓW
       ========================== -->
 
-      <div v-if="towaryView === 'list'">
+      <div v-if="towaryView === 'list'" class="screen-with-topbar">
 
         <!-- GÓRNY PASEK -->
         <div class="towary-topbar" style="background:#dbeafe; border-bottom:1px solidrgb(52, 122, 209);">
@@ -1728,7 +1732,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
         <!-- LISTA -->
-        <div class="towary-list-wrap">
+        <div class="towary-list-wrap scroll-area">
           <div v-if="filteredTowary.length === 0" class="empty-state">
             <div class="empty-title">Brak towarów</div>
             <div class="empty-subtitle">Kliknij + aby dodać pierwszy</div>
@@ -3331,7 +3335,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
 import { auth, db } from './firebase.js'
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 export default {
@@ -3352,8 +3356,7 @@ export default {
     const currentCompany = ref(null)
     
 
-    const authForm = ref({
-  username: '',
+   const authForm = ref({
   email: '',
   password: ''
 })
@@ -3401,70 +3404,36 @@ const saveUserStateToFirestore = async (uid, state) => {
 
 
 
-    const buildCompanyIdFromUsername = (username) => {
-      return String(username || '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-_]/g, '')
-    }
+    
 
-        const handleLogin = async () => {
-          try {
-  if (authForm.value.email && authForm.value.password) {
-    await signInWithEmailAndPassword(
-  auth,
-  authForm.value.email,
-  authForm.value.password
-)
+  const handleLogin = async () => {
+  const email = String(authForm.value.email || '').trim().toLowerCase()
+  const password = String(authForm.value.password || '').trim()
 
-const email = String(authForm.value.email || '').trim().toLowerCase()
-const name = email.split('@')[0]
+  authError.value = ''
 
-const companyId = buildCompanyIdFromUsername(name)
+  if (!email) {
+    authError.value = 'Wpisz e-mail'
+    return
+  }
 
-const session = {
-  username: email,
-  companyId,
-  companyName: name
-}
+  if (!password) {
+    authError.value = 'Wpisz hasło'
+    return
+  }
 
-isLoggedIn.value = true
-currentCompany.value = session
+  try {
+    await signInWithEmailAndPassword(auth, email, password)
 
-localStorage.setItem('gm_auth_session', JSON.stringify(session))
-
-await loadCompanyDataWithFallback()
-
-authForm.value = {
-  username: '',
+  authForm.value = {
   email: '',
   password: ''
 }
-
-
-return
+  } catch (error) {
+    console.error('Firebase login error:', error.message)
+    authError.value = 'Nieprawidłowy e-mail lub hasło'
   }
-} catch (error) {
-  console.error('Firebase login error:', error.message)
 }
-      const email = String(authForm.value.email || '').trim().toLowerCase()
-const password = String(authForm.value.password || '').trim()
-
-authError.value = ''
-
-if (!email) {
-  authError.value = 'Wpisz e-mail'
-  return
-}
-
-if (!password) {
-  authError.value = 'Wpisz hasło'
-  return
-}
-
-authError.value = 'Nieprawidłowy e-mail lub hasło'
-    }
 
       
 
@@ -3477,14 +3446,13 @@ authError.value = 'Nieprawidłowy e-mail lub hasło'
       currentCompany.value = null
       authError.value = ''
 
-      authForm.value = {
-  username: '',
-  email: authForm.value.email,
+     authForm.value = {
+  email: '',
   password: ''
 }
 
-      localStorage.removeItem('gm_auth_session')
-    }
+      
+}
 
     
 
@@ -4635,9 +4603,7 @@ if (hasDuplicateName(
     })
   }
 
-    if (currentCompany.value?.companyId) {
-    localStorage.setItem(getCompanyStorageKey('whoOrders'), JSON.stringify(whoOrders.value))
-  }
+    
 
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
@@ -4661,9 +4627,7 @@ const deleteWhoOrder = () => {
     item => item.id !== editedWhoOrderId.value
   )
 
-    if (currentCompany.value?.companyId) {
-    localStorage.setItem(getCompanyStorageKey('whoOrders'), JSON.stringify(whoOrders.value))
-  }
+    
 
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
@@ -5740,25 +5704,28 @@ const generatePdfFromRegister = async (order) => {
 // =========================
 // START APLIKACJI - ODTWORZENIE SESJI I ŁADOWANIE Z FIRESTORE
 // =========================
-onMounted(async () => {
-  const user = auth.currentUser
+onMounted(() => {
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      isLoggedIn.value = false
+      currentCompany.value = null
+      resetCompanyDataState()
+      return
+    }
 
-  if (!user) return
+    isLoggedIn.value = true
 
-  isLoggedIn.value = true
+    const email = String(user.email || '').trim().toLowerCase()
+const name = email ? email.split('@')[0] : 'użytkownik'
 
-  const email = String(user.email || '').trim().toLowerCase()
-  const name = email ? email.split('@')[0] : 'użytkownik'
+currentCompany.value = {
+  uid: user.uid,
+  username: email,
+  companyName: name
+}
 
-  const companyId = buildCompanyIdFromUsername(name)
-
-  currentCompany.value = {
-    username: email,
-    companyId,
-    companyName: name
-  }
-
-  await loadCompanyDataWithFallback()
+    await loadCompanyDataWithFallback()
+  })
 })
 
 // =========================
@@ -6047,6 +6014,40 @@ watch(customCartItems, async () => {
 <style>
 
 
+html, body, #app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app {
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+
+.screen-with-topbar {
+  height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 120px;
+}
+
+
+
+
+
 /* =========================
    CART - BOUNCE
 ========================= */
@@ -6179,7 +6180,7 @@ watch(customCartItems, async () => {
   padding: 12px;
   border-radius: 10px;
   border: 1px solid #ccc;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .supplier-modal-actions {
@@ -6260,13 +6261,14 @@ watch(customCartItems, async () => {
    TOWARY - GÓRNY PASEK
 ========================= */
 .towary-topbar {
-  position: sticky;
+  position: sticky;   /* przyklejenie do góry */
   top: 0;
-  z-index: 100;
+  z-index: 1000;
   background: #ffffff;
   padding: 4px 0 12px 0;
   border-bottom: 1px solid #d1d5db;
-  margin-bottom: 12px;
+  flex-shrink: 0;
+  margin-bottom: 0;   /* usunięcie marginesu, bo psuje sticky */
 }
 
 .towary-topbar-row {
@@ -6323,7 +6325,7 @@ watch(customCartItems, async () => {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   box-sizing: border-box;
-  font-size: 15px;
+  font-size: 16px;
   color: #111827;
   background: #ffffff;
 }
@@ -6332,8 +6334,12 @@ watch(customCartItems, async () => {
    TOWARY - LISTA
 ========================= */
 .towary-list-wrap {
-  padding-bottom: 120px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;   /* przewijanie listy */
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 120px;
 }
 
 .towary-row-fixed {
@@ -6515,7 +6521,7 @@ watch(customCartItems, async () => {
   border: 1px solid #3a3a3a;
   background: #1a1a1a;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .login-input::placeholder {
@@ -6525,6 +6531,12 @@ watch(customCartItems, async () => {
 .login-input:focus {
   outline: none;
   border-color: #2563eb;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
 }
 
 
