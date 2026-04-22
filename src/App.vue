@@ -88,12 +88,12 @@
 
   <div>wersja 1.1.1</div>
 
-  <div
-    v-if="currentCompany"
-    style="margin-top:8px; font-size:14px; color:#6b7280;"
-  >
-    Konto: <strong>{{ currentCompany.companyName }}</strong>
-  </div>
+ <div
+  v-if="currentCompany"
+  style="margin-top:8px; font-size:14px; color:#6b7280;"
+>
+  Konto: <strong style="font-size:18px;">{{ currentCompany.companyName }}</strong>
+</div>
 
   <div style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">
     
@@ -3449,6 +3449,7 @@ const saveUserStateToFirestore = async (uid, state) => {
 const handleLogout = async () => {
   await signOut(auth)
 
+  isDataLoaded.value = false
   resetCompanyDataState()
 
   isLoggedIn.value = false
@@ -3506,6 +3507,16 @@ const saveAllAppStateToCloud = async () => {
 
   try {
     const appState = collectAppState()
+
+    // 🔒 BLOKADA PUSTEGO STANU
+    if (
+      (!appState.products || appState.products.length === 0) &&
+      (!appState.suppliers || appState.suppliers.length === 0)
+    ) {
+      console.warn('🚫 Zablokowany zapis – stan wygląda na pusty')
+      return
+    }
+
     await saveUserStateToFirestore(uid, appState)
   } catch (error) {
     console.error('Błąd zapisu do Firestore:', error)
@@ -3513,10 +3524,12 @@ const saveAllAppStateToCloud = async () => {
 }
 
 const isHydrating = ref(false)
+const isDataLoaded = ref(false)
 let saveTimeout = null
 
 const scheduleSave = () => {
   if (isHydrating.value) return
+  if (!isDataLoaded.value) return
 
   clearTimeout(saveTimeout)
 
@@ -3558,6 +3571,7 @@ const scheduleSave = () => {
 
 const loadCompanyDataWithFallback = async () => {
   isHydrating.value = true
+  isDataLoaded.value = false
 
   try {
     const uid = auth.currentUser?.uid
@@ -3571,6 +3585,8 @@ const loadCompanyDataWithFallback = async () => {
 
     resetCompanyDataState()
     applyAppState(cloudState)
+
+    isDataLoaded.value = true
   } catch (error) {
     console.error('Błąd ładowania z Firestore:', error)
     resetCompanyDataState()
@@ -3979,30 +3995,30 @@ const editTowarFromQtyModal = () => {
 
 
 
-     // =========================
-// DUPLIKAT - HURTOWNIA
-// =========================
-if (hasDuplicateName(
-  suppliers.value,
-  supplierForm.value.name,
-  editedSupplierId.value
-)) {
-  alert('Taka hurtownia już istnieje')
-  return
-}
+           // =========================
+            // DUPLIKAT - HURTOWNIA
+             // =========================
+                  if (hasDuplicateName(
+                    suppliers.value,
+                    supplierForm.value.name,
+                     editedSupplierId.value
+                  )) {
+                  alert('Taka hurtownia już istnieje')
+                    return
+                   }
 
 
 
 
-      // =========================
-      // TRYB EDYCJI
-      // =========================
-      if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
-        const supplierToUpdate = suppliers.value.find(
-          supplier => supplier.id === editedSupplierId.value
-        )
+            // =========================
+            // TRYB EDYCJI
+             // =========================
+           if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
+            const supplierToUpdate = suppliers.value.find(
+            supplier => supplier.id === editedSupplierId.value
+            )
 
-        if (supplierToUpdate) {
+           if (supplierToUpdate) {
           supplierToUpdate.name = supplierForm.value.name
           supplierToUpdate.phone = supplierForm.value.phone
           supplierToUpdate.email = supplierForm.value.email
@@ -4028,6 +4044,7 @@ if (hasDuplicateName(
       showSupplierForm.value = false
       supplierFormMode.value = 'add'
       editedSupplierId.value = null
+      scheduleSave()
     }
 
 
@@ -4056,6 +4073,7 @@ const deleteSupplier = () => {
     phone: '',
     email: ''
   }
+  scheduleSave()
 }
 
 
@@ -4120,17 +4138,17 @@ const deleteSupplier = () => {
     const saveWarehouse = () => {
       if (!warehouseForm.value.name.trim()) return
 
-// =========================
-// DUPLIKAT - MAGAZYN
-// =========================
-if (hasDuplicateName(
-  warehouses.value,
-  warehouseForm.value.name,
-  editedWarehouseId.value
-)) {
-  alert('Taki magazyn już istnieje')
-  return
-}
+            // =========================
+            // DUPLIKAT - MAGAZYN
+            // =========================
+            if (hasDuplicateName(
+              warehouses.value,
+              warehouseForm.value.name,
+              editedWarehouseId.value
+            )) {
+              alert('Taki magazyn już istnieje')
+              return
+            }
 
       // =========================
       // TRYB EDYCJI
@@ -4159,7 +4177,8 @@ if (hasDuplicateName(
 
       warehouseForm.value = {
         name: ''
-      }
+      } 
+      scheduleSave()  
     }
 
     // =========================
@@ -4183,6 +4202,7 @@ if (hasDuplicateName(
       warehouseForm.value = {
         name: ''
       }
+      scheduleSave()
     }
 
 
@@ -4245,16 +4265,17 @@ if (hasDuplicateName(
       if (!orderTimingForm.value.name.trim()) return
 
       // =========================
-// DUPLIKAT - KIEDY ZAMAWIANE
-// =========================
-if (hasDuplicateName(
-  orderTimings.value,
-  orderTimingForm.value.name,
-  editedOrderTimingId.value
-)) {
-  alert('Taka pozycja już istnieje')
-  return
-}
+      // DUPLIKAT - KIEDY ZAMAWIANE
+      // =========================
+      if (hasDuplicateName(
+       orderTimings.value,
+       orderTimingForm.value.name,
+       editedOrderTimingId.value
+      )) 
+       {
+         alert('Taka pozycja już istnieje')
+         return
+        }
 
       if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
         const itemToUpdate = orderTimings.value.find(
@@ -4278,6 +4299,7 @@ if (hasDuplicateName(
       orderTimingForm.value = {
         name: ''
       }
+      scheduleSave()
     }
 
     // =========================
@@ -4300,6 +4322,7 @@ if (hasDuplicateName(
       orderTimingForm.value = {
         name: ''
       }
+      scheduleSave()
     }
 
 
@@ -4363,17 +4386,17 @@ if (hasDuplicateName(
       if (!unitForm.value.name.trim()) return
 
 
-// =========================
-// DUPLIKAT - JEDNOSTKA
-// =========================
-if (hasDuplicateName(
-  units.value,
-  unitForm.value.name,
-  editedUnitId.value
-)) {
-  alert('Taka jednostka już istnieje')
-  return
-}
+               // =========================
+               // DUPLIKAT - JEDNOSTKA
+               // =========================
+          if (hasDuplicateName(
+            units.value,
+            unitForm.value.name,
+            editedUnitId.value
+          )) {
+               alert('Taka jednostka już istnieje')
+                return
+              }
 
       if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
         const itemToUpdate = units.value.find(
@@ -4397,6 +4420,7 @@ if (hasDuplicateName(
       unitForm.value = {
         name: ''
       }
+      scheduleSave()
     }
 
     // =========================
@@ -4419,6 +4443,7 @@ if (hasDuplicateName(
       unitForm.value = {
         name: ''
       }
+      scheduleSave()
     }
 
 
@@ -4482,17 +4507,17 @@ const closeCategoryForm = () => {
 const saveCategory = () => {
   if (!categoryForm.value.name.trim()) return
 
- // =========================
-// DUPLIKAT - KATEGORIA
-// =========================
-if (hasDuplicateName(
+       // =========================
+       // DUPLIKAT - KATEGORIA
+       // =========================
+   if (hasDuplicateName(
   categories.value,
   categoryForm.value.name,
   editedCategoryId.value
-)) {
+   )) {
   alert('Taka kategoria już istnieje')
   return
-}
+   }
 
   if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
     const itemToUpdate = categories.value.find(
@@ -4516,6 +4541,7 @@ if (hasDuplicateName(
   categoryForm.value = {
     name: ''
   }
+  scheduleSave()
 }
 
 // =========================
@@ -4538,6 +4564,7 @@ const deleteCategory = () => {
   categoryForm.value = {
     name: ''
   }
+  scheduleSave()
 }
 
 
@@ -4636,6 +4663,7 @@ if (hasDuplicateName(
   whoOrderForm.value = {
     name: ''
   }
+  scheduleSave()
 }
 
 // =========================
@@ -4660,6 +4688,7 @@ const deleteWhoOrder = () => {
   whoOrderForm.value = {
     name: ''
   }
+  scheduleSave()
 }
 
 
@@ -4977,20 +5006,20 @@ const closeTowarForm = () => {
 
 
 
-        const saveTowar = () => {
-      // =========================
-      // PROSTA WALIDACJA
-      // =========================
-      if (!towarForm.value.name.trim()) return
+      const saveTowar = () => {
+             // =========================
+             // PROSTA WALIDACJA
+              // =========================
+              if (!towarForm.value.name.trim()) return
 
-      // =========================
-      // PORZĄDKOWANIE DANYCH Z FORMULARZA
-      // =========================
-      const preparedTowar = {
-        id:
-          towarFormMode.value === 'edit' && editedTowarId.value !== null
-            ? editedTowarId.value
-            : Date.now(),
+              // =========================
+              // PORZĄDKOWANIE DANYCH Z FORMULARZA
+              // =========================
+              const preparedTowar = {
+               id:
+               towarFormMode.value === 'edit' && editedTowarId.value !== null
+               ? editedTowarId.value
+                : Date.now(),
 
         name: towarForm.value.name.trim(),
         unit: towarForm.value.unit.trim(),
@@ -5050,6 +5079,7 @@ const closeTowarForm = () => {
       // ZAMKNIĘCIE FORMULARZA
       // =========================
       closeTowarForm()
+      scheduleSave()
     }
 
 
@@ -5065,6 +5095,7 @@ const deleteTowar = () => {
   towary.value = towary.value.filter(item => item.id !== editedTowarId.value)
 
   closeTowarForm()
+  scheduleSave()
 }
 
 
@@ -5531,8 +5562,9 @@ const saveCurrentOrderToRegister = () => {
   }
 
   ordersRegister.value.unshift(orderRecord)
-
+  scheduleSave()
   return orderRecord
+  
 }
 
 
@@ -5700,6 +5732,7 @@ const deleteOrderFromRegister = (orderId) => {
   if (expandedOrderId.value === orderId) {
     expandedOrderId.value = null
   }
+  scheduleSave()
 }
 
 
@@ -5731,6 +5764,7 @@ const generatePdfFromRegister = async (order) => {
 onMounted(() => {
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
+      isDataLoaded.value = false
       isLoggedIn.value = false
       currentCompany.value = null
       resetCompanyDataState()
@@ -5740,17 +5774,18 @@ onMounted(() => {
     isLoggedIn.value = true
 
     const email = String(user.email || '').trim().toLowerCase()
-const name = email ? email.split('@')[0] : 'użytkownik'
+    const name = email ? email.split('@')[0] : 'użytkownik'
 
-currentCompany.value = {
-  uid: user.uid,
-  username: email,
-  companyName: name
-}
+    currentCompany.value = {
+      uid: user.uid,
+      username: email,
+      companyName: name
+    }
 
     await loadCompanyDataWithFallback()
   })
 })
+
 
 // =========================
 // LOCAL STORAGE - ZAPIS
@@ -5771,7 +5806,7 @@ watch(tempSelectedCartSupplier, () => {
 // aplikacja zapisuje już stan do Firestore
 // =========================
 
-
+/*
 watch(suppliers, () => {
   scheduleSave()
 }, { deep: true })
@@ -5803,6 +5838,7 @@ watch(whoOrders, () => {
 watch(ordersRegister, () => {
   scheduleSave()
 }, { deep: true })
+*/
 
 watch(cart, () => {
   scheduleSave()
@@ -6019,6 +6055,8 @@ watch(
       toggleOrderDetails,
       deleteOrderFromRegister,
       generatePdfFromRegister,
+
+      isDataLoaded,
 
       
 
@@ -6615,8 +6653,13 @@ textarea {
 }
 
 
-
-
+.company-name {
+  font-size: 18px;
+  font-weight: 700;
+  text-decoration: underline;
+  color: #111827;
+  text-transform: uppercase;
+}
 
 
 
