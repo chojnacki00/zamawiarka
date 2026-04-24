@@ -1983,7 +1983,11 @@ selectedWhoOrders !== 'wszystkie'
 
   <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
     <label style="display:flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap;">
-      <input v-model="towarForm.active" type="checkbox" />
+      <input
+  v-model="towarForm.active"
+  type="checkbox"
+  @change="handleTowarActiveChange"
+/>
       <span>aktywne</span>
     </label>
 
@@ -2013,13 +2017,22 @@ selectedWhoOrders !== 'wszystkie'
 
           <div class="supplier-form-group">
             <label class="supplier-form-label">Nazwa</label>
-            <input v-model="towarForm.name" type="text" class="supplier-form-input" />
+            <input
+  v-model="towarForm.name"
+  type="text"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.name)"
+/>
           </div>
 
             <div class="supplier-form-group">
             <label class="supplier-form-label">Jednostka miary</label>
 
-            <select v-model="towarForm.unit" class="supplier-form-input">
+            <select
+  v-model="towarForm.unit"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.unit)"
+>
               <option value="">Wybierz jednostkę miary</option>
 
               <option
@@ -2035,7 +2048,11 @@ selectedWhoOrders !== 'wszystkie'
             <div class="supplier-form-group">
             <label class="supplier-form-label">Hurtownia</label>
 
-            <select v-model="towarForm.supplier" class="supplier-form-input">
+            <select
+  v-model="towarForm.supplier"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.supplier)"
+>
               <option value="">Wybierz hurtownię</option>
 
               <option
@@ -2050,18 +2067,34 @@ selectedWhoOrders !== 'wszystkie'
 
           <div class="supplier-form-group">
             <label class="supplier-form-label">Cena netto</label>
-            <input v-model="towarForm.netPrice" type="text" class="supplier-form-input" />
+            <input
+  v-model="towarForm.netPrice"
+  type="text"
+  inputmode="decimal"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.netPrice)"
+/>
           </div>
 
           <div class="supplier-form-group">
             <label class="supplier-form-label">Stawka VAT</label>
-            <input v-model="towarForm.vat" type="text" class="supplier-form-input" />
+           <input
+  v-model="towarForm.vat"
+  type="text"
+  inputmode="numeric"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.vat)"
+/>
           </div>
 
                     <div class="supplier-form-group">
             <label class="supplier-form-label">Magazyn</label>
 
-            <select v-model="towarForm.warehousesText" class="supplier-form-input">
+            <select
+  v-model="towarForm.warehouse"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.warehouse)"
+>
               <option value="">Wybierz magazyn</option>
 
               <option
@@ -2078,10 +2111,12 @@ selectedWhoOrders !== 'wszystkie'
             <label class="supplier-form-label">Kiedy zamówienie</label>
 
             <div
+  <div
   @click="openOrderTimingModal()"
   class="supplier-click-field"
+  :class="fieldFilledClass(towarForm.orderTimings)"
 >
-  <span v-if="towarForm.orderTimings.length === 0" style="color:#6b7280;">
+  <span v-if="towarForm.orderTimings.length === 0" style="color:#111827;">
     Wybierz pozycje
   </span>
 
@@ -2098,8 +2133,9 @@ selectedWhoOrders !== 'wszystkie'
             <div
   @click="openWhoOrdersModal()"
   class="supplier-click-field"
+  :class="fieldFilledClass(towarForm.whoOrders)"
 >
-  <span v-if="towarForm.whoOrders.length === 0" style="color:#6b7280;">
+  <span v-if="towarForm.whoOrders.length === 0" style="color:#111827;">
     Wybierz pozycje
   </span>
 
@@ -2118,8 +2154,9 @@ selectedWhoOrders !== 'wszystkie'
   <div
     @click="openCategoriesModal()"
     class="supplier-click-field"
+    :class="fieldFilledClass(towarForm.categories)"
   >
-    <span v-if="towarForm.categories.length === 0" style="color:#6b7280;">
+    <span v-if="towarForm.categories.length === 0" style="color:#111827;">
       Wybierz pozycje
     </span>
 
@@ -2132,19 +2169,21 @@ selectedWhoOrders !== 'wszystkie'
 <div class="supplier-form-group">
   <label class="supplier-form-label">Pozycja wyświetlania w zrób zamówienie</label>
   <input
-    v-model="towarForm.displayOrder"
-    type="number"
-    class="supplier-form-input"
-  />
+  v-model="towarForm.displayOrder"
+  type="number"
+  class="supplier-form-input"
+  :class="fieldFilledClass(towarForm.displayOrder)"
+/>
 </div>
 
 <div class="supplier-form-group">
   <label class="supplier-form-label">Ilość max</label>
 
   <div
-    @click="openMaxQtyField()"
-    class="supplier-click-field"
-  >
+  @click="openMaxQtyField()"
+  class="supplier-click-field"
+  :class="fieldFilledClass(getMaxQtySummary())"
+>
     {{
       !towarForm.orderTimings || towarForm.orderTimings.length === 0
         ? 'Niedostępne'
@@ -3336,7 +3375,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 <script>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
@@ -3508,14 +3547,23 @@ const saveAllAppStateToCloud = async () => {
   try {
     const appState = collectAppState()
 
-    // 🔒 BLOKADA PUSTEGO STANU
-    if (
-      (!appState.products || appState.products.length === 0) &&
-      (!appState.suppliers || appState.suppliers.length === 0)
-    ) {
-      console.warn('🚫 Zablokowany zapis – stan wygląda na pusty')
-      return
-    }
+    // 🔒 BLOKADA TYLKO PRZY CAŁKOWICIE PUSTYM STANIE PO RESECIE
+const isReallyEmptyState =
+  (!appState.towary || appState.towary.length === 0) &&
+  (!appState.suppliers || appState.suppliers.length === 0) &&
+  (!appState.warehouses || appState.warehouses.length === 0) &&
+  (!appState.orderTimings || appState.orderTimings.length === 0) &&
+  (!appState.units || appState.units.length === 0) &&
+  (!appState.categories || appState.categories.length === 0) &&
+  (!appState.whoOrders || appState.whoOrders.length === 0) &&
+  (!appState.ordersRegister || appState.ordersRegister.length === 0) &&
+  (!appState.customCartItems || appState.customCartItems.length === 0) &&
+  (!appState.cart || Object.keys(appState.cart).length === 0)
+
+if (isReallyEmptyState) {
+  console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
+  return
+}
 
     await saveUserStateToFirestore(uid, appState)
   } catch (error) {
@@ -3746,7 +3794,8 @@ const customCartItems = ref([])
     // =========================
     const addToCart = (product) => {
   if (!cart.value[product.id]) cart.value[product.id] = 0
-  if (cart.value[product.id] < product.max) cart.value[product.id]++
+
+  cart.value[product.id]++
 
   cartBounce.value = false
 
@@ -3933,9 +3982,11 @@ const editTowarFromQtyModal = () => {
   towarFormSource.value =
     zamawiarkaView.value === 'koszyk' ? 'koszyk' : 'produkty'
 
-  closeQtyModal()
-  zamawiarkaView.value = 'towary'
-  openTowarEdit(product)
+  const fullTowar = towary.value.find(item => item.id === product.id)
+
+closeQtyModal()
+zamawiarkaView.value = 'towary'
+openTowarEdit(fullTowar || product)
 }
 
 
@@ -4019,7 +4070,7 @@ const editTowarFromQtyModal = () => {
             )
 
            if (supplierToUpdate) {
-          supplierToUpdate.name = supplierForm.value.name
+          supplierToUpdate.name = cleanName(supplierForm.value.name)
           supplierToUpdate.phone = supplierForm.value.phone
           supplierToUpdate.email = supplierForm.value.email
         }
@@ -4028,11 +4079,11 @@ const editTowarFromQtyModal = () => {
         // TRYB DODAWANIA
         // =========================
         suppliers.value.push({
-          id: Date.now(),
-          name: supplierForm.value.name,
-          phone: supplierForm.value.phone,
-          email: supplierForm.value.email
-        })
+  id: Date.now(),
+  name: cleanName(supplierForm.value.name),
+  phone: supplierForm.value.phone,
+  email: supplierForm.value.email
+})
       }
 
       supplierForm.value = {
@@ -4055,6 +4106,12 @@ const editTowarFromQtyModal = () => {
 const deleteSupplier = () => {
   if (editedSupplierId.value === null) return
 
+  const supplierToDelete = suppliers.value.find(
+    supplier => supplier.id === editedSupplierId.value
+  )
+
+  const supplierNameToDelete = supplierToDelete?.name || ''
+
   // 🔴 POTWIERDZENIE
   const confirmed = confirm('Czy na pewno chcesz usunąć?')
 
@@ -4063,6 +4120,17 @@ const deleteSupplier = () => {
   suppliers.value = suppliers.value.filter(
     supplier => supplier.id !== editedSupplierId.value
   )
+
+  if (supplierNameToDelete) {
+    towary.value = towary.value.map(item => {
+      if (item.supplier !== supplierNameToDelete) return item
+
+      return {
+        ...item,
+        supplier: ''
+      }
+    })
+  }
 
   showSupplierForm.value = false
   supplierFormMode.value = 'add'
@@ -4073,6 +4141,7 @@ const deleteSupplier = () => {
     phone: '',
     email: ''
   }
+
   scheduleSave()
 }
 
@@ -4136,74 +4205,94 @@ const deleteSupplier = () => {
     }
 
     const saveWarehouse = () => {
-      if (!warehouseForm.value.name.trim()) return
+  const name = cleanName(warehouseForm.value.name)
 
-            // =========================
-            // DUPLIKAT - MAGAZYN
-            // =========================
-            if (hasDuplicateName(
-              warehouses.value,
-              warehouseForm.value.name,
-              editedWarehouseId.value
-            )) {
-              alert('Taki magazyn już istnieje')
-              return
-            }
+  if (!name) return
 
-      // =========================
-      // TRYB EDYCJI
-      // =========================
-      if (warehouseFormMode.value === 'edit' && editedWarehouseId.value !== null) {
-        const warehouseToUpdate = warehouses.value.find(
-          warehouse => warehouse.id === editedWarehouseId.value
-        )
+  // =========================
+  // DUPLIKAT - MAGAZYN
+  // =========================
+  if (hasDuplicateName(
+    warehouses.value,
+    name,
+    editedWarehouseId.value
+  )) {
+    alert('Taki magazyn już istnieje')
+    return
+  }
 
-        if (warehouseToUpdate) {
-          warehouseToUpdate.name = warehouseForm.value.name
-        }
-      } else {
-        // =========================
-        // TRYB DODAWANIA
-        // =========================
-        warehouses.value.push({
-          id: Date.now(),
-          name: warehouseForm.value.name
-        })
-      }
+  // =========================
+  // TRYB EDYCJI
+  // =========================
+  if (warehouseFormMode.value === 'edit' && editedWarehouseId.value !== null) {
+    const warehouseToUpdate = warehouses.value.find(
+      warehouse => warehouse.id === editedWarehouseId.value
+    )
 
-      showWarehouseForm.value = false
-      warehouseFormMode.value = 'add'
-      editedWarehouseId.value = null
-
-      warehouseForm.value = {
-        name: ''
-      } 
-      scheduleSave()  
+    if (warehouseToUpdate) {
+      warehouseToUpdate.name = name
     }
+  } else {
+    // =========================
+    // TRYB DODAWANIA
+    // =========================
+    warehouses.value.push({
+      id: Date.now(),
+      name
+    })
+  }
+
+  showWarehouseForm.value = false
+  warehouseFormMode.value = 'add'
+  editedWarehouseId.value = null
+
+  warehouseForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
 
     // =========================
     // USUWANIE MAGAZYNU (Z POTWIERDZENIEM)
     // =========================
     const deleteWarehouse = () => {
-      if (editedWarehouseId.value === null) return
+  if (editedWarehouseId.value === null) return
 
-      const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  const warehouseToDelete = warehouses.value.find(
+    warehouse => warehouse.id === editedWarehouseId.value
+  )
 
-      if (!confirmed) return
+  const warehouseNameToDelete = warehouseToDelete?.name || ''
 
-      warehouses.value = warehouses.value.filter(
-        warehouse => warehouse.id !== editedWarehouseId.value
-      )
+  const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  if (!confirmed) return
 
-      showWarehouseForm.value = false
-      warehouseFormMode.value = 'add'
-      editedWarehouseId.value = null
+  warehouses.value = warehouses.value.filter(
+    warehouse => warehouse.id !== editedWarehouseId.value
+  )
 
-      warehouseForm.value = {
-        name: ''
+  if (warehouseNameToDelete) {
+    towary.value = towary.value.map(item => {
+      if (item.warehouse !== warehouseNameToDelete) return item
+
+      return {
+        ...item,
+        warehouse: ''
       }
-      scheduleSave()
-    }
+    })
+  }
+
+  showWarehouseForm.value = false
+  warehouseFormMode.value = 'add'
+  editedWarehouseId.value = null
+
+  warehouseForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
 
 
 
@@ -4262,68 +4351,102 @@ const deleteSupplier = () => {
     }
 
     const saveOrderTiming = () => {
-      if (!orderTimingForm.value.name.trim()) return
+  const name = cleanName(orderTimingForm.value.name)
 
-      // =========================
-      // DUPLIKAT - KIEDY ZAMAWIANE
-      // =========================
-      if (hasDuplicateName(
-       orderTimings.value,
-       orderTimingForm.value.name,
-       editedOrderTimingId.value
-      )) 
-       {
-         alert('Taka pozycja już istnieje')
-         return
-        }
+  if (!name) return
 
-      if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
-        const itemToUpdate = orderTimings.value.find(
-          item => item.id === editedOrderTimingId.value
-        )
+  // =========================
+  // DUPLIKAT - KIEDY ZAMAWIANE
+  // =========================
+  if (hasDuplicateName(
+    orderTimings.value,
+    name,
+    editedOrderTimingId.value
+  )) {
+    alert('Taka pozycja już istnieje')
+    return
+  }
 
-        if (itemToUpdate) {
-          itemToUpdate.name = orderTimingForm.value.name
-        }
-      } else {
-        orderTimings.value.push({
-          id: Date.now(),
-          name: orderTimingForm.value.name
-        })
-      }
+  if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
+    const itemToUpdate = orderTimings.value.find(
+      item => item.id === editedOrderTimingId.value
+    )
 
-      showOrderTimingForm.value = false
-      orderTimingFormMode.value = 'add'
-      editedOrderTimingId.value = null
-
-      orderTimingForm.value = {
-        name: ''
-      }
-      scheduleSave()
+    if (itemToUpdate) {
+      itemToUpdate.name = name
     }
+  } else {
+    orderTimings.value.push({
+      id: Date.now(),
+      name
+    })
+  }
+
+  showOrderTimingForm.value = false
+  orderTimingFormMode.value = 'add'
+  editedOrderTimingId.value = null
+
+  orderTimingForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
 
     // =========================
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteOrderTiming = () => {
-      if (editedOrderTimingId.value === null) return
+  if (editedOrderTimingId.value === null) return
 
-      const confirmed = confirm('Czy na pewno chcesz usunąć?')
-      if (!confirmed) return
+  const timingToDelete = orderTimings.value.find(
+    item => item.id === editedOrderTimingId.value
+  )
 
-      orderTimings.value = orderTimings.value.filter(
-        item => item.id !== editedOrderTimingId.value
-      )
+  const timingNameToDelete = timingToDelete?.name || ''
 
-      showOrderTimingForm.value = false
-      orderTimingFormMode.value = 'add'
-      editedOrderTimingId.value = null
+  const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  if (!confirmed) return
 
-      orderTimingForm.value = {
-        name: ''
+  orderTimings.value = orderTimings.value.filter(
+    item => item.id !== editedOrderTimingId.value
+  )
+
+  if (timingNameToDelete) {
+    towary.value = towary.value.map(item => {
+      let updatedItem = { ...item }
+
+      // usuwamy z listy orderTimings
+      if (Array.isArray(updatedItem.orderTimings)) {
+        updatedItem.orderTimings = updatedItem.orderTimings.filter(
+          t => t !== timingNameToDelete
+        )
       }
-      scheduleSave()
-    }
+
+      // usuwamy z maxQtyByOrderTiming
+      if (
+        updatedItem.maxQtyByOrderTiming &&
+        typeof updatedItem.maxQtyByOrderTiming === 'object'
+      ) {
+        const newMax = { ...updatedItem.maxQtyByOrderTiming }
+        delete newMax[timingNameToDelete]
+        updatedItem.maxQtyByOrderTiming = newMax
+      }
+
+      return updatedItem
+    })
+  }
+
+  showOrderTimingForm.value = false
+  orderTimingFormMode.value = 'add'
+  editedOrderTimingId.value = null
+
+  orderTimingForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
 
 
 
@@ -4383,68 +4506,91 @@ const deleteSupplier = () => {
     }
 
     const saveUnit = () => {
-      if (!unitForm.value.name.trim()) return
+  const name = cleanName(unitForm.value.name)
 
+  if (!name) return
 
-               // =========================
-               // DUPLIKAT - JEDNOSTKA
-               // =========================
-          if (hasDuplicateName(
-            units.value,
-            unitForm.value.name,
-            editedUnitId.value
-          )) {
-               alert('Taka jednostka już istnieje')
-                return
-              }
+  // =========================
+  // DUPLIKAT - JEDNOSTKA
+  // =========================
+  if (hasDuplicateName(
+    units.value,
+    name,
+    editedUnitId.value
+  )) {
+    alert('Taka jednostka już istnieje')
+    return
+  }
 
-      if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
-        const itemToUpdate = units.value.find(
-          item => item.id === editedUnitId.value
-        )
+  if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
+    const itemToUpdate = units.value.find(
+      item => item.id === editedUnitId.value
+    )
 
-        if (itemToUpdate) {
-          itemToUpdate.name = unitForm.value.name
-        }
-      } else {
-        units.value.push({
-          id: Date.now(),
-          name: unitForm.value.name
-        })
-      }
-
-      showUnitForm.value = false
-      unitFormMode.value = 'add'
-      editedUnitId.value = null
-
-      unitForm.value = {
-        name: ''
-      }
-      scheduleSave()
+    if (itemToUpdate) {
+      itemToUpdate.name = name
     }
+  } else {
+    units.value.push({
+      id: Date.now(),
+      name
+    })
+  }
+
+  showUnitForm.value = false
+  unitFormMode.value = 'add'
+  editedUnitId.value = null
+
+  unitForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
+
+
 
     // =========================
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteUnit = () => {
-      if (editedUnitId.value === null) return
+  if (editedUnitId.value === null) return
 
-      const confirmed = confirm('Czy na pewno chcesz usunąć?')
-      if (!confirmed) return
+  const unitToDelete = units.value.find(
+    item => item.id === editedUnitId.value
+  )
 
-      units.value = units.value.filter(
-        item => item.id !== editedUnitId.value
-      )
+  const unitNameToDelete = unitToDelete?.name || ''
 
-      showUnitForm.value = false
-      unitFormMode.value = 'add'
-      editedUnitId.value = null
+  const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  if (!confirmed) return
 
-      unitForm.value = {
-        name: ''
+  units.value = units.value.filter(
+    item => item.id !== editedUnitId.value
+  )
+
+  if (unitNameToDelete) {
+    towary.value = towary.value.map(item => {
+      if (item.unit !== unitNameToDelete) return item
+
+      return {
+        ...item,
+        unit: ''
       }
-      scheduleSave()
-    }
+    })
+  }
+
+  showUnitForm.value = false
+  unitFormMode.value = 'add'
+  editedUnitId.value = null
+
+  unitForm.value = {
+    name: ''
+  }
+
+  scheduleSave()
+}
+
 
 
 
@@ -4505,19 +4651,21 @@ const closeCategoryForm = () => {
 }
 
 const saveCategory = () => {
-  if (!categoryForm.value.name.trim()) return
+  const name = cleanName(categoryForm.value.name)
 
-       // =========================
-       // DUPLIKAT - KATEGORIA
-       // =========================
-   if (hasDuplicateName(
-  categories.value,
-  categoryForm.value.name,
-  editedCategoryId.value
-   )) {
-  alert('Taka kategoria już istnieje')
-  return
-   }
+  if (!name) return
+
+  // =========================
+  // DUPLIKAT - KATEGORIA
+  // =========================
+  if (hasDuplicateName(
+    categories.value,
+    name,
+    editedCategoryId.value
+  )) {
+    alert('Taka kategoria już istnieje')
+    return
+  }
 
   if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
     const itemToUpdate = categories.value.find(
@@ -4525,12 +4673,12 @@ const saveCategory = () => {
     )
 
     if (itemToUpdate) {
-      itemToUpdate.name = categoryForm.value.name
+      itemToUpdate.name = name
     }
   } else {
     categories.value.push({
       id: Date.now(),
-      name: categoryForm.value.name
+      name
     })
   }
 
@@ -4541,6 +4689,7 @@ const saveCategory = () => {
   categoryForm.value = {
     name: ''
   }
+
   scheduleSave()
 }
 
@@ -4550,12 +4699,33 @@ const saveCategory = () => {
 const deleteCategory = () => {
   if (editedCategoryId.value === null) return
 
+  const categoryToDelete = categories.value.find(
+    item => item.id === editedCategoryId.value
+  )
+
+  const categoryNameToDelete = categoryToDelete?.name || ''
+
   const confirmed = confirm('Czy na pewno chcesz usunąć?')
   if (!confirmed) return
 
   categories.value = categories.value.filter(
     item => item.id !== editedCategoryId.value
   )
+
+  if (categoryNameToDelete) {
+    towary.value = towary.value.map(item => {
+      if (!Array.isArray(item.categories)) return item
+
+      const updatedCategories = item.categories.filter(
+        cat => cat !== categoryNameToDelete
+      )
+
+      return {
+        ...item,
+        categories: updatedCategories
+      }
+    })
+  }
 
   showCategoryForm.value = false
   categoryFormMode.value = 'add'
@@ -4564,6 +4734,7 @@ const deleteCategory = () => {
   categoryForm.value = {
     name: ''
   }
+
   scheduleSave()
 }
 
@@ -4623,21 +4794,21 @@ const closeWhoOrderForm = () => {
 }
 
 const saveWhoOrder = () => {
-  const name = String(whoOrderForm.value.name || '').trim()
+  const name = cleanName(whoOrderForm.value.name)
 
   if (!name) return
 
   // =========================
-// DUPLIKAT - KTO ZAMAWIA
-// =========================
-if (hasDuplicateName(
-  whoOrders.value,
-  name,
-  editedWhoOrderId.value
-)) {
-  alert('Taka pozycja już istnieje')
-  return
-}
+  // DUPLIKAT - KTO ZAMAWIA
+  // =========================
+  if (hasDuplicateName(
+    whoOrders.value,
+    name,
+    editedWhoOrderId.value
+  )) {
+    alert('Taka pozycja już istnieje')
+    return
+  }
 
   if (whoOrderFormMode.value === 'edit' && editedWhoOrderId.value !== null) {
     const itemToUpdate = whoOrders.value.find(
@@ -4654,8 +4825,6 @@ if (hasDuplicateName(
     })
   }
 
-    
-
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
   editedWhoOrderId.value = null
@@ -4663,6 +4832,7 @@ if (hasDuplicateName(
   whoOrderForm.value = {
     name: ''
   }
+
   scheduleSave()
 }
 
@@ -4672,6 +4842,12 @@ if (hasDuplicateName(
 const deleteWhoOrder = () => {
   if (editedWhoOrderId.value === null) return
 
+  const whoOrderToDelete = whoOrders.value.find(
+    item => item.id === editedWhoOrderId.value
+  )
+
+  const whoOrderNameToDelete = whoOrderToDelete?.name || ''
+
   const confirmed = confirm('Czy na pewno chcesz usunąć?')
   if (!confirmed) return
 
@@ -4679,7 +4855,20 @@ const deleteWhoOrder = () => {
     item => item.id !== editedWhoOrderId.value
   )
 
-    
+  if (whoOrderNameToDelete) {
+    towary.value = towary.value.map(item => {
+      if (!Array.isArray(item.whoOrders)) return item
+
+      const updated = item.whoOrders.filter(
+        val => val !== whoOrderNameToDelete
+      )
+
+      return {
+        ...item,
+        whoOrders: updated
+      }
+    })
+  }
 
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
@@ -4688,6 +4877,7 @@ const deleteWhoOrder = () => {
   whoOrderForm.value = {
     name: ''
   }
+
   scheduleSave()
 }
 
@@ -4727,7 +4917,7 @@ const deleteWhoOrder = () => {
       supplier: '',
       netPrice: '',
       vat: '',
-      warehousesText: '',
+      warehouse: '',
       orderTimings: [],
       whoOrders: [],
       categories: [],
@@ -4748,7 +4938,7 @@ const deleteWhoOrder = () => {
         supplier: '',
         netPrice: '',
         vat: '',
-        warehousesText: '',
+        warehouse: '',
         orderTimings: [],
         whoOrders: [],
         categories: [],
@@ -4775,10 +4965,13 @@ const deleteWhoOrder = () => {
     id: item.id ?? '',
     name: item.name ?? '',
     unit: item.unit ?? '',
-    supplier: item.supplier ?? '',
+    supplier: (item.supplier || '').trim(),
     netPrice: item.netPrice ?? '',
     vat: item.vat ?? '',
-    warehousesText: item.warehousesLabel ?? '',
+    warehouse:
+  item.warehouse ??
+  item.warehousesLabel ??
+  (Array.isArray(item.warehouses) ? item.warehouses[0] ?? '' : ''),
     orderTimings: Array.isArray(item.orderTimings) ? [...item.orderTimings] : [],
     whoOrders: Array.isArray(item.whoOrders) ? [...item.whoOrders] : [],
     categories: Array.isArray(item.categories) ? [...item.categories] : [],
@@ -4794,6 +4987,59 @@ const deleteWhoOrder = () => {
   towaryView.value = 'form'
 }
 
+const handleTowarActiveChange = () => {
+  if (towarFormMode.value !== 'edit') return
+  if (editedTowarId.value === null) return
+
+  const index = towary.value.findIndex(
+    item => item.id === editedTowarId.value
+  )
+
+  if (index === -1) return
+
+  towary.value[index] = {
+    ...towary.value[index],
+    active: !!towarForm.value.active
+  }
+
+  scheduleSave()
+}
+
+
+const fieldFilledClass = (value) => {
+  const isFilled = Array.isArray(value)
+    ? value.length > 0
+    : String(value || '').trim() !== ''
+
+  return isFilled ? 'field-filled' : 'field-empty'
+}
+
+
+const normalizeNetPrice = (value) => {
+  const raw = String(value || '').trim()
+
+  if (!raw) return ''
+
+  const normalized = raw.replace(',', '.')
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null
+  }
+
+  return Number(normalized).toFixed(2)
+}
+
+const normalizeVat = (value) => {
+  const raw = String(value || '').trim()
+
+  if (!raw) return ''
+
+  if (!/^\d+$/.test(raw)) {
+    return null
+  }
+
+  return String(Number(raw))
+}
 
 
     // =========================
@@ -4853,16 +5099,18 @@ const closeTowarForm = () => {
     }
 
     const removeSelectedTowary = () => {
-      const confirmed = confirm('Czy na pewno chcesz usunąć zaznaczone towary?')
-      if (!confirmed) return
+  const confirmed = confirm('Czy na pewno chcesz usunąć zaznaczone towary?')
+  if (!confirmed) return
 
-      towary.value = towary.value.filter(
-        item => !selectedTowaryIds.value.includes(item.id)
-      )
+  towary.value = towary.value.filter(
+    item => !selectedTowaryIds.value.includes(item.id)
+  )
 
-      selectedTowaryIds.value = []
-      towarySelectionMode.value = false
-    }
+  selectedTowaryIds.value = []
+  towarySelectionMode.value = false
+
+  scheduleSave()
+}
 
 
 
@@ -5012,10 +5260,23 @@ const closeTowarForm = () => {
               // =========================
               if (!towarForm.value.name.trim()) return
 
-              // =========================
-              // PORZĄDKOWANIE DANYCH Z FORMULARZA
-              // =========================
-              const preparedTowar = {
+const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
+const vatNormalized = normalizeVat(towarForm.value.vat)
+
+if (netPriceNormalized === null) {
+  alert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku')
+  return
+}
+
+if (vatNormalized === null) {
+  alert('Stawka VAT musi być liczbą całkowitą')
+  return
+}
+
+// =========================
+// PORZĄDKOWANIE DANYCH Z FORMULARZA
+// =========================
+const preparedTowar = {
                id:
                towarFormMode.value === 'edit' && editedTowarId.value !== null
                ? editedTowarId.value
@@ -5024,19 +5285,10 @@ const closeTowarForm = () => {
         name: towarForm.value.name.trim(),
         unit: towarForm.value.unit.trim(),
         supplier: towarForm.value.supplier.trim(),
-        netPrice: towarForm.value.netPrice.trim(),
-        vat: towarForm.value.vat.trim(),
+        netPrice: netPriceNormalized,
+         vat: vatNormalized,
 
-        warehouses: towarForm.value.warehousesText
-          .split(',')
-          .map(item => item.trim())
-          .filter(Boolean),
-
-        warehousesLabel: towarForm.value.warehousesText
-          .split(',')
-          .map(item => item.trim())
-          .filter(Boolean)
-          .join(', '),
+        warehouse: towarForm.value.warehouse.trim(),
 
           orderTimings: Array.isArray(towarForm.value.orderTimings)
           ? [...towarForm.value.orderTimings]
@@ -5108,6 +5360,12 @@ const deleteTowar = () => {
   return String(value || '').trim().toLowerCase()
 }
 
+const cleanName = (value) => {
+  return String(value || '').trim()
+}
+
+
+
 const hasDuplicateName = (items, name, editedId = null) => {
   const normalizedNewName = normalizeName(name)
 
@@ -5121,6 +5379,15 @@ const hasDuplicateName = (items, name, editedId = null) => {
   })
 }
 
+const getWarehouse = (item) => {
+  return (
+    item.warehouse ||
+    item.warehousesLabel ||
+    (Array.isArray(item.warehouses) ? item.warehouses[0] : '') ||
+    ''
+  )
+}
+
 
 
 // =========================
@@ -5132,8 +5399,7 @@ const isTowarIncomplete = (item) => {
   const hasSupplier = String(item.supplier || '').trim() !== ''
   const hasNetPrice = String(item.netPrice || '').trim() !== ''
   const hasVat = String(item.vat || '').trim() !== ''
-  const hasWarehouse =
-    Array.isArray(item.warehouses) && item.warehouses.length > 0
+  const hasWarehouse = String(item.warehouse || '').trim() !== ''
   const hasOrderTimings =
     Array.isArray(item.orderTimings) && item.orderTimings.length > 0
   const hasWhoOrders =
@@ -5190,9 +5456,9 @@ const getTowarMissingFields = (item) => {
     missingFields.push('Stawka VAT')
   }
 
-  if (!Array.isArray(item.warehouses) || item.warehouses.length === 0) {
-    missingFields.push('Magazyn')
-  }
+  if (String(item.warehouse || '').trim() === '') {
+  missingFields.push('Magazyn')
+}
 
   if (!Array.isArray(item.orderTimings) || item.orderTimings.length === 0) {
     missingFields.push('Kiedy zamówienie')
@@ -5253,7 +5519,7 @@ const availableTowaryCategories = computed(() => {
 
 const availableTowaryWarehouses = computed(() => {
   const names = towary.value
-    .flatMap(item => item.warehouses || [])
+    .map(item => getWarehouse(item))
     .filter(Boolean)
 
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
@@ -5273,11 +5539,12 @@ const availableTowaryWarehouses = computed(() => {
       selectedSuppliersFilter.value.length === 0 ||
       selectedSuppliersFilter.value.includes(item.supplier)
 
-    const warehouseMatch =
-      selectedWarehousesFilter.value.length === 0 ||
-      (item.warehouses || []).some(w =>
-        selectedWarehousesFilter.value.includes(w)
-      )
+    const warehouseValue = getWarehouse(item)
+
+
+const warehouseMatch =
+  selectedWarehousesFilter.value.length === 0 ||
+  selectedWarehousesFilter.value.includes(warehouseValue)
 
     const categoryMatch =
       selectedCategoriesFilter.value.length === 0 ||
@@ -5303,9 +5570,11 @@ const availableTowaryWarehouses = computed(() => {
           selectedDay.value === 'wszystkie' ||
           (item.orderTimings || []).includes(selectedDay.value)
 
-        const warehouseMatch =
-          selectedWarehouse.value === 'wszystkie' ||
-          (item.warehouses || []).includes(selectedWarehouse.value)
+        const warehouseValue = getWarehouse(item)
+
+const warehouseMatch =
+  selectedWarehouse.value === 'wszystkie' ||
+  warehouseValue === selectedWarehouse.value
 
         const supplierMatch =
           selectedSupplier.value === 'wszystkie' ||
@@ -5488,7 +5757,7 @@ const bValid = !isNaN(bOrder) && bOrder > 0
     id: item.id,
     name: item.name || '',
     unit: item.unit || '',
-    warehouse: item.warehousesLabel || '',
+    warehouse: item.warehouse || '',
     supplier: item.supplier || '',
     maxQtyLabel,
     max:
@@ -5761,8 +6030,10 @@ const generatePdfFromRegister = async (order) => {
 // =========================
 // START APLIKACJI - ODTWORZENIE SESJI I ŁADOWANIE Z FIRESTORE
 // =========================
+let unsubscribeAuth = null
+
 onMounted(() => {
-  onAuthStateChanged(auth, async (user) => {
+  unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
       isDataLoaded.value = false
       isLoggedIn.value = false
@@ -5784,6 +6055,12 @@ onMounted(() => {
 
     await loadCompanyDataWithFallback()
   })
+})
+
+onUnmounted(() => {
+  if (unsubscribeAuth) {
+    unsubscribeAuth()
+  }
 })
 
 
@@ -6004,6 +6281,7 @@ watch(
       openTowarAdd,
       openTowarEdit,
       closeTowarForm,
+      handleTowarActiveChange,
       saveTowar,
       deleteTowar,
       toggleTowarySelectionMode,
@@ -6058,6 +6336,8 @@ watch(
 
       isDataLoaded,
 
+      fieldFilledClass,
+
       
 
 
@@ -6083,6 +6363,22 @@ watch(
 
 
 <style>
+
+
+.field-empty,
+.supplier-click-field.field-empty {
+  background-color: #ef080871;
+  color: #111827;
+}
+
+.field-filled,
+.supplier-click-field.field-filled {
+  background-color: #09f34f72;
+  color: #111827;
+}
+
+
+
 
 
 html, body, #app {
@@ -6252,6 +6548,11 @@ html, body, #app {
   border-radius: 10px;
   border: 1px solid #ccc;
   font-size: 16px;
+  text-align: center;
+}
+
+.supplier-form-input select {
+  text-align: center;
 }
 
 .supplier-modal-actions {
