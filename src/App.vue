@@ -576,7 +576,7 @@
     style="display:flex; align-items:center; justify-content:flex-end; gap:8px;"
   >
     <button
-      @click.stop="removeFromCart(product)"
+      @click.stop="removeFromCart(product.id)"
       class="towary-icon-button"
       style="width:32px; height:32px; font-size:18px;"
     >
@@ -588,7 +588,7 @@
     </div>
 
     <button
-      @click.stop="addToCart(product)"
+      @click.stop="addToCart(product.id)"
       class="towary-icon-button"
       style="width:32px; height:32px; font-size:18px;"
     >
@@ -1507,8 +1507,8 @@ selectedWhoOrders !== 'wszystkie'
 
         <!-- EDYTUJ TOWAR -->
         <button
-          v-if="!selectedProductForQty?.isCustom"
-          @click="editTowarFromQtyModal()"
+  v-if="selectedProductForQty"
+  @click="selectedProductForQty?.isCustom ? openCustomCartItemModal(selectedProductForQty) : editTowarFromQtyModal()"
           class="towary-icon-button"
           type="button"
           title="Edytuj towar"
@@ -2111,7 +2111,6 @@ selectedWhoOrders !== 'wszystkie'
             <label class="supplier-form-label">Kiedy zamówienie</label>
 
             <div
-  <div
   @click="openOrderTimingModal()"
   class="supplier-click-field"
   :class="fieldFilledClass(towarForm.orderTimings)"
@@ -3381,7 +3380,16 @@ import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
 import { auth, db } from './firebase.js'
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  onSnapshot,
+  increment,
+  deleteDoc,
+  writeBatch
+} from 'firebase/firestore'
 
 export default {
 
@@ -3416,14 +3424,21 @@ const createEmptyCloudState = () => ({
   units: [],
   categories: [],
   whoOrders: [],
-  ordersRegister: [],
-  cart: {},
-  customCartItems: []
+  ordersRegister: []
 })
 
 const getUserStateDocRef = (uid) => {
   return doc(db, 'users', uid, 'app', 'state')
 }
+
+const getUserCartItemsCollectionRef = (uid) => {
+  return collection(db, 'users', uid, 'cartItems')
+}
+
+const getUserCartItemDocRef = (uid, productId) => {
+  return doc(db, 'users', uid, 'cartItems', String(productId))
+}
+
 
 const loadUserStateFromFirestore = async (uid) => {
   const stateRef = getUserStateDocRef(uid)
@@ -3507,7 +3522,7 @@ const handleLogout = async () => {
 
 
 
-    const collectAppState = () => ({
+  const collectAppState = () => ({
   suppliers: suppliers.value,
   towary: towary.value,
   warehouses: warehouses.value,
@@ -3515,9 +3530,7 @@ const handleLogout = async () => {
   units: units.value,
   categories: categories.value,
   whoOrders: whoOrders.value,
-  ordersRegister: ordersRegister.value,
-  cart: cart.value,
-  customCartItems: customCartItems.value
+  ordersRegister: ordersRegister.value
 })
 
 const applyAppState = (state) => {
@@ -3534,8 +3547,6 @@ const applyAppState = (state) => {
   categories.value = safeState.categories
   whoOrders.value = safeState.whoOrders
   ordersRegister.value = safeState.ordersRegister
-  cart.value = safeState.cart
-  customCartItems.value = safeState.customCartItems
 }
 
 
@@ -3556,9 +3567,7 @@ const isReallyEmptyState =
   (!appState.units || appState.units.length === 0) &&
   (!appState.categories || appState.categories.length === 0) &&
   (!appState.whoOrders || appState.whoOrders.length === 0) &&
-  (!appState.ordersRegister || appState.ordersRegister.length === 0) &&
-  (!appState.customCartItems || appState.customCartItems.length === 0) &&
-  (!appState.cart || Object.keys(appState.cart).length === 0)
+  (!appState.ordersRegister || appState.ordersRegister.length === 0)
 
 if (isReallyEmptyState) {
   console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
@@ -3574,6 +3583,52 @@ if (isReallyEmptyState) {
 const isHydrating = ref(false)
 const isDataLoaded = ref(false)
 let saveTimeout = null
+
+let unsubscribeCartItems = null
+
+const subscribeCartItems = (uid) => {
+  if (unsubscribeCartItems) {
+    unsubscribeCartItems()
+    unsubscribeCartItems = null
+  }
+
+  const cartItemsRef = getUserCartItemsCollectionRef(uid)
+
+  unsubscribeCartItems = onSnapshot(cartItemsRef, (snapshot) => {
+  const nextCart = {}
+  const nextCustomCartItems = []
+
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data()
+    const qty = Number(data.qty || 0)
+
+    if (qty <= 0) return
+
+    if (data.isCustom) {
+      const netPrice = Number(data.netPrice || 0)
+
+      nextCustomCartItems.push({
+        id: docSnap.id,
+        name: data.name || '',
+        unit: data.unit || '',
+        supplier: data.supplier || '',
+        qty,
+        netPrice,
+        value: netPrice * qty,
+        categories: [],
+        isCustom: true
+      })
+
+      return
+    }
+
+    nextCart[docSnap.id] = qty
+  })
+
+  cart.value = nextCart
+  customCartItems.value = nextCustomCartItems
+})
+}
 
 const scheduleSave = () => {
   if (isHydrating.value) return
@@ -3792,36 +3847,85 @@ const customCartItems = ref([])
     // =========================
     // FUNKCJE KOSZYKA
     // =========================
-    const addToCart = (product) => {
-  if (!cart.value[product.id]) cart.value[product.id] = 0
+    const addToCart = async (productId) => {
+  const user = auth.currentUser
+  if (!user) return
 
-  cart.value[product.id]++
+  const ref = getUserCartItemDocRef(user.uid, productId)
 
-  cartBounce.value = false
-
-  setTimeout(() => {
-    cartBounce.value = true
-
-    setTimeout(() => {
-      cartBounce.value = false
-    }, 400)
-  }, 10)
+  await setDoc(
+    ref,
+    { qty: increment(1) },
+    { merge: true }
+  )
 }
 
-    const removeFromCart = (product) => {
-      if (cart.value[product.id] > 0) cart.value[product.id]--
-    }
+  const removeFromCart = async (productId) => {
+  const user = auth.currentUser
+  if (!user) return
 
-    const clearCart = () => {
+  if (Number(cart.value[productId] || 0) <= 1) {
+    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+    return
+  }
+
+  const ref = getUserCartItemDocRef(user.uid, productId)
+
+  await setDoc(
+    ref,
+    { qty: increment(-1) },
+    { merge: true }
+  )
+}
+
+  const clearCart = async () => {
   const confirmed = confirm('Czy na pewno chcesz wyczyścić koszyk?')
   if (!confirmed) return
 
-  cart.value = {}
+  const user = auth.currentUser
+  if (!user) return
+
+  const batch = writeBatch(db)
+
+  Object.keys(cart.value).forEach((productId) => {
+    batch.delete(getUserCartItemDocRef(user.uid, productId))
+  })
+
+  customCartItems.value.forEach((item) => {
+  batch.delete(getUserCartItemDocRef(user.uid, item.id))
+})
+
+  await batch.commit()
+
   customCartItems.value = []
 }
 
 
-const openCustomCartItemModal = () => {
+const openCustomCartItemModal = (item = null) => {
+  if (item) {
+    closeQtyModal()
+  }
+
+  if (item) {
+    customCartItemForm.value = {
+      id: item.id,
+      name: item.name || '',
+      unit: item.unit || '',
+      supplier: item.supplier || '',
+      qty: item.qty || '',
+      price: item.netPrice || ''
+    }
+  } else {
+    customCartItemForm.value = {
+      id: null,
+      name: '',
+      unit: '',
+      supplier: '',
+      qty: '',
+      price: ''
+    }
+  }
+
   showCustomCartItemModal.value = true
 }
 
@@ -3838,7 +3942,10 @@ const closeCustomCartItemModal = () => {
 }
 
 
-const saveCustomCartItem = () => {
+const saveCustomCartItem = async () => {
+  const user = auth.currentUser
+  if (!user) return
+
   const name = String(customCartItemForm.value.name || '').trim()
   const unit = String(customCartItemForm.value.unit || '').trim()
   const supplier = String(customCartItemForm.value.supplier || '').trim()
@@ -3860,23 +3967,23 @@ const saveCustomCartItem = () => {
     return
   }
 
-  const value = !isNaN(price) ? price * qty : 0
+  const customId = customCartItemForm.value.id || `custom-${Date.now()}`
 
-customCartItems.value.push({
-  id: `custom-${Date.now()}`,
-  name,
-  unit,
-  supplier,
-  qty,
-  netPrice: price || 0,
-  value,
-  categories: [],
-  isCustom: true
-})
+  await setDoc(
+    getUserCartItemDocRef(user.uid, customId),
+    {
+      isCustom: true,
+      name,
+      unit,
+      supplier,
+      qty,
+      netPrice: !isNaN(price) ? price : 0
+    },
+    { merge: true }
+  )
 
   closeCustomCartItemModal()
 }
-
 
 
 
@@ -3910,38 +4017,52 @@ const openQtyModal = async (product) => {
       tempQty.value = ''
     }
 
-    const saveQtyModal = () => {
+    const saveQtyModal = async () => {
   if (!selectedProductForQty.value) return
+
+  const user = auth.currentUser
+  if (!user) return
 
   const product = selectedProductForQty.value
   const productId = product.id
   const qty = Number(tempQty.value)
 
   if (product.isCustom) {
-    if (!tempQty.value || qty <= 0) {
-      customCartItems.value = customCartItems.value.filter(item => item.id !== productId)
-      closeQtyModal()
-      return
-    }
+  if (!tempQty.value || qty <= 0) {
+    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+    closeQtyModal()
+    return
+  }
 
     const itemToUpdate = customCartItems.value.find(item => item.id === productId)
 
     if (itemToUpdate) {
-  itemToUpdate.qty = qty
-  itemToUpdate.value = (itemToUpdate.netPrice || 0) * qty
+  await setDoc(
+    getUserCartItemDocRef(user.uid, productId),
+    {
+      qty,
+      netPrice: itemToUpdate.netPrice || 0
+    },
+    { merge: true }
+  )
 }
 
-    closeQtyModal()
-    return
+closeQtyModal()
+return
   }
 
   if (!tempQty.value || qty <= 0) {
-    delete cart.value[productId]
+    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
     closeQtyModal()
     return
   }
 
-  cart.value[productId] = qty
+  await setDoc(
+    getUserCartItemDocRef(user.uid, productId),
+    { qty },
+    { merge: true }
+  )
+
   closeQtyModal()
 }
 
@@ -3949,17 +4070,15 @@ const openQtyModal = async (product) => {
 // =========================
 // KOSZYK - USUWANIE POZYCJI Z MODALA ILOŚCI
 // =========================
-const deleteCartItemFromQtyModal = () => {
+const deleteCartItemFromQtyModal = async () => {
   if (!selectedProductForQty.value) return
 
-  const product = selectedProductForQty.value
-  const productId = product.id
+  const user = auth.currentUser
+  if (!user) return
 
-  if (product.isCustom) {
-    customCartItems.value = customCartItems.value.filter(item => item.id !== productId)
-  } else {
-    delete cart.value[productId]
-  }
+  const productId = selectedProductForQty.value.id
+
+  await deleteDoc(getUserCartItemDocRef(user.uid, productId))
 
   closeQtyModal()
 }
@@ -6034,7 +6153,12 @@ let unsubscribeAuth = null
 
 onMounted(() => {
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-    if (!user) {
+        if (!user) {
+      if (unsubscribeCartItems) {
+        unsubscribeCartItems()
+        unsubscribeCartItems = null
+      }
+
       isDataLoaded.value = false
       isLoggedIn.value = false
       currentCompany.value = null
@@ -6054,12 +6178,18 @@ onMounted(() => {
     }
 
     await loadCompanyDataWithFallback()
+        subscribeCartItems(user.uid)
   })
 })
 
 onUnmounted(() => {
   if (unsubscribeAuth) {
     unsubscribeAuth()
+  }
+
+  if (unsubscribeCartItems) {
+    unsubscribeCartItems()
+    unsubscribeCartItems = null
   }
 })
 
@@ -6117,13 +6247,7 @@ watch(ordersRegister, () => {
 }, { deep: true })
 */
 
-watch(cart, () => {
-  scheduleSave()
-}, { deep: true })
 
-watch(customCartItems, () => {
-  scheduleSave()
-}, { deep: true })
 
 
 watch(
