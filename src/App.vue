@@ -23,7 +23,7 @@
     class="login-input"
     placeholder="Wpisz e-mail"
     name="email"
-    autocomplete="email"
+    autocomplete="username"
     autocapitalize="none"
     autocorrect="off"
     spellcheck="false"
@@ -74,7 +74,6 @@
   <div
   v-else
   class="app"
-  style="padding:20px; font-family:sans-serif; max-width:500px; margin:auto;"
 >
 
 
@@ -83,59 +82,75 @@
    <!-- =========================
      HOME
 ========================== -->
-<div v-if="currentScreen === 'home'">
-  <h1>GastroManager</h1>
+<div v-if="currentScreen === 'home'" class="home-screen-ios">
+  <div class="home-header-ios">
+    <h1 class="home-title-ios">GastroManager</h1>
 
-  <div>wersja 1.1.1</div>
+    <div class="home-version-ios">wersja 1.1.1</div>
 
- <div
-  v-if="currentCompany"
-  style="margin-top:8px; font-size:14px; color:#6b7280;"
->
-  Konto: <strong style="font-size:18px;">{{ currentCompany.companyName }}</strong>
-</div>
+        <div
+      v-if="currentCompany"
+      class="home-account-ios"
+    >
+      <span class="home-account-icon">👤</span>
+      <span>Konto:</span>
+      <strong>{{ currentCompany.companyName }}</strong>
+    </div>
+  </div>
 
-  <div style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">
+  <div class="home-content-ios">
     
     <!-- ZAMAWIARKA (nowy styl kafelka) -->
     <button
-      @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-      style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
-    >
-  <svg
-  xmlns="http://www.w3.org/2000/svg"
-  width="36"
-  height="36"
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="#111827"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
+  @click="openZamawiarkaMenuFromHome"
+  class="home-wallet-tile"
 >
-  <!-- koła -->
-  <circle cx="7" cy="18" r="2"/>
-  <circle cx="17" cy="18" r="2"/>
+  <div class="home-wallet-icon">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 64 64"
+    aria-hidden="true"
+  >
+    <path
+      class="home-truck-body"
+      d="M8 21c0-2.2 1.8-4 4-4h27c2.2 0 4 1.8 4 4v20H8V21z"
+    />
+    <path
+      class="home-truck-cabin"
+      d="M43 27h7.5c1.2 0 2.3.6 3.1 1.6L59 36v5H43V27z"
+    />
+    <path
+      class="home-truck-window"
+      d="M47 31h3.4c.6 0 1.1.3 1.5.8l2.8 3.7H47V31z"
+    />
+    <circle class="home-truck-wheel" cx="20" cy="43" r="5"/>
+    <circle class="home-truck-wheel" cx="48" cy="43" r="5"/>
+    <circle class="home-truck-wheel-inner" cx="20" cy="43" r="2"/>
+    <circle class="home-truck-wheel-inner" cx="48" cy="43" r="2"/>
+  </svg>
+</div>
 
-  <!-- paka -->
-  <rect x="1" y="6" width="12" height="10" rx="2"/>
-
-  <!-- kabina -->
-  <path d="M13 8h4l3 3v5h-7z"/>
-</svg>
-
-      <div>
+      <div class="home-wallet-title">
         Zamawiarka
+      </div>
+
+      <div class="home-wallet-subtitle">
+        Zamówienia i koszyk
       </div>
     </button>
 
-    <!-- WYLOGUJ -->
+        <!-- WYLOGUJ -->
     <button
       @click="handleLogout"
-      style="padding:14px; font-size:16px; border-radius:12px; cursor:pointer; background:#111827; color:#ffffff; border:none;"
+      class="home-logout-ios"
     >
-      Wyloguj
+      <span class="home-logout-icon">⏻</span>
+      <span>Wyloguj</span>
     </button>
+
+    <div class="home-footer-ios">
+      GastroManager © 2026
+    </div>
 
   </div>
 </div>
@@ -148,155 +163,211 @@
          ZAMAWIARKA / MENU
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'menu'">
-                 <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
-        <button
-          @click="currentScreen = 'home'; zamawiarkaView = 'menu'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
-          ←
-        </button>
-        <h2 style="margin:0;">ZAMAWIARKA</h2>
-      </div>
+    <div class="zamawiarka-menu-topbar">
+  <button
+  @click="currentScreen = 'home'; zamawiarkaView = 'menu'"
+  class="zamawiarka-menu-back"
+>
+    ←
+  </button>
+  <h2 class="zamawiarka-menu-title">ZAMAWIARKA</h2>
+</div>
 
-      <div
-        style="
-          display:grid;
-          grid-template-columns:repeat(3, 1fr);
-          gap:12px;
-        "
-      >
+            <div
+  class="zamawiarka-menu-grid-ios"
+  :class="{ 'menu-tiles-animate': animateMenuTiles }"
+>
         <button
   @click="zamawiarkaView = 'produkty'"
-  style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
+  class="ios-menu-tile"
 >
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="28"
-    height="28"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="M12 20h9"/>
-    <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-  </svg>
-
-  <div>
-    Zrób zamówienie
+  <div class="ios-menu-icon ios-menu-icon-blue">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
   </div>
+
+  <div class="ios-menu-title">Zamówienia</div>
+  <div class="ios-menu-subtitle">Złóż zamówienie</div>
 </button>
 
         <button
   @click="zamawiarkaView = 'koszyk'"
-  style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
+  class="ios-menu-tile"
 >
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="28"
-    height="28"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <circle cx="9" cy="20" r="1"></circle>
-    <circle cx="20" cy="20" r="1"></circle>
-    <path d="M1 1h4l2.68 13.39a1 1 0 0 0 1 .81h9.72a1 1 0 0 0 1-.76L23 6H6"></path>
-  </svg>
+  <div class="ios-menu-icon ios-menu-icon-green">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="9" cy="21" r="1"/>
+      <circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+  </div>
 
-  <div>
+  <div class="ios-menu-title">
     Koszyk ({{ cartItems.length }})
   </div>
+  <div class="ios-menu-subtitle">Twoje produkty</div>
 </button>
 
   <button
   @click="zamawiarkaView = 'historia'"
-  style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
+  class="ios-menu-tile"
 >
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="28"
-    height="28"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="M8 2v4"/>
-    <path d="M16 2v4"/>
-    <rect width="18" height="18" x="3" y="4" rx="2"/>
-    <path d="M3 10h18"/>
-    <path d="M8 14h.01"/>
-    <path d="M12 14h.01"/>
-    <path d="M16 14h.01"/>
-    <path d="M8 18h.01"/>
-    <path d="M12 18h.01"/>
-    <path d="M16 18h.01"/>
-  </svg>
-
-  <div>
-    Rejestr zamówień
+  <div class="ios-menu-icon ios-menu-icon-orange">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M8 2v4"/>
+      <path d="M16 2v4"/>
+      <rect width="18" height="18" x="3" y="4" rx="2"/>
+      <path d="M3 10h18"/>
+      <path d="M8 14h.01"/>
+      <path d="M12 14h.01"/>
+      <path d="M16 14h.01"/>
+      <path d="M8 18h.01"/>
+      <path d="M12 18h.01"/>
+      <path d="M16 18h.01"/>
+    </svg>
   </div>
+
+  <div class="ios-menu-title">Rejestr</div>
+  <div class="ios-menu-subtitle">Historia zamówień</div>
 </button>
 
   <button
-  @click="zamawiarkaView = 'towary'; towaryView = 'list'"
-  style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
+  @click="zamawiarkaView = 'towary'"
+  class="ios-menu-tile"
 >
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="28"
-    height="28"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-    <path d="m3.3 7 8.7 5 8.7-5"/>
-    <path d="M12 22V12"/>
-  </svg>
-
-  <div>
-    Towary
+  <div class="ios-menu-icon ios-menu-icon-purple">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+      <path d="M3.3 7l8.7 5 8.7-5"/>
+      <path d="M12 22V12"/>
+    </svg>
   </div>
+
+  <div class="ios-menu-title">Towary</div>
+  <div class="ios-menu-subtitle">Lista produktów</div>
 </button>
 
  <button
   @click="zamawiarkaView = 'ustawienia'"
-  style="padding:20px; border-radius:18px; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"
+  class="ios-menu-tile"
 >
-  <svg
-  xmlns="http://www.w3.org/2000/svg"
-  width="28"
-  height="28"
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="#111827"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
->
-  <circle cx="12" cy="12" r="3"/>
-  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
-</svg>
-
-  <div>
-    Ustawienia
+  <div class="ios-menu-icon ios-menu-icon-gray">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.7 0 1.31-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06c.5.5 1.24.66 1.82.33h0c.6-.2 1-.8 1-1.51V3a2 2 0 1 1 4 0v.09c0 .7.4 1.31 1 1.51.58.33 1.32.17 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.5.5-.66 1.24-.33 1.82.2.6.8 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.31.4-1.51 1z"/>
+    </svg>
   </div>
+
+  <div class="ios-menu-title">Ustawienia</div>
+  <div class="ios-menu-subtitle">Konfiguracja</div>
 </button>
+
+<button
+  @click="generateHelpText(); zamawiarkaView = 'pomoc'"
+  class="ios-menu-tile"
+>
+  <div class="ios-menu-icon ios-menu-icon-red">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9 9h.01"/>
+      <path d="M15 9h.01"/>
+      <path d="M8 15s1.5-2 4-2 4 2 4 2"/>
+    </svg>
+  </div>
+
+  <div class="ios-menu-title">Pomoc</div>
+  <div class="ios-menu-subtitle">Wsparcie</div>
+</button>
+
+
       </div>
     </div>
 
+
+
+    <!-- =========================
+     WIDOK: POMOC
+========================== -->
+<Transition name="screen-soft" appear>
+<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'pomoc'" class="screen-with-topbar">
+  <div class="towary-topbar">
+    <div class="towary-topbar-row">
+      <div class="towary-topbar-left">
+        <button
+  @click="zamawiarkaView = 'menu'"
+  class="towary-icon-button"
+  title="Wróć"
+>
+  ←
+</button>
+
+        <h2 class="towary-title towary-title-center">POMOC</h2>
+      </div>
+    </div>
+  </div>
+
+  <div class="help-ios-screen">
+    <div class="help-ios-card">
+      <div class="help-ios-icon">💡</div>
+
+      <div class="help-typing">
+ <span class="help-line help-line-1">{{ helpLine1 }}</span>
+<span class="help-line help-line-2">{{ helpLine2 }}</span>
+</div>
+    </div>
+  </div>
+</div>
+</Transition>
 
 
 
@@ -725,11 +796,26 @@ selectedWhoOrders !== 'wszystkie'
   ========================== -->
   <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
     <button
-      @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-      style="padding:15px 25px; border-radius:30px; font-size:16px;"
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
     >
-      🏠
-    </button>
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
   </div>
 
 </div>
@@ -1252,11 +1338,26 @@ selectedWhoOrders !== 'wszystkie'
 
   <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
     <button
-      @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-      style="padding:15px 25px; border-radius:30px; font-size:16px;"
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
     >
-      🏠
-    </button>
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
   </div>
 </div>
 
@@ -1275,7 +1376,7 @@ selectedWhoOrders !== 'wszystkie'
           ←
         </button>
 
-        <h2 class="towary-title">REJESTR ZAMÓWIEŃ</h2>
+        <h2 class="towary-title towary-title-center">REJESTR ZAMÓWIEŃ</h2>
       </div>
     </div>
   </div>
@@ -1447,11 +1548,26 @@ selectedWhoOrders !== 'wszystkie'
 
   <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
     <button
-      @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-      style="padding:15px 25px; border-radius:30px; font-size:16px;"
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
     >
-      🏠
-    </button>
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
   </div>
 </div>
 
@@ -1955,11 +2071,26 @@ selectedWhoOrders !== 'wszystkie'
 <!-- HOME -->
 <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
   <button
-    @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-    style="padding:15px 25px; border-radius:30px; font-size:16px;"
-  >
-    🏠
-  </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
 </div>
 </div>
 
@@ -1970,11 +2101,11 @@ selectedWhoOrders !== 'wszystkie'
         <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
   <div style="display:flex; align-items:center; gap:10px; min-width:0;">
     <button
-      @click="closeTowarForm()"
-      style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-    >
-      ←
-    </button>
+  @click="closeTowarForm()"
+  class="zamawiarka-menu-back"
+>
+  ←
+</button>
 
     <h2 style="margin:0;">
       {{ towarFormMode === 'edit' ? 'EDYTUJ TOWAR' : 'DODAJ TOWAR' }}
@@ -2407,11 +2538,11 @@ selectedWhoOrders !== 'wszystkie'
                 </div>
 
                 <input
-                  v-model="tempMaxQtyByOrderTiming[itemName]"
-                  type="number"
-                  min="0"
-                  class="supplier-form-input"
-                  style="width:120px; padding:8px 10px;"
+                v-model="tempMaxQtyByOrderTiming[itemName]"
+                type="text"
+                class="supplier-form-input"
+                placeholder="Np. 15 kg / według potrzeb"
+                style="width:160px; padding:8px 10px;"
                 />
               </div>
             </div>
@@ -2445,14 +2576,14 @@ selectedWhoOrders !== 'wszystkie'
      WIDOK: USTAWIENIA
 ========================== -->
 <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia'">
-  <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+  <div class="zamawiarka-menu-topbar">
     <button
-      @click="zamawiarkaView = 'menu'"
-      style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-    >
+  @click="zamawiarkaView = 'menu'"
+  class="zamawiarka-menu-back"
+>
       ←
     </button>
-    <h2 style="margin:0;">USTAWIENIA</h2>
+    <h2 class="zamawiarka-menu-title">USTAWIENIA</h2>
   </div>
 
   <div style="display:flex; flex-direction:column; gap:10px;">
@@ -2506,11 +2637,26 @@ selectedWhoOrders !== 'wszystkie'
 
   <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
     <button
-      @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-      style="padding:15px 25px; border-radius:30px; font-size:16px;"
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
     >
-      🏠
-    </button>
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
   </div>
 </div>
 
@@ -2524,14 +2670,14 @@ selectedWhoOrders !== 'wszystkie'
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'hurtownie'" class="suppliers-screen">
       <!-- NAGŁÓWEK -->
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+      <div class="zamawiarka-menu-topbar">
         <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">HURTOWNIE</h2>
+        <h2 class="zamawiarka-menu-title">HURTOWNIE</h2>
       </div>
 
       <!-- LISTA HURTOWNI -->
@@ -2657,11 +2803,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -2673,14 +2834,14 @@ selectedWhoOrders !== 'wszystkie'
          WIDOK: MAGAZYNY
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'magazyny'" class="suppliers-screen">
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+      <div class="zamawiarka-menu-topbar">
         <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">MAGAZYNY</h2>
+        <h2 class="zamawiarka-menu-title">MAGAZYNY</h2>
       </div>
 
       <!-- LISTA MAGAZYNÓW -->
@@ -2771,11 +2932,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -2789,14 +2965,14 @@ selectedWhoOrders !== 'wszystkie'
          WIDOK: KIEDY ZAMAWIANE
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'orderTiming'" class="suppliers-screen">
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
-        <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+      <div class="zamawiarka-menu-topbar">
+       <button
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">KIEDY ZAMAWIANE</h2>
+        <h2 class="zamawiarka-menu-title">KIEDY ZAMAWIANE</h2>
       </div>
 
       <!-- LISTA -->
@@ -2814,8 +2990,8 @@ selectedWhoOrders !== 'wszystkie'
           :key="item.id"
           class="item-card"
         >
-          <div class="supplier-card-top">
-            <div class="supplier-name">{{ item.name }}</div>
+          <div class="item-card-top">
+            <div class="item-name">{{ item.name }}</div>
 
             <button
               @click="editOrderTiming(item)"
@@ -2887,11 +3063,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -2904,14 +3095,14 @@ selectedWhoOrders !== 'wszystkie'
          WIDOK: JEDNOSTKI MIARY
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'units'" class="suppliers-screen">
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+      <div class="zamawiarka-menu-topbar">
         <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">JEDNOSTKI MIARY</h2>
+        <h2 class="zamawiarka-menu-title">JEDNOSTKI MIARY</h2>
       </div>
 
       <!-- LISTA -->
@@ -2929,7 +3120,7 @@ selectedWhoOrders !== 'wszystkie'
           :key="item.id"
           class="item-card"
         >
-          <div class="supplier-card-top">
+          <div class="item-card-top">
             <div class="supplier-name">{{ item.name }}</div>
 
             <button
@@ -3002,11 +3193,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -3021,14 +3227,14 @@ selectedWhoOrders !== 'wszystkie'
          WIDOK: KATEGORIE TOWARÓW
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'categories'" class="suppliers-screen">
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+      <div class="zamawiarka-menu-topbar">
         <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">KATEGORIE TOWARÓW</h2>
+        <h2 class="zamawiarka-menu-title">KATEGORIE TOWARÓW</h2>
       </div>
 
       <!-- LISTA -->
@@ -3046,7 +3252,7 @@ selectedWhoOrders !== 'wszystkie'
           :key="item.id"
           class="item-card"
         >
-          <div class="supplier-card-top">
+          <div class="item-card-top">
             <div class="supplier-name">{{ item.name }}</div>
 
             <button
@@ -3119,11 +3325,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -3136,14 +3357,14 @@ selectedWhoOrders !== 'wszystkie'
          WIDOK: KTO ZAMAWIA
     ========================== -->
     <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'whoOrders'" class="suppliers-screen">
-      <div style="display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
+      <div class="zamawiarka-menu-topbar">
         <button
-          @click="zamawiarkaView = 'ustawienia'"
-          style="border:none; background:none; font-size:24px; cursor:pointer; padding:0;"
-        >
+  @click="zamawiarkaView = 'ustawienia'"
+  class="zamawiarka-menu-back"
+>
           ←
         </button>
-        <h2 style="margin:0;">KTO ZAMAWIA</h2>
+        <h2 class="zamawiarka-menu-title">KTO ZAMAWIA</h2>
       </div>
 
             <!-- LISTA -->
@@ -3234,11 +3455,26 @@ selectedWhoOrders !== 'wszystkie'
       <!-- DOLNY PRZYCISK HOME -->
       <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
         <button
-          @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-          style="padding:15px 25px; border-radius:30px; font-size:16px;"
-        >
-          🏠
-        </button>
+  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
+  class="ios-home-pill"
+>
+  <span class="ios-home-pill-icon">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 10.5 12 3l9 7.5"/>
+      <path d="M5 10v10h14V10"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  </span>
+  <span>Menu</span>
+</button>
       </div>
     </div>
 
@@ -3248,6 +3484,48 @@ selectedWhoOrders !== 'wszystkie'
 
 
   </div>
+
+
+  <!-- =========================
+     MODAL POWIADOMIEŃ iOS
+========================== -->
+<div
+  v-if="appDialog.show"
+  class="app-dialog-overlay"
+>
+  <div class="app-dialog-card">
+    <div class="app-dialog-icon">
+      {{ appDialog.icon }}
+    </div>
+
+    <div class="app-dialog-title">
+      {{ appDialog.title }}
+    </div>
+
+    <div class="app-dialog-message">
+      {{ appDialog.message }}
+    </div>
+
+    <div class="app-dialog-actions">
+      <button
+        v-if="appDialog.type === 'confirm'"
+        @click="cancelAppDialog"
+        class="app-dialog-button app-dialog-cancel"
+        type="button"
+      >
+        Anuluj
+      </button>
+
+      <button
+        @click="confirmAppDialog"
+        class="app-dialog-button app-dialog-ok"
+        type="button"
+      >
+        OK
+      </button>
+    </div>
+  </div>
+</div>
 
 
 
@@ -3356,16 +3634,6 @@ selectedWhoOrders !== 'wszystkie'
 
 
 </template>
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3486,12 +3754,10 @@ const saveUserStateToFirestore = async (uid, state) => {
   isLoggingIn.value = true
 
   try {
-        await signInWithEmailAndPassword(auth, email, password)
+       await signInWithEmailAndPassword(auth, email, password)
 
-    authForm.value = {
-      email: '',
-      password: ''
-    }
+// Nie czyścimy pól od razu po logowaniu,
+// żeby przeglądarka mogła zaproponować zapisanie hasła.
   } catch (error) {
     console.error('Firebase login error:', error.message)
     authError.value = 'Nieprawidłowy e-mail lub hasło'
@@ -3585,6 +3851,29 @@ const isDataLoaded = ref(false)
 let saveTimeout = null
 
 let unsubscribeCartItems = null
+let unsubscribeUserState = null
+
+
+const subscribeUserState = (uid) => {
+  if (unsubscribeUserState) {
+    unsubscribeUserState()
+    unsubscribeUserState = null
+  }
+
+  const stateRef = getUserStateDocRef(uid)
+
+  unsubscribeUserState = onSnapshot(stateRef, (snapshot) => {
+    if (!snapshot.exists()) return
+
+    const data = snapshot.data()
+
+    if (Array.isArray(data.ordersRegister)) {
+      ordersRegister.value = data.ordersRegister
+    }
+  })
+}
+
+
 
 const subscribeCartItems = (uid) => {
   if (unsubscribeCartItems) {
@@ -3879,8 +4168,12 @@ const customCartItems = ref([])
 }
 
   const clearCart = async () => {
-  const confirmed = confirm('Czy na pewno chcesz wyczyścić koszyk?')
-  if (!confirmed) return
+  const confirmed = await showConfirm(
+  'Czy na pewno chcesz wyczyścić koszyk?',
+  'Potwierdź akcję',
+  '🗑️'
+)
+if (!confirmed) return
 
   const user = auth.currentUser
   if (!user) return
@@ -3953,17 +4246,17 @@ const saveCustomCartItem = async () => {
   const price = Number(customCartItemForm.value.price)
 
   if (!name) {
-    alert('Wpisz nazwę')
-    return
-  }
+  await showAlert('Wpisz nazwę', 'Brak nazwy', '✏️')
+  return
+}
 
   if (!unit) {
-    alert('Wybierz jednostkę miary')
+    await showAlert('Wybierz jednostkę miary', 'Brak danych', '⚠️')
     return
   }
 
   if (!qty || qty <= 0) {
-    alert('Wpisz poprawną ilość')
+    await showAlert('Wpisz poprawną ilość', 'Błąd danych', '⚠️')
     return
   }
 
@@ -4155,7 +4448,7 @@ openTowarEdit(fullTowar || product)
       }
     }
 
-    const saveSupplier = () => {
+    const saveSupplier = async () => {
       if (!supplierForm.value.name.trim()) return
 
 
@@ -4173,7 +4466,7 @@ openTowarEdit(fullTowar || product)
                     supplierForm.value.name,
                      editedSupplierId.value
                   )) {
-                  alert('Taka hurtownia już istnieje')
+                  await showAlert('Taka hurtownia już istnieje', 'Duplikat', '⚠️')
                     return
                    }
 
@@ -4222,7 +4515,7 @@ openTowarEdit(fullTowar || product)
 // =========================
 // USUWANIE HURTOWNI (Z POTWIERDZENIEM)
 // =========================
-const deleteSupplier = () => {
+const deleteSupplier = async () => {
   if (editedSupplierId.value === null) return
 
   const supplierToDelete = suppliers.value.find(
@@ -4232,9 +4525,12 @@ const deleteSupplier = () => {
   const supplierNameToDelete = supplierToDelete?.name || ''
 
   // 🔴 POTWIERDZENIE
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
-
-  if (!confirmed) return
+  const confirmed = await showConfirm(
+  'Czy na pewno chcesz usunąć?',
+  'Usuń hurtownię',
+  '🗑️'
+)
+if (!confirmed) return
 
   suppliers.value = suppliers.value.filter(
     supplier => supplier.id !== editedSupplierId.value
@@ -4323,7 +4619,7 @@ const deleteSupplier = () => {
       }
     }
 
-    const saveWarehouse = () => {
+    const saveWarehouse =async () => {
   const name = cleanName(warehouseForm.value.name)
 
   if (!name) return
@@ -4336,7 +4632,7 @@ const deleteSupplier = () => {
     name,
     editedWarehouseId.value
   )) {
-    alert('Taki magazyn już istnieje')
+    await showAlert('Taki magazyn już istnieje', 'Duplikat', '⚠️')
     return
   }
 
@@ -4375,7 +4671,7 @@ const deleteSupplier = () => {
     // =========================
     // USUWANIE MAGAZYNU (Z POTWIERDZENIEM)
     // =========================
-    const deleteWarehouse = () => {
+    const deleteWarehouse = async () => {
   if (editedWarehouseId.value === null) return
 
   const warehouseToDelete = warehouses.value.find(
@@ -4384,7 +4680,11 @@ const deleteSupplier = () => {
 
   const warehouseNameToDelete = warehouseToDelete?.name || ''
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć?',
+    'Usuń magazyn',
+    '🗑️'
+  )
   if (!confirmed) return
 
   warehouses.value = warehouses.value.filter(
@@ -4469,7 +4769,7 @@ const deleteSupplier = () => {
       }
     }
 
-    const saveOrderTiming = () => {
+    const saveOrderTiming = async () => {
   const name = cleanName(orderTimingForm.value.name)
 
   if (!name) return
@@ -4482,7 +4782,7 @@ const deleteSupplier = () => {
     name,
     editedOrderTimingId.value
   )) {
-    alert('Taka pozycja już istnieje')
+    await showAlert('Taka pozycja już istnieje', 'Duplikat', '⚠️')
     return
   }
 
@@ -4515,7 +4815,7 @@ const deleteSupplier = () => {
     // =========================
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
-    const deleteOrderTiming = () => {
+    const deleteOrderTiming = async () => {
   if (editedOrderTimingId.value === null) return
 
   const timingToDelete = orderTimings.value.find(
@@ -4524,8 +4824,12 @@ const deleteSupplier = () => {
 
   const timingNameToDelete = timingToDelete?.name || ''
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
-  if (!confirmed) return
+  const confirmed = await showConfirm(
+  'Czy na pewno chcesz usunąć?',
+  'Potwierdź usunięcie',
+  '🗑️'
+)
+if (!confirmed) return
 
   orderTimings.value = orderTimings.value.filter(
     item => item.id !== editedOrderTimingId.value
@@ -4624,7 +4928,7 @@ const deleteSupplier = () => {
       }
     }
 
-    const saveUnit = () => {
+    const saveUnit = async () => {
   const name = cleanName(unitForm.value.name)
 
   if (!name) return
@@ -4637,7 +4941,7 @@ const deleteSupplier = () => {
     name,
     editedUnitId.value
   )) {
-    alert('Taka jednostka już istnieje')
+    await showAlert('Taka jednostka już istnieje', 'Duplikat', '⚠️')
     return
   }
 
@@ -4672,7 +4976,7 @@ const deleteSupplier = () => {
     // =========================
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
-    const deleteUnit = () => {
+    const deleteUnit = async () => {
   if (editedUnitId.value === null) return
 
   const unitToDelete = units.value.find(
@@ -4681,8 +4985,12 @@ const deleteSupplier = () => {
 
   const unitNameToDelete = unitToDelete?.name || ''
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
-  if (!confirmed) return
+  const confirmed = await showConfirm(
+  'Czy na pewno chcesz usunąć?',
+  'Usuń jednostkę',
+  '🗑️'
+)
+if (!confirmed) return
 
   units.value = units.value.filter(
     item => item.id !== editedUnitId.value
@@ -4769,7 +5077,7 @@ const closeCategoryForm = () => {
   }
 }
 
-const saveCategory = () => {
+const saveCategory = async () => {
   const name = cleanName(categoryForm.value.name)
 
   if (!name) return
@@ -4782,7 +5090,7 @@ const saveCategory = () => {
     name,
     editedCategoryId.value
   )) {
-    alert('Taka kategoria już istnieje')
+    await showAlert('Taka kategoria już istnieje', 'Duplikat', '⚠️')
     return
   }
 
@@ -4815,7 +5123,7 @@ const saveCategory = () => {
 // =========================
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
-const deleteCategory = () => {
+const deleteCategory = async () => {
   if (editedCategoryId.value === null) return
 
   const categoryToDelete = categories.value.find(
@@ -4824,7 +5132,11 @@ const deleteCategory = () => {
 
   const categoryNameToDelete = categoryToDelete?.name || ''
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć kategorię?',
+    'Potwierdź usunięcie',
+    '🗑️'
+  )
   if (!confirmed) return
 
   categories.value = categories.value.filter(
@@ -4912,7 +5224,7 @@ const closeWhoOrderForm = () => {
   }
 }
 
-const saveWhoOrder = () => {
+const saveWhoOrder = async () => {
   const name = cleanName(whoOrderForm.value.name)
 
   if (!name) return
@@ -4925,7 +5237,7 @@ const saveWhoOrder = () => {
     name,
     editedWhoOrderId.value
   )) {
-    alert('Taka pozycja już istnieje')
+    await showAlert('Taka pozycja już istnieje', 'Duplikat', '⚠️')
     return
   }
 
@@ -4958,7 +5270,7 @@ const saveWhoOrder = () => {
 // =========================
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
-const deleteWhoOrder = () => {
+const deleteWhoOrder = async () => {
   if (editedWhoOrderId.value === null) return
 
   const whoOrderToDelete = whoOrders.value.find(
@@ -4967,8 +5279,12 @@ const deleteWhoOrder = () => {
 
   const whoOrderNameToDelete = whoOrderToDelete?.name || ''
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć?')
-  if (!confirmed) return
+  const confirmed = await showConfirm(
+  'Czy na pewno chcesz usunąć?',
+  'Usuń operatora',
+  '🗑️'
+)
+if (!confirmed) return
 
   whoOrders.value = whoOrders.value.filter(
     item => item.id !== editedWhoOrderId.value
@@ -5164,16 +5480,18 @@ const normalizeVat = (value) => {
     // =========================
 // TOWARY - KLIK NA WIERSZ LISTY
 // =========================
-const handleTowarRowClick = (item) => {
+const handleTowarRowClick = async (item) => {
   towarFormSource.value = 'towary'
 
   if (isTowarIncomplete(item)) {
     const missingFields = getTowarMissingFields(item)
 
     if (missingFields.length > 0) {
-      alert(
-        'Brakuje pól:\n- ' + missingFields.join('\n- ')
-      )
+      await showAlert(
+  'Brakuje pozycji:\n- ' + missingFields.join('\n- '),
+  'Niekompletny towar',
+  '⚠️'
+)
     }
   }
 
@@ -5217,8 +5535,12 @@ const closeTowarForm = () => {
       }
     }
 
-    const removeSelectedTowary = () => {
-  const confirmed = confirm('Czy na pewno chcesz usunąć zaznaczone towary?')
+    const removeSelectedTowary = async () => {
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć zaznaczone towary?',
+    'Usuń towary',
+    '🗑️'
+  )
   if (!confirmed) return
 
   towary.value = towary.value.filter(
@@ -5313,13 +5635,13 @@ const closeTowarForm = () => {
     const showMaxQtyModal = ref(false)
     const tempMaxQtyByOrderTiming = ref({})
 
-    const openMaxQtyField = () => {
+    const openMaxQtyField = async () => {
       const hasOrderTimings =
         Array.isArray(towarForm.value.orderTimings) &&
         towarForm.value.orderTimings.length > 0
 
       if (!hasOrderTimings) {
-        alert('Najpierw wybierz pozycje w polu Kiedy zamówienie')
+        await showAlert('Najpierw wybierz pozycję w polu „Kiedy zamówienie”', 'Brak wyboru', '⚠️')
         return
       }
 
@@ -5373,7 +5695,7 @@ const closeTowarForm = () => {
 
 
 
-      const saveTowar = () => {
+      const saveTowar = async () => {
              // =========================
              // PROSTA WALIDACJA
               // =========================
@@ -5383,12 +5705,12 @@ const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
 const vatNormalized = normalizeVat(towarForm.value.vat)
 
 if (netPriceNormalized === null) {
-  alert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku')
+  await showAlert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku', 'Błąd danych', '⚠️')
   return
 }
 
 if (vatNormalized === null) {
-  alert('Stawka VAT musi być liczbą całkowitą')
+  await showAlert('Stawka VAT musi być liczbą całkowitą', 'Błąd danych', '⚠️')
   return
 }
 
@@ -5457,10 +5779,14 @@ const preparedTowar = {
     // =========================
 // TOWARY - USUWANIE
 // =========================
-const deleteTowar = () => {
+const deleteTowar = async () => {
   if (editedTowarId.value === null) return
 
-  const confirmed = confirm('Czy na pewno chcesz usunąć ten towar?')
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć ten towar?',
+    'Usuń towar',
+    '🗑️'
+  )
   if (!confirmed) return
 
   towary.value = towary.value.filter(item => item.id !== editedTowarId.value)
@@ -5893,9 +6219,9 @@ const bValid = !isNaN(bOrder) && bOrder > 0
 // =========================
 // ZAPIS AKTUALNEGO ZAMÓWIENIA DO REJESTRU
 // =========================
-const saveCurrentOrderToRegister = () => {
+const saveCurrentOrderToRegister = async () => {
   if (filteredCartItems.value.length === 0) {
-    alert('Brak pozycji do zapisania w aktualnym widoku koszyka')
+    await showAlert('Brak pozycji do zapisania w aktualnym widoku koszyka', 'Brak pozycji', '⚠️')
     return null
   }
 
@@ -5962,22 +6288,25 @@ const saveCurrentOrderToRegister = () => {
 // =========================
 const handleGenerateOrder = async () => {
   if (filteredCartItems.value.length === 0) {
-    alert('Brak pozycji do zamówienia')
+    await showAlert('Brak pozycji do zamówienia', 'Brak pozycji', '⚠️')
     return
   }
 
-  const confirmed = confirm('Wygenerować PDF i zapisać zamówienie?')
+  const confirmed = await showConfirm(
+  'Wygenerować PDF i zapisać zamówienie?',
+  'Zapis zamówienia',
+  '📄'
+)
+if (!confirmed) return
 
-  if (!confirmed) return
-
-  const order = saveCurrentOrderToRegister()
+  const order = await saveCurrentOrderToRegister()
 
   if (!order) return
 
   const pdfResult = await generateOrderPdf(order)
 
   if (!pdfResult) {
-    alert('Nie udało się wygenerować PDF')
+    await showAlert('Nie udało się wygenerować PDF', 'Błąd', '❌')
     return
   }
 
@@ -6052,9 +6381,12 @@ const generateOrderPdf = async (order) => {
   if (!order) return null
 
   pdfPreviewOrder.value = order
-  await nextTick()
+await nextTick()
 
-  const element = pdfTemplateRef.value
+// dajemy Vue chwilę na wyrenderowanie ukrytego szablonu PDF
+await new Promise(resolve => setTimeout(resolve, 150))
+
+const element = pdfTemplateRef.value
 
   if (!element) return null
 
@@ -6110,8 +6442,12 @@ const toggleOrderDetails = (orderId) => {
 // =========================
 // REJESTR ZAMÓWIEŃ - USUWANIE
 // =========================
-const deleteOrderFromRegister = (orderId) => {
-  const confirmed = confirm('Czy na pewno chcesz usunąć to zamówienie?')
+const deleteOrderFromRegister = async (orderId) => {
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć to zamówienie?',
+    'Potwierdź usunięcie',
+    '🗑️'
+  )
 
   if (!confirmed) return
 
@@ -6130,14 +6466,17 @@ const deleteOrderFromRegister = (orderId) => {
 const generatePdfFromRegister = async (order) => {
   if (!order) return
 
-  const confirmed = confirm('Wygenerować PDF tego zamówienia?')
-
-  if (!confirmed) return
+ const confirmed = await showConfirm(
+  'Wygenerować PDF tego zamówienia?',
+  'Generowanie PDF',
+  '📄'
+)
+if (!confirmed) return
 
   const pdfResult = await generateOrderPdf(order)
 
   if (!pdfResult) {
-    alert('Nie udało się wygenerować PDF')
+    await showAlert('Nie udało się wygenerować PDF', 'Błąd', '❌')
     return
   }
 
@@ -6154,12 +6493,17 @@ let unsubscribeAuth = null
 onMounted(() => {
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
         if (!user) {
-      if (unsubscribeCartItems) {
-        unsubscribeCartItems()
-        unsubscribeCartItems = null
-      }
+  if (unsubscribeCartItems) {
+    unsubscribeCartItems()
+    unsubscribeCartItems = null
+  }
 
-      isDataLoaded.value = false
+  if (unsubscribeUserState) {
+    unsubscribeUserState()
+    unsubscribeUserState = null
+  }
+
+  isDataLoaded.value = false
       isLoggedIn.value = false
       currentCompany.value = null
       resetCompanyDataState()
@@ -6179,6 +6523,7 @@ onMounted(() => {
 
     await loadCompanyDataWithFallback()
         subscribeCartItems(user.uid)
+        subscribeUserState(user.uid)
   })
 })
 
@@ -6190,6 +6535,11 @@ onUnmounted(() => {
   if (unsubscribeCartItems) {
     unsubscribeCartItems()
     unsubscribeCartItems = null
+  }
+
+  if (unsubscribeUserState) {
+    unsubscribeUserState()
+    unsubscribeUserState = null
   }
 })
 
@@ -6256,6 +6606,135 @@ watch(
     authError.value = ''
   }
 )
+
+
+
+const helpTexts = [
+  [
+    "Jeśli sam sobie nie pomożesz",
+    "to nikt Ci nie pomoże :-)"
+  ],
+  [
+    "Teraz to pomocy pomocy!!!",
+    "A czy Ty pomagasz innym?😄"
+  ],
+  [
+    "Wyglądasz mi na Geniusza",
+    "wiec sobie poradzisz😉"
+  ],
+  [
+    "No weź przestań, ",
+    "nie udawaj że nie wiesz😄"
+  ],
+  [
+    "Oj tam oj tam....",
+    "spróbuj jeszcze raz 😄"
+  ],
+  [
+    "No weź przestań, ",
+    "nie udawaj że nie wiesz😄"
+  ],
+  [
+    "Nie bój się prosić o pomoc",
+    "Napisz do mnie na priv 😄"
+  ],
+  [
+    "Nie chce Cie martwić, ale  ",
+    "tylko Ty pomocy potrzebujesz 😄"
+  ]
+]
+
+const helpLine1 = ref('')
+const helpLine2 = ref('')
+
+function generateHelpText() {
+  const random = helpTexts[Math.floor(Math.random() * helpTexts.length)]
+  helpLine1.value = random[0]
+  helpLine2.value = random[1]
+}
+
+
+
+
+// =========================
+// POWIADOMIENIA / CONFIRM iOS
+// =========================
+const appDialog = ref({
+  show: false,
+  type: 'alert',
+  title: '',
+  message: '',
+  icon: 'ℹ️',
+  resolve: null
+})
+
+const showAlert = (message, title = 'Informacja', icon = 'ℹ️') => {
+  return new Promise((resolve) => {
+    appDialog.value = {
+      show: true,
+      type: 'alert',
+      title,
+      message,
+      icon,
+      resolve
+    }
+  })
+}
+
+const showConfirm = (message, title = 'Potwierdź', icon = '⚠️') => {
+  return new Promise((resolve) => {
+    appDialog.value = {
+      show: true,
+      type: 'confirm',
+      title,
+      message,
+      icon,
+      resolve
+    }
+  })
+}
+
+const closeAppDialog = (result) => {
+  const resolver = appDialog.value.resolve
+
+  appDialog.value = {
+    show: false,
+    type: 'alert',
+    title: '',
+    message: '',
+    icon: 'ℹ️',
+    resolve: null
+  }
+
+  if (resolver) {
+    resolver(result)
+  }
+}
+
+const confirmAppDialog = () => {
+  closeAppDialog(true)
+}
+
+const cancelAppDialog = () => {
+  closeAppDialog(false)
+}
+
+
+
+
+const animateMenuTiles = ref(false)
+
+const openZamawiarkaMenuFromHome = () => {
+  currentScreen.value = 'zamawiarka'
+  zamawiarkaView.value = 'menu'
+  animateMenuTiles.value = true
+
+  setTimeout(() => {
+    animateMenuTiles.value = false
+  }, 900)
+}
+
+
 
 
 
@@ -6462,6 +6941,24 @@ watch(
 
       fieldFilledClass,
 
+
+        helpLine1,
+        helpLine2,
+        generateHelpText,
+
+        appDialog,
+        showAlert,
+        showConfirm,
+        confirmAppDialog,
+        cancelAppDialog,
+
+
+        animateMenuTiles,
+        openZamawiarkaMenuFromHome,
+
+
+      
+
       
 
 
@@ -6478,26 +6975,20 @@ watch(
 
 
 
-
-
-
-
-
-
-
-
 <style>
 
 
 .field-empty,
 .supplier-click-field.field-empty {
-  background-color: #ef080871;
+  background-color: #fffaf5;
+  border: 1.5px solid #f59e0b !important;
   color: #111827;
 }
 
 .field-filled,
 .supplier-click-field.field-filled {
-  background-color: #09f34f72;
+  background-color: #f8fafc;
+  border: 1.5px solid #cbd5f5 !important;
   color: #111827;
 }
 
@@ -6514,8 +7005,13 @@ html, body, #app {
 }
 
 .app {
+  width: 100%;
   min-height: 100vh;
   box-sizing: border-box;
+  padding: 20px;
+  font-family: sans-serif;
+  background: #f5f5f7;
+  overflow-x: hidden;
 }
 
 
@@ -7084,6 +7580,703 @@ textarea {
   text-decoration: underline;
   color: #111827;
   text-transform: uppercase;
+}
+
+
+
+/* =========================
+   HOME - KAFELEK ZAMAWIARKA iOS
+========================= */
+
+.home-wallet-tile {
+  width: 100%;
+  max-width: 270px;
+  min-height: 190px;
+  margin: 40px auto 0 auto;
+  padding: 34px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 34px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 28px 70px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  cursor: pointer;
+}
+
+.home-wallet-tile:active {
+  transform: scale(0.98);
+}
+
+.home-wallet-icon {
+  width: 104px;
+  height: 104px;
+  border-radius: 30px;
+  background: linear-gradient(145deg, #dff3ff 0%, #b8dcff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 16px 34px rgba(37, 99, 235, 0.18);
+}
+
+.home-wallet-icon svg {
+  width: 62px;
+  height: 62px;
+}
+
+.home-truck-body,
+.home-truck-cabin {
+  fill: #1d6fe8;
+}
+
+.home-truck-window {
+  fill: #dbeafe;
+}
+
+.home-truck-wheel {
+  fill: #1e3a8a;
+}
+
+.home-truck-wheel-inner {
+  fill: #93c5fd;
+}
+
+.home-wallet-title {
+  margin-top: 10px;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: #111827;
+}
+
+.home-wallet-subtitle {
+  font-size: 19px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+
+
+
+/* =========================
+   HOME - UKŁAD iOS
+========================= */
+
+.home-screen-ios {
+  min-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between; /* 🔥 KLUCZ */
+}
+
+.home-header-ios {
+  width: 100%;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.home-title-ios {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.6px;
+}
+
+.home-version-ios {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #6b7280;
+}
+<!---pole konto w home --->
+.home-account-ios {
+  width: 100%;
+  max-width: 230px;
+  box-sizing: border-box;
+  margin: 12px auto 0 auto;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef0f3;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #6b7280;
+  overflow: hidden;
+}
+
+.home-account-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+
+
+
+.home-account-ios strong {
+  min-width: 0;
+  max-width: 190px;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+
+
+.home-content-ios {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1; /* 🔥 KLUCZ */
+}
+
+.home-logout-ios {
+  width: 100%;
+  max-width: 270px;
+  margin-top: auto;
+  margin-bottom: 8px;
+  padding: 16px 18px;
+  border: none;
+  border-radius: 22px;
+  background: #ffffff;
+  color: #ef4444;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+
+.home-logout-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.home-footer-ios {
+  margin-bottom: 0;
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+
+
+
+.home-logout-ios:active {
+  transform: scale(0.98);
+}
+
+
+/* =========================
+   ZAMAWIARKA MENU - GRID iOS
+========================= */
+
+.zamawiarka-menu-grid-ios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.home-wallet-tile,
+.home-logout-ios {
+  box-sizing: border-box;
+}
+
+
+.home-account-ios {
+  background: #eef0f3 !important;
+}
+
+.home-account-ios {
+  width: 82% !important;
+  max-width: 230px !important;
+  min-height: 34px;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  background: #eef0f3 !important;
+  box-shadow: none !important;
+}
+
+.home-account-ios strong {
+  max-width: 120px !important;
+  font-size: 15px !important;
+}
+
+.home-header-ios {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* 🔥 gwarantuje środek */
+}
+
+.home-account-ios {
+  margin-top: 16px !important; /* 🔥 większy odstęp od "wersja" */
+}
+
+
+/* =========================
+   ZAMAWIARKA MENU - KAFELKI iOS
+========================= */
+
+.ios-menu-tile {
+  min-height: 150px;
+  padding: 18px;
+  border: none;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.10);
+  display: flex;
+  flex-direction: column;
+    align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.18s ease;
+}
+
+.ios-menu-tile:active {
+  transform: scale(0.94);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.14);
+}
+
+.ios-menu-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.ios-menu-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.ios-menu-icon-blue {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+}
+
+.ios-menu-title {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.ios-menu-subtitle {
+  font-size: 12px;
+  margin-top: -6px;
+  color: #6b7280;
+  line-height: 1.2;
+}
+
+
+.ios-menu-icon-green {
+  background: linear-gradient(135deg, #16a34a, #4ade80);
+}
+
+.ios-menu-icon-orange {
+  background: linear-gradient(135deg, #f97316, #fb923c);
+}
+
+.ios-menu-icon-purple {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+}
+
+.ios-menu-icon-gray {
+  background: linear-gradient(135deg, #6b7280, #9ca3af);
+}
+
+.ios-menu-icon-red {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+}
+
+/* =========================
+   POMOC - iOS
+========================= */
+
+.help-ios-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.help-ios-card {
+  width: 100%;
+  max-width: 360px;
+  min-height: 240px;
+  border-radius: 30px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.help-ios-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #facc15, #f97316);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+}
+
+.help-typing {
+  max-width: 280px;
+  line-height: 1.35;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  text-align: center;
+}
+
+
+
+@keyframes helpTyping {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes helpCursor {
+  50% {
+    border-color: transparent;
+  }
+}
+
+.help-line {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  margin: 0 auto;
+}
+
+.help-line-1 {
+  animation: helpTypingLine1 1.7s steps(29, end) forwards;
+}
+
+.help-line-2 {
+  animation: helpTypingLine2 1.6s steps(27, end) forwards;
+  animation-delay: 1.7s;
+}
+
+@keyframes helpTypingLine1 {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes helpTypingLine2 {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+
+.view-title {
+  width: 100%;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.towary-title-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.towary-topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5ea;
+}
+
+.towary-title {
+  color: #000;
+}
+
+.towary-icon-button {
+  color: #007aff;
+}
+
+
+.zamawiarka-menu-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e5ea;
+  margin-bottom: 20px;
+  background: #ffffff;
+}
+
+.zamawiarka-menu-back {
+  border: none;
+  background: #f2f2f7;
+  color: #007aff;
+  font-size: 20px;
+  cursor: pointer;
+
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.zamawiarka-menu-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+}
+
+
+
+/* =========================
+   MODAL POWIADOMIEŃ iOS
+========================= */
+
+.app-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.app-dialog-card {
+  width: 100%;
+  max-width: 330px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  padding: 24px 20px 18px 20px;
+  box-sizing: border-box;
+  text-align: center;
+  animation: appDialogIn 0.18s ease-out;
+}
+
+.app-dialog-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px auto;
+  border-radius: 18px;
+  background: #f2f2f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+.app-dialog-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.app-dialog-message {
+  font-size: 15px;
+  line-height: 1.35;
+  color: #6b7280;
+  margin-bottom: 20px;
+  white-space: pre-line;
+}
+
+.app-dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.app-dialog-button {
+  flex: 1;
+  border: none;
+  border-radius: 16px;
+  padding: 13px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-dialog-cancel {
+  background: #f2f2f7;
+  color: #111827;
+}
+
+.app-dialog-ok {
+  background: #007aff;
+  color: #ffffff;
+}
+
+.app-dialog-button:active {
+  transform: scale(0.97);
+}
+
+@keyframes appDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+
+/* =========================
+   SUBTELNE PRZEJŚCIE WIDOKU
+========================= */
+
+.screen-soft-enter-active {
+  transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.screen-soft-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.screen-soft-enter-from {
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+}
+
+.screen-soft-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.99);
+}
+
+.screen-soft-enter-to,
+.screen-soft-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+
+
+.menu-tiles-animate .ios-menu-tile {
+  animation: menuTilePop 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.menu-tiles-animate .ios-menu-tile:nth-child(1) { animation-delay: 0.1s; }
+.menu-tiles-animate .ios-menu-tile:nth-child(2) { animation-delay: 0.3s; }
+.menu-tiles-animate .ios-menu-tile:nth-child(3) { animation-delay: 0.05s; }
+.menu-tiles-animate .ios-menu-tile:nth-child(4) { animation-delay: 0.4s; }
+.menu-tiles-animate .ios-menu-tile:nth-child(5) { animation-delay: 0.2s; }
+.menu-tiles-animate .ios-menu-tile:nth-child(6) { animation-delay: 0.5s; }
+
+@keyframes menuTilePop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+
+
+.ios-home-pill {
+  padding: 12px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #007aff;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ios-home-pill:active {
+  transform: scale(0.95);
+  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.18);
+}
+
+.ios-home-pill-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ios-home-pill-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 
