@@ -86,7 +86,7 @@
   <div class="home-header-ios">
     <h1 class="home-title-ios">GastroManager</h1>
 
-    <div class="home-version-ios">wersja 1.1.1</div>
+    <div class="home-version-ios">wersja 1.1.3</div>
 
         <div
       v-if="currentCompany"
@@ -1684,6 +1684,18 @@ selectedWhoOrders !== 'wszystkie'
             </div>
 
             <div class="towary-topbar-right">
+
+
+  <button
+  @click="openTowaryPdfModal"
+  class="towary-icon-button"
+  title="Generuj PDF"
+>
+  📄
+</button>
+
+
+
               <button
   v-if="selectedTowaryIds.length > 0"
   @click="removeSelectedTowary()"
@@ -2059,6 +2071,58 @@ selectedWhoOrders !== 'wszystkie'
 </div>
 </div>
 
+
+<!-- MODAL: PDF TOWARÓW -->
+<div
+  v-if="showTowaryPdfModal"
+  class="supplier-modal-overlay"
+>
+  <div class="supplier-modal-card">
+    <h3 class="supplier-modal-title">PDF Z TOWARÓW</h3>
+
+    <div style="font-size:14px; color:#6b7280; margin-bottom:14px;">
+      Wygenerować PDF z aktualnie widocznej listy towarów?
+    </div>
+
+    <div class="towary-checkbox-list">
+      <label
+        v-for="option in towaryPdfOptions"
+        :key="option.key"
+        class="towary-checkbox-option"
+      >
+        <input
+          v-model="selectedTowaryPdfFields"
+          type="checkbox"
+          :value="option.key"
+        />
+        <span>{{ option.label }}</span>
+      </label>
+    </div>
+
+    <div class="supplier-modal-actions">
+      <button
+        @click="showTowaryPdfModal = false"
+        class="supplier-cancel-button"
+        type="button"
+      >
+        Anuluj
+      </button>
+
+      <button
+        @click="handleGenerateTowaryPdf"
+        class="supplier-save-button"
+        type="button"
+      >
+        Generuj
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
 <!-- FAB + -->
 <button
   @click="openTowarAdd()"
@@ -2119,7 +2183,7 @@ selectedWhoOrders !== 'wszystkie'
   type="checkbox"
   @change="handleTowarActiveChange"
 />
-      <span>aktywne</span>
+     <span :class="{ 'inactive-label': !towarForm.active }">aktywne</span>
     </label>
 
     <button
@@ -3528,6 +3592,80 @@ selectedWhoOrders !== 'wszystkie'
 </div>
 
 
+<!-- =========================
+     UKRYTY SZABLON PDF TOWARÓW
+========================== -->
+<div
+  style="
+    position:fixed;
+    left:-99999px;
+    top:0;
+    width:794px;
+    background:#ffffff;
+    padding:32px;
+    box-sizing:border-box;
+    color:#111827;
+    font-family:Arial, sans-serif;
+  "
+>
+  <div
+    v-if="towaryPdfPreviewItems.length > 0"
+    ref="towaryPdfTemplateRef"
+    style="width:100%; background:#ffffff; color:#111827;"
+  >
+    <!-- NAGŁÓWEK -->
+    <div style="margin-bottom:22px;">
+      <div style="font-size:28px; font-weight:800; margin-bottom:8px;">
+        Lista towarów
+      </div>
+
+      <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+        <div><strong>Data wygenerowania:</strong> {{ getTodayLabel() }}</div>
+        <div><strong>Liczba pozycji:</strong> {{ towaryPdfPreviewItems.length }}</div>
+        <div><strong>Zakres:</strong> aktywne towary z aktualnie przefiltrowanego widoku</div>
+      </div>
+    </div>
+
+    <!-- TABELA -->
+    <table
+      style="
+        width:100%;
+        border-collapse:collapse;
+        table-layout:fixed;
+        font-size:12px;
+      "
+    >
+      <thead>
+        <tr style="background:#f3f4f6;">
+          <th
+            v-for="field in selectedTowaryPdfFields"
+            :key="field"
+            :style="getTowaryPdfColumnStyle(field, true)"
+          >
+            {{ getTowaryPdfFieldLabel(field) }}
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr
+  v-for="item in towaryPdfPreviewItems"
+  :key="item.id"
+>
+          <td
+            v-for="field in selectedTowaryPdfFields"
+            :key="field"
+            :style="getTowaryPdfColumnStyle(field, false)"
+          >
+            {{ getTowaryPdfFieldValue(item, field) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
 
   <!-- =========================
      UKRYTY SZABLON PDF
@@ -4087,6 +4225,27 @@ const customCartItems = ref([])
     const expandedOrderId = ref(null)
     const pdfTemplateRef = ref(null)
     const pdfPreviewOrder = ref(null)
+
+    const showTowaryPdfModal = ref(false)
+const towaryPdfTemplateRef = ref(null)
+const towaryPdfPreviewItems = ref([])
+
+const towaryPdfOptions = [
+  { key: 'name', label: 'Nazwa' },
+  { key: 'unit', label: 'JM' },
+  { key: 'supplier', label: 'Hurtownia' },
+  { key: 'netPrice', label: 'Cena netto' },
+  { key: 'vat', label: 'Stawka VAT' },
+  { key: 'warehouse', label: 'Magazyn' },
+  { key: 'categories', label: 'Kategoria' }
+]
+
+const selectedTowaryPdfFields = ref([
+  'name',
+  'unit',
+  'supplier',
+  'netPrice'
+])
 
 
 
@@ -6375,6 +6534,78 @@ const buildOrderPayload = () => {
 
 
 // =========================
+// PDF - ELEMENT HTML DO PDF Z POPRAWNYMI MARGINESAMI
+// =========================
+const createPdfFromElement = async (element, fileName) => {
+  if (!element) return null
+
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    backgroundColor: '#ffffff'
+  })
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  })
+
+  const pdfWidth = pdf.internal.pageSize.getWidth()
+  const pdfHeight = pdf.internal.pageSize.getHeight()
+
+  const pageMargin = 12
+  const imgWidth = pdfWidth - pageMargin * 2
+  const usablePageHeight = pdfHeight - pageMargin * 2 - 10
+
+  const pageCanvasHeight = Math.floor(
+    (usablePageHeight * canvas.width) / imgWidth
+  )
+
+  let sourceY = 0
+  let pageIndex = 0
+
+  while (sourceY < canvas.height) {
+    const sliceHeight = Math.min(pageCanvasHeight, canvas.height - sourceY)
+
+    const pageCanvas = document.createElement('canvas')
+    pageCanvas.width = canvas.width
+    pageCanvas.height = sliceHeight
+
+    const ctx = pageCanvas.getContext('2d')
+
+    ctx.drawImage(
+      canvas,
+      0,
+      sourceY,
+      canvas.width,
+      sliceHeight,
+      0,
+      0,
+      canvas.width,
+      sliceHeight
+    )
+
+    const imgData = pageCanvas.toDataURL('image/png')
+    const imgHeight = (sliceHeight * imgWidth) / canvas.width
+
+    if (pageIndex > 0) {
+      pdf.addPage()
+    }
+
+    pdf.addImage(imgData, 'PNG', pageMargin, pageMargin, imgWidth, imgHeight)
+
+    sourceY += sliceHeight
+    pageIndex += 1
+  }
+
+  return {
+    doc: pdf,
+    fileName
+  }
+}
+
+
+// =========================
 // GENEROWANIE PDF
 // =========================
 const generateOrderPdf = async (order) => {
@@ -6390,43 +6621,7 @@ const element = pdfTemplateRef.value
 
   if (!element) return null
 
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    backgroundColor: '#ffffff'
-  })
-
-  const imgData = canvas.toDataURL('image/png')
-
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  })
-
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-  const pdfHeight = pdf.internal.pageSize.getHeight()
-
-  const pageMargin = 12
-  const imgWidth = pdfWidth - pageMargin * 2
-  const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-  let heightLeft = imgHeight
-  let position = pageMargin
-
-  pdf.addImage(imgData, 'PNG', pageMargin, position, imgWidth, imgHeight)
-  heightLeft -= pdfHeight
-
-  while (heightLeft > 0) {
-    position = heightLeft - imgHeight + pageMargin
-    pdf.addPage()
-    pdf.addImage(imgData, 'PNG', pageMargin, position, imgWidth, imgHeight)
-    heightLeft -= pdfHeight
-  }
-
-  return {
-    doc: pdf,
-    fileName: getOrderFileName(order)
-  }
+  return await createPdfFromElement(element, getOrderFileName(order))
 }
 
 
@@ -6458,6 +6653,131 @@ const deleteOrderFromRegister = async (orderId) => {
   }
   scheduleSave()
 }
+
+
+// =========================
+// TOWARY - GENEROWANIE PDF
+// =========================
+
+const openTowaryPdfModal = async () => {
+  if (filteredTowary.value.length === 0) {
+    await showAlert('Brak towarów do wygenerowania PDF', 'Brak pozycji', '⚠️')
+    return
+  }
+
+  showTowaryPdfModal.value = true
+}
+
+const getTowaryPdfFieldLabel = (field) => {
+  const option = towaryPdfOptions.find(item => item.key === field)
+  return option ? option.label : field
+}
+
+const getTowaryPdfFieldValue = (item, field) => {
+  if (field === 'categories') {
+    return Array.isArray(item.categories) && item.categories.length > 0
+      ? item.categories.join(', ')
+      : '-'
+  }
+
+  if (field === 'warehouse') {
+    return getWarehouse(item) || '-'
+  }
+
+  return item[field] || '-'
+}
+
+
+const getTodayLabel = () => {
+  const now = new Date()
+
+  return `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+const getTowaryPdfColumnStyle = (field, isHeader = false) => {
+  const base = {
+    padding: '7px 6px',
+    border: '1px solid #d1d5db',
+    verticalAlign: 'top',
+    textAlign: 'left',
+    fontWeight: isHeader ? '700' : '400',
+    color: '#111827',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere'
+  }
+
+  const widths = {
+    name: '28%',
+    unit: '8%',
+    supplier: '18%',
+    netPrice: '10%',
+    vat: '9%',
+    warehouse: '15%',
+    categories: '18%'
+  }
+
+  return {
+    ...base,
+    width: widths[field] || 'auto',
+    textAlign: ['unit', 'netPrice', 'vat'].includes(field) ? 'center' : 'left'
+  }
+}
+
+
+
+
+
+
+
+const handleGenerateTowaryPdf = async () => {
+  const activeFilteredTowary = filteredTowary.value.filter(item => item.active !== false)
+
+if (activeFilteredTowary.length === 0) {
+  await showAlert('Brak aktywnych towarów do wygenerowania PDF', 'Brak pozycji', '⚠️')
+  return
+}
+  if (selectedTowaryPdfFields.value.length === 0) {
+    await showAlert('Wybierz przynajmniej jedną informację do PDF', 'Brak wyboru', '⚠️')
+    return
+  }
+
+  const confirmed = await showConfirm(
+    'Wygenerować PDF z widoku towarów?',
+    'PDF z towarów',
+    '📄'
+  )
+
+  if (!confirmed) return
+
+  towaryPdfPreviewItems.value = activeFilteredTowary.map(item => ({ ...item }))
+showTowaryPdfModal.value = false
+
+await nextTick()
+await new Promise(resolve => setTimeout(resolve, 150))
+
+const element = towaryPdfTemplateRef.value
+
+if (!element) {
+  await showAlert('Nie udało się przygotować PDF', 'Błąd', '❌')
+  return
+}
+
+const pdfResult = await createPdfFromElement(
+  element,
+  `lista_towarow_${new Date().toISOString().slice(0, 10)}.pdf`
+)
+
+if (!pdfResult) {
+  await showAlert('Nie udało się wygenerować PDF', 'Błąd', '❌')
+  return
+}
+
+pdfResult.doc.save(pdfResult.fileName)
+
+towaryPdfPreviewItems.value = []
+}
+
+
 
 
 // =========================
@@ -6936,6 +7256,17 @@ const openZamawiarkaMenuFromHome = () => {
       toggleOrderDetails,
       deleteOrderFromRegister,
       generatePdfFromRegister,
+      showTowaryPdfModal,
+      openTowaryPdfModal,
+      handleGenerateTowaryPdf,
+      towaryPdfTemplateRef,
+      towaryPdfPreviewItems,
+      towaryPdfOptions,
+      selectedTowaryPdfFields,
+      getTowaryPdfFieldLabel,
+      getTowaryPdfFieldValue,
+      getTodayLabel,
+      getTowaryPdfColumnStyle,
 
       isDataLoaded,
 
@@ -7403,6 +7734,13 @@ html, body, #app {
 .towary-inactive {
   background:rgb(109, 111, 116);
   opacity: 0.85;
+}
+
+.inactive-label {
+  text-decoration: line-through;
+  opacity: 0.5;
+  color: #6b7280;
+  transition: all 0.2s ease;
 }
 
 /* =========================
