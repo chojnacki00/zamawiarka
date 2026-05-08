@@ -86,7 +86,7 @@
   <div class="home-header-ios">
     <h1 class="home-title-ios">GastroManager</h1>
 
-    <div class="home-version-ios">wersja 1.1.3</div>
+    <div class="home-version-ios">wersja 1.2.2</div>
 
         <div
       v-if="currentCompany"
