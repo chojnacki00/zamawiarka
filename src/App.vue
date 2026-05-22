@@ -86,7 +86,7 @@
   <div class="home-header-ios">
     <h1 class="home-title-ios">GastroManager</h1>
 
-    <div class="home-version-ios">wersja 1.2.2</div>
+    <div class="home-version-ios">wersja 1.2.4</div>
 
         <div
       v-if="currentCompany"
@@ -7462,9 +7462,9 @@ html, body, #app {
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
   display: flex;
-  align-items: center;
+  align-items: flex-start;  /* Modal wyrównuje się do góry... */
   justify-content: center;
-  padding: 20px;
+  padding: 120px 20px 20px 20px; /* ...ale jest odepchnięty na 120px, dając miejsce topbarowi! */
   z-index: 300;
 }
 
@@ -7475,6 +7475,9 @@ html, body, #app {
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+  /* DODANE LINIJKI: */
+  max-height: 100%; /* Teraz sztywno słucha paddingów swojej nakładki */
+  overflow-y: auto;
 }
 
 .supplier-modal-title {
@@ -7764,6 +7767,9 @@ html, body, #app {
   border: 1px solid #ccc;
   border-radius: 10px;
   background: #fff;
+  /* DODANE LINIJKI: */
+  max-height: 250px; /* Maksymalna wysokość listy */
+  overflow-y: auto;  /* Scroll, gdy lista jest dłuższa */
 }
 
 .towary-checkbox-option {
