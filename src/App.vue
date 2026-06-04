@@ -76,6 +76,21 @@
   class="app"
 >
 
+<div v-if="!isDataLoaded" style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+    
+    <div class="login-spinner" style="border-top-color: #2563eb; width: 48px; height: 48px; border-width: 4px; margin-bottom: 24px;"></div>
+    
+    <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #111827; text-align: center; letter-spacing: 0.5px;">
+      Pobieranie danych...
+    </h2>
+    <div style="font-size: 15px; color: #6b7280; margin-top: 8px; text-align: center;">
+      Proszę czekać, ładuję dane
+    </div>
+
+  </div>
+
+  <div v-else>
+
 
   
 
@@ -86,7 +101,7 @@
   <div class="home-header-ios">
     <h1 class="home-title-ios">GastroManager</h1>
 
-    <div class="home-version-ios">wersja 1.2.4</div>
+    <div class="home-version-ios">wersja {{ appVersion }}</div>
 
         <div
       v-if="currentCompany"
@@ -1866,29 +1881,33 @@ selectedWhoOrders !== 'wszystkie'
 
 
         <!-- LISTA -->
-        <div class="towary-list-wrap scroll-area">
+        <div class="towary-list-wrap scroll-area" ref="towaryListRef">
           <div v-if="filteredTowary.length === 0" class="empty-state">
             <div class="empty-title">Brak towarów</div>
             <div class="empty-subtitle">Kliknij + aby dodać pierwszy</div>
           </div>
 
-            <div
-            v-for="item in filteredTowary"
-            :key="item.id"
-            :class="[
+<div
+          v-for="item in filteredTowary"
+          :key="item.id"
+          :class="[
   'towary-row-fixed',
   !item.active ? 'towary-inactive' : ''
 ]"
-            @click="handleTowarRowClick(item)"
+          :style="{
+            gridTemplateColumns: towarySelectionMode
+              ? '28px 3fr 1fr 2fr 1.2fr'
+              : '3fr 1fr 2fr 1.2fr'
+          }"
+          @click="handleTowarRowClick(item)"
+        >
+          <div
+            v-if="towarySelectionMode"
+            class="towary-col-checkbox"
+            @click.stop
           >
-            <!-- KOLUMNA CHECKBOX - ZAWSZE MA MIEJSCE -->
-            <div
-              class="towary-col-checkbox"
-              @click.stop
-            >
-              <input
-                v-if="towarySelectionMode"
-                type="checkbox"
+            <input
+              type="checkbox"
                 :checked="selectedTowaryIds.includes(item.id)"
                 @change="toggleTowarSelection(item.id)"
               />
@@ -3548,11 +3567,12 @@ selectedWhoOrders !== 'wszystkie'
 
 
   </div>
-
+</div>
 
   <!-- =========================
      MODAL POWIADOMIEŃ iOS
 ========================== -->
+
 <div
   v-if="appDialog.show"
   class="app-dialog-overlay"
@@ -3798,6 +3818,8 @@ import {
   writeBatch
 } from 'firebase/firestore'
 
+import { useRegisterSW } from 'virtual:pwa-register/vue'
+
 export default {
 
 
@@ -3806,7 +3828,11 @@ export default {
 
   setup() {
 
+    // =========================
+    // wersja aplikacji    
+    // =========================
 
+       const appVersion = ref('1.6.8')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -5485,6 +5511,10 @@ if (!confirmed) return
     const towarFormMode = ref('add')
     const editedTowarId = ref(null)
 
+    // Zmienne do zapamiętywania scrolla
+    const towaryListRef = ref(null)
+    const savedTowaryScroll = ref(0)
+
     const towarySearch = ref('')
     const towarySelectionMode = ref(false)
     const selectedTowaryIds = ref([])
@@ -5637,10 +5667,15 @@ const normalizeVat = (value) => {
 }
 
 
-    // =========================
+  // =========================
 // TOWARY - KLIK NA WIERSZ LISTY
 // =========================
 const handleTowarRowClick = async (item) => {
+  // ZAPAMIĘTUJEMY SCROLL PRZED ZMIANĄ WIDOKU
+  if (towaryListRef.value) {
+    savedTowaryScroll.value = towaryListRef.value.scrollTop
+  }
+
   towarFormSource.value = 'towary'
 
   if (isTowarIncomplete(item)) {
@@ -5662,7 +5697,7 @@ const handleTowarRowClick = async (item) => {
 
 
 
-const closeTowarForm = () => {
+const closeTowarForm = async () => {
   towaryView.value = 'list'
   towarFormMode.value = 'add'
   editedTowarId.value = null
@@ -5677,6 +5712,12 @@ const closeTowarForm = () => {
   }
 
   towarFormSource.value = 'towary'
+
+  // PRZYWRACAMY SCROLL PO WYRENDEROWANIU LISTY
+  await nextTick()
+  if (towaryListRef.value) {
+    towaryListRef.value.scrollTop = savedTowaryScroll.value
+  }
 }
 
     const toggleTowarySelectionMode = () => {
@@ -7055,11 +7096,35 @@ const openZamawiarkaMenuFromHome = () => {
   }, 900)
 }
 
+// =========================
+    // AKTUALIZACJA PWA (BEZWZGLĘDNA - TYLKO PRZYCISK OK)
+    // =========================
+    const { needRefresh, updateServiceWorker } = useRegisterSW({
+      onRegistered(r) {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && r) {
+            r.update() 
+          }
+        })
+      }
+    })
 
+    watch(needRefresh, async (isNewVersionAvailable) => {
+      if (isNewVersionAvailable) {
+        await showAlert(
+          'Pobrano nową wersję aplikacji. Odświeżam system w celu aktualizacji.',
+          'Aktualizacja',
+          '📲'
+        )
+        
+        updateServiceWorker(true)
+      }
+    })
 
 
 
     return {
+      appVersion,
       isLoggedIn,
       isLoggingIn,
       authForm,
@@ -7268,6 +7333,8 @@ const openZamawiarkaMenuFromHome = () => {
       getTowaryPdfFieldValue,
       getTodayLabel,
       getTowaryPdfColumnStyle,
+
+      towaryListRef,
 
       isDataLoaded,
 
@@ -7671,7 +7738,6 @@ html, body, #app {
 
 .towary-row-fixed {
   display: grid;
-  grid-template-columns: 28px 3fr 1fr 2fr 1.2fr;
   gap: 8px;
   align-items: center;
   min-height: 48px;
@@ -7706,6 +7772,10 @@ html, body, #app {
   font-size: 14px;
   font-weight: 700;
   color: #111827;
+  text-align: left;
+  justify-self: start;
+  width: 100%;
+  text-overflow: clip;
 }
 
 
