@@ -192,7 +192,7 @@
 </div>
 
 
-<div v-if="currentScreen === 'settings'" class="screen-with-topbar" style="position: absolute; top:0; left:0; width:100%; height: 100%; background: #f5f5f7; z-index: 10;">
+<div v-if="currentScreen === 'settings'" class="screen-with-topbar">
   <div class="zamawiarka-menu-topbar">
     <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">←</button>
     <h2 class="zamawiarka-menu-title">USTAWIENIA APLIKACJI</h2>
@@ -208,11 +208,20 @@
     </button>
 
     <button 
+      @click="triggerFileInput"
       class="item-card" 
       style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
     >
-      📂 Wczytaj dane z pliku
+      📂 Przywróć dane z pliku
     </button>
+
+    <input 
+      type="file" 
+      ref="backupInputRef" 
+      style="display: none" 
+      accept=".json" 
+      @change="wczytajBackup" 
+    />
   </div>
 </div>
 
@@ -4091,7 +4100,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('2.0.0')
+       const appVersion = ref('2.1.0')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -4444,6 +4453,9 @@ const eksportujBackup = async () => {
   const user = auth.currentUser;
   if (!user) return;
 
+  const confirmed = await showConfirm('Czy chcesz utworzyć pełną kopię zapasową swoich danych?', 'Utworzyć kopię?', '💾');
+  if (!confirmed) return;
+
   try {
     const backupData = {
       exportedAt: new Date().toISOString(),
@@ -4480,6 +4492,87 @@ const eksportujBackup = async () => {
     console.error("Błąd backupu:", error);
     await showAlert('Nie udało się wygenerować pełnego backupu.', 'Błąd', '❌');
   }
+};
+
+
+const backupInputRef = ref(null);
+
+const triggerFileInput = () => {
+  if (backupInputRef.value) {
+    backupInputRef.value.click();
+  }
+};
+
+const wczytajBackup = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  
+  reader.onload = async (e) => {
+    try {
+      // 1. Odszyfrowanie pliku JSON
+      const backupData = JSON.parse(e.target.result);
+
+      // 2. Sprawdzenie czy to na pewno nasz plik z GastroManagera
+      if (!backupData.state || !backupData.collections) {
+        await showAlert('Nieprawidłowy format pliku kopii zapasowej.', 'Błąd pliku', '❌');
+        event.target.value = '';
+        return;
+      }
+
+      // 3. Ostatnie ostrzeżenie
+      const confirmed = await showConfirm(
+        'Czy na pewno chcesz nadpisać WSZYSTKIE obecne dane w aplikacji? Tej operacji nie można cofnąć!',
+        'Uwaga: Przywracanie danych',
+        '⚠️'
+      );
+
+      if (!confirmed) {
+        event.target.value = '';
+        return;
+      }
+
+      // 4. Tutaj w następnym kroku wgramy dane do Firebase
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Pokazujemy spinner ładowania
+      isDataLoaded.value = false;
+
+      // Zapisujemy główny stan (state)
+      if (backupData.state) {
+        await setDoc(getUserStateDocRef(user.uid), backupData.state);
+      }
+
+      // Zapisujemy kolekcje (towary, magazyny, itd.)
+      if (backupData.collections) {
+        for (const [colName, docsArray] of Object.entries(backupData.collections)) {
+          for (const itemData of docsArray) {
+            const docRef = doc(db, 'users', user.uid, colName, String(itemData.id));
+            await setDoc(docRef, itemData);
+          }
+        }
+      }
+
+      // Odświeżamy aplikację, żeby zaciągnęła nowe dane z bazy
+      await loadCompanyDataWithFallback();
+      
+      await showAlert('Kopia zapasowa wczytana pomyślnie!', 'Sukces', '✅');
+      
+      // Wracamy na główny ekran
+      currentScreen.value = 'home';
+
+    } catch (error) {
+      console.error("Błąd odczytu pliku:", error);
+      await showAlert('Nie udało się odczytać pliku. Plik jest uszkodzony.', 'Błąd', '❌');
+    }
+    
+    event.target.value = ''; // Reset inputa po wszystkim
+  };
+  
+  // Rozpoczęcie czytania pliku
+  reader.readAsText(file);
 };
 
 
@@ -6328,9 +6421,10 @@ const preparedTowar = {
       }
 
       // =========================
-      // ZAMKNIĘCIE FORMULARZA
+      // ZAMKNIĘCIE FORMULARZA I ZAPIS
       // =========================
       closeTowarForm()
+      scheduleSave()
     }
 
 
@@ -7717,15 +7811,11 @@ const openZamawiarkaMenuFromHome = () => {
 
         fcSettings,
         dishCategories,
+        backupInputRef,
+      triggerFileInput,
+      wczytajBackup,
 
 
-      
-
-      
-
-
-
-      
     }
   }
 }
