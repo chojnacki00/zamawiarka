@@ -88,8 +88,11 @@
     </div>
 
   </div>
+  
+
 
   <div v-else>
+    </div>
 
 
   
@@ -99,6 +102,16 @@
 ========================== -->
 <div v-if="currentScreen === 'home'" class="home-screen-ios">
   <div class="home-header-ios">
+
+    <button 
+      @click="currentScreen = 'settings'"
+      style="position: absolute; top: 97px; right: -1px; background: none; border: none; font-size: 35px; cursor: pointer; padding: 10px;"
+      aria-label="Ustawienia"
+    >
+      ⚙️
+    </button>
+
+
     <h1 class="home-title-ios">GastroManager</h1>
 
     <div class="home-version-ios">wersja {{ appVersion }}</div>
@@ -115,44 +128,52 @@
 
   <div class="home-content-ios">
     
-    <!-- ZAMAWIARKA (nowy styl kafelka) -->
-    <button
-  @click="openZamawiarkaMenuFromHome"
-  class="home-wallet-tile"
->
-  <div class="home-wallet-icon">
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 64 64"
-    aria-hidden="true"
-  >
-    <path
-      class="home-truck-body"
-      d="M8 21c0-2.2 1.8-4 4-4h27c2.2 0 4 1.8 4 4v20H8V21z"
-    />
-    <path
-      class="home-truck-cabin"
-      d="M43 27h7.5c1.2 0 2.3.6 3.1 1.6L59 36v5H43V27z"
-    />
-    <path
-      class="home-truck-window"
-      d="M47 31h3.4c.6 0 1.1.3 1.5.8l2.8 3.7H47V31z"
-    />
-    <circle class="home-truck-wheel" cx="20" cy="43" r="5"/>
-    <circle class="home-truck-wheel" cx="48" cy="43" r="5"/>
-    <circle class="home-truck-wheel-inner" cx="20" cy="43" r="2"/>
-    <circle class="home-truck-wheel-inner" cx="48" cy="43" r="2"/>
-  </svg>
-</div>
+    <!-- GŁÓWNE MENU APLIKACJI (SIATKA KAFELKÓW) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; max-width: 380px; margin: 40px auto 30px auto; padding: 0 20px; box-sizing: border-box;">
+      
+      <!-- KAFELEK 1: ZAMAWIARKA -->
+      <button
+        @click="openZamawiarkaMenuFromHome"
+        class="ios-menu-tile"
+        style="margin: 0; min-height: 140px; box-sizing: border-box;"
+      >
+        <div class="ios-menu-icon ios-menu-icon-blue">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+        </div>
+        <div class="ios-menu-title" style="font-size: 15px;">Zamawiarka</div>
+      </button>
 
-      <div class="home-wallet-title">
-        Zamawiarka
-      </div>
+      <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
+      <button
+        @click="currentScreen = 'receptury'; recepturyView = 'dashboard'"
+        class="ios-menu-tile"
+        style="margin: 0; min-height: 140px; box-sizing: border-box;"
+      >
+        <div class="ios-menu-icon ios-menu-icon-green">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
+            <path d="M7 2v20"/>
+            <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
+          </svg>
+        </div>
+        <div class="ios-menu-title" style="font-size: 15px;">Rentowność Menu</div>
+      </button>
 
-      <div class="home-wallet-subtitle">
-        Zamówienia i koszyk
-      </div>
-    </button>
+
+
+      
+
+       
+
+
+
+
+
+    </div>
 
         <!-- WYLOGUJ -->
     <button
@@ -169,6 +190,244 @@
 
   </div>
 </div>
+
+
+<div v-if="currentScreen === 'settings'" class="screen-with-topbar" style="position: absolute; top:0; left:0; width:100%; height: 100%; background: #f5f5f7; z-index: 10;">
+  <div class="zamawiarka-menu-topbar">
+    <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">←</button>
+    <h2 class="zamawiarka-menu-title">USTAWIENIA APLIKACJI</h2>
+  </div>
+
+  <div class="scroll-area" style="padding: 20px;">
+    <button 
+      @click="eksportujBackup" 
+      class="item-card" 
+      style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+    >
+      💾 Utwórz kopię zapasową
+    </button>
+
+    <button 
+      class="item-card" 
+      style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+    >
+      📂 Wczytaj dane z pliku
+    </button>
+  </div>
+</div>
+
+
+
+<div v-if="currentScreen === 'receptury' && recepturyView === 'dashboard'" class="screen-with-topbar">
+      
+      <div class="zamawiarka-menu-topbar">
+        <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">
+          ←
+        </button>
+        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">RENTOWNOŚĆ MENU</h2>
+      </div>
+
+      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+          
+          <div class="item-card" style="padding: 14px; text-align: center;">
+            <div style="font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Średni FC</div>
+            <div style="font-size: 24px; font-weight: 800; color: #111827; margin-top: 4px;">28.4%</div>
+          </div>
+          
+          <div class="item-card" style="padding: 14px; text-align: center;">
+            <div style="font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Średnia Marża %</div>
+            <div style="font-size: 24px; font-weight: 800; color: #16a34a; margin-top: 4px;">18.5%</div>
+          </div>
+          
+          <div class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fef2f2; border-color: #fca5a5;">
+            <span style="font-size: 24px;">🚨</span>
+            <div style="text-align: left;">
+              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">4 pozycje</div>
+              <div style="font-size: 12px; color: #991b1b; font-weight: 600;">wymagają pilnej uwagi!</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="font-size: 15px; color: #dc2626; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 18px;">🔻</span> Najwyższy FC
+            </h3>
+            <button style="background: none; border: none; color: #007aff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;">Pokaż (5)</button>
+          </div>
+          
+          <div class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 700; font-size: 14px;">Burger Szefa (Atrapa)</div>
+              <div style="font-size: 11px; color: #6b7280;">Koszt: 12.50 zł | Zysk: 16.50 zł</div>
+            </div>
+            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">43.1%</div>
+          </div>
+          
+          <div class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 700; font-size: 14px;">Żeberka BBQ (Atrapa)</div>
+              <div style="font-size: 11px; color: #6b7280;">Koszt: 18.20 zł | Zysk: 21.80 zł</div>
+            </div>
+            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">41.5%</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="font-size: 15px; color: #16a34a; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 18px;">🏆</span> Najniższy FC
+            </h3>
+            <button style="background: none; border: none; color: #007aff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;">Pokaż (5)</button>
+          </div>
+          
+          <div class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 700; font-size: 14px;">Zupa Pomidorowa (Atrapa)</div>
+              <div style="font-size: 11px; color: #6b7280;">Koszt: 3.20 zł | Zysk: 14.80 zł</div>
+            </div>
+            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">17.7%</div>
+          </div>
+          
+          <div class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 700; font-size: 14px;">Lemoniada (Atrapa)</div>
+              <div style="font-size: 11px; color: #6b7280;">Koszt: 1.50 zł | Zysk: 13.50 zł</div>
+            </div>
+            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">10.0%</div>
+          </div>
+        </div>
+
+      </div> 
+      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+        
+        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
+        </button>
+
+        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px;">📊</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Analiza</span>
+        </button>
+
+        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
+        </button>
+
+      </div>
+
+    </div>
+
+
+
+
+    <div v-if="currentScreen === 'receptury' && recepturyView === 'lista'" class="screen-with-topbar">
+      
+      <div class="zamawiarka-menu-topbar">
+        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+          ←
+        </button>
+        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">MENU</h2>
+      </div>
+
+      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h3 style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
+          <button @click="recepturyView = 'kalkulator'" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
+            + Dodaj danie
+          </button>
+        </div>
+
+        <div class="empty-state" style="margin-top: 20px;">
+          <div style="font-size: 40px; margin-bottom: 10px;">🍽️</div>
+          <div class="empty-title">Menu jest puste</div>
+          <div class="empty-subtitle">Dodaj pierwsze danie, aby zacząć liczyć Food Cost.</div>
+        </div>
+
+      </div> 
+      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px;">📋</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Menu</span>
+        </button>
+        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+        </button>
+        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
+        </button>
+      </div>
+    </div>
+
+
+    <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
+      
+      <div class="zamawiarka-menu-topbar">
+        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+          ←
+        </button>
+        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">USTAWIENIA</h2>
+      </div>
+
+      <div class="scroll-area" style="padding: 0 16px;">
+        
+        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Cele i alarmy</h3>
+        
+        <div class="item-card" style="margin-bottom: 24px;">
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Docelowy Food Cost (%)</label>
+            <input v-model.number="fcSettings.target" type="number" class="supplier-form-input" placeholder="np. 30" />
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość, do której dążysz. Poniżej tej wartości wskaźniki będą zielone.</div>
+          </div>
+
+          <div class="supplier-form-group" style="margin-bottom: 0;">
+            <label class="supplier-form-label">Dopuszczalne odchylenie - Delta (%)</label>
+            <input v-model.number="fcSettings.tolerance" type="number" class="supplier-form-input" placeholder="np. 2" />
+          </div>
+
+          <div class="supplier-form-group" style="margin-top: 14px; margin-bottom: 0;">
+            <label class="supplier-form-label">Tarcza ochronna "Dojna krowa" (%)</label>
+            <input v-model.number="fcSettings.cashCowBonusPct" type="number" class="supplier-form-input" placeholder="np. 20" />
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile % marża kwotowa (zł) dania musi być wyższa od średniej marży całego menu, aby system zignorował zbyt wysoki Food Cost.</div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Kategorie menu</h3>
+        
+        <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
+          <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600;">{{ cat.name }}</span>
+            <button class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px;">✏️</button>
+          </div>
+          <button class="ios-home-pill" style="margin-top: 8px; justify-content: center; width: 100%; border: 1px dashed #cbd5e1; background: transparent; color: #007aff; box-shadow: none;">
+            + Dodaj kategorię
+          </button>
+        </div>
+
+      </div>
+
+      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
+        </button>
+        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+        </button>
+        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <span style="font-size: 24px;">⚙️</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Ustawienia</span>
+        </button>
+      </div>
+    </div>
 
 
 
@@ -295,6 +554,13 @@
   <div class="ios-menu-title">Towary</div>
   <div class="ios-menu-subtitle">Lista produktów</div>
 </button>
+
+
+
+
+
+
+
 
  <button
   @click="zamawiarkaView = 'ustawienia'"
@@ -839,12 +1105,8 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-<!-- =========================
-     WIDOK: KOSZYK
-========================== -->
 <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'koszyk'" class="screen-with-topbar">
   <div class="towary-topbar">
-    <!-- WIERSZ STANDARDOWY -->
     <div v-if="!showCartSearch" class="towary-topbar-row">
       <div class="towary-topbar-left">
         <button
@@ -859,38 +1121,32 @@ selectedWhoOrders !== 'wszystkie'
       </div>
 
       <div class="towary-topbar-right">
-
-
-      
-      <button
-  @click="handleGenerateOrder"
-  title="Generuj PDF"
-  style="
-    width:44px;
-    height:44px;
-    border:none;
-    border-radius:12px;
-    background:#ffffff;
-    color:#2563eb;
-    border:1px solid #2563eb;
-    font-size:20px;
-    cursor:pointer;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 6px 14px rgba(34, 69, 167, 0.35);
-    transition:all 0.15s ease;
-  "
-  onmousedown="this.style.transform='scale(0.95)'"
-  onmouseup="this.style.transform='scale(1)'"
->
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M14 2H6a2 2 0 0 0-2 2v16l4-3 4 3 4-3 4 3V8z"/>
-</svg>
-</button>
-
-
-
+        <button
+          @click="handleGenerateOrder"
+          title="Generuj PDF"
+          style="
+            width:44px;
+            height:44px;
+            border:none;
+            border-radius:12px;
+            background:#ffffff;
+            color:#2563eb;
+            border:1px solid #2563eb;
+            font-size:20px;
+            cursor:pointer;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            box-shadow:0 6px 14px rgba(34, 69, 167, 0.35);
+            transition:all 0.15s ease;
+          "
+          onmousedown="this.style.transform='scale(0.95)'"
+          onmouseup="this.style.transform='scale(1)'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16l4-3 4 3 4-3 4 3V8z"/>
+          </svg>
+        </button>
 
         <button
           @click="showCartSearch = true"
@@ -900,30 +1156,29 @@ selectedWhoOrders !== 'wszystkie'
           🔍
         </button>
 
-
         <button
-  @click="
-    tempSelectedCartSupplier = selectedCartSupplier;
-    tempSelectedCartCategories = [...selectedCartCategories];
-    showCartFiltersModal = true
-  "
-  class="towary-icon-button"
-  title="Filtry"
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"></polygon>
-  </svg>
-</button>
+          @click="
+            tempSelectedCartSupplier = selectedCartSupplier;
+            tempSelectedCartCategories = [...selectedCartCategories];
+            showCartFiltersModal = true
+          "
+          class="towary-icon-button"
+          title="Filtry"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#111827"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"></polygon>
+          </svg>
+        </button>
 
         <button
           @click="clearCart()"
@@ -3567,7 +3822,6 @@ selectedWhoOrders !== 'wszystkie'
 
 
   </div>
-</div>
 
   <!-- =========================
      MODAL POWIADOMIEŃ iOS
@@ -3791,6 +4045,10 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
+
+
+
+
 </template>
 
 
@@ -3815,7 +4073,8 @@ import {
   onSnapshot,
   increment,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  getDocs
 } from 'firebase/firestore'
 
 import { useRegisterSW } from 'virtual:pwa-register/vue'
@@ -3832,7 +4091,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('1.6.8')
+       const appVersion = ref('2.0.0')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -3870,6 +4129,16 @@ const getUserCartItemsCollectionRef = (uid) => {
 
 const getUserCartItemDocRef = (uid, productId) => {
   return doc(db, 'users', uid, 'cartItems', String(productId))
+}
+
+// Referencja do kolekcji towarów użytkownika
+const getUserTowaryCollectionRef = (uid) => {
+  return collection(db, 'users', uid, 'towary')
+}
+
+// Referencja do konkretnego towaru
+const getUserTowarDocRef = (uid, towarId) => {
+  return doc(db, 'users', uid, 'towary', String(towarId))
 }
 
 
@@ -4156,6 +4425,66 @@ const loadCompanyDataWithFallback = async () => {
 
 
 
+
+
+// --- KONFIGURACJA BACKUPU ---
+const COLLECTIONS_TO_BACKUP = [
+  'state',
+  'towary',
+  'cartItems', // Dodałem, żebyś miał pełny obraz danych
+  'kategorie',
+  'magazyny',
+  'whoOrders',
+  'units',
+  'orderTimings'
+];
+
+// --- FUNKCJA EKSPORTU ---
+const eksportujBackup = async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  try {
+    const backupData = {
+      exportedAt: new Date().toISOString(),
+      state: {}, // Tu wylądują dane z dokumentu state
+      collections: {} // Tu wylądują dane z kolekcji
+    };
+
+    // 1. Pobieramy główny dokument stanu (gdzie trzymasz np. categories, orderTimings)
+    const stateDoc = await getDoc(getUserStateDocRef(user.uid));
+    if (stateDoc.exists()) {
+      backupData.state = stateDoc.data();
+    }
+
+    // 2. Pobieramy pozostałe kolekcje
+    const collectionsToFetch = ['towary', 'cartItems', 'kategorie', 'magazyny', 'whoOrders'];
+    for (const colName of collectionsToFetch) {
+      const colRef = collection(db, 'users', user.uid, colName);
+      const snapshot = await getDocs(colRef);
+      backupData.collections[colName] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    }
+
+    // Pobieranie i zapis (tak jak miałeś)
+    const dataStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup_pelny_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+  } catch (error) {
+    console.error("Błąd backupu:", error);
+    await showAlert('Nie udało się wygenerować pełnego backupu.', 'Błąd', '❌');
+  }
+};
+
+
+
+
     // =========================
 // SKĄD OTWARTO FORMULARZ TOWARU
 // =========================
@@ -4174,6 +4503,29 @@ const towarFormSource = ref('towary')
     // AKTYWNA ZAKŁADKA W ZAMAWIARCE
     // =========================
     const zamawiarkaView = ref('menu')
+    const settingsView = ref('')
+
+
+    // =========================
+    // AKTYWNA ZAKŁADKA W RECEPTURACH
+    // =========================
+    const recepturyView = ref('dashboard')
+
+
+    // =========================
+    // USTAWIENIA: FOOD COST I KATEGORIE DAŃ
+    // =========================
+    const fcSettings = ref({
+      target: 30, // docelowy % Food Cost
+      tolerance: 2, // dopuszczalna delta (odchylenie w %)
+      cashCowBonusPct: 20 // O ile % marża (zł) ma przebić średnią, by anulować alarm
+    })
+    
+    // Lista kategorii dań (na start dajemy przykładowe)
+    const dishCategories = ref([
+      { id: 1, name: 'Przystawki' },
+      { id: 2, name: 'Dania główne' }
+    ])
 
 
 
@@ -5954,18 +6306,24 @@ const preparedTowar = {
       }
 
       // =========================
-      // EDYCJA
+      // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
       // =========================
-      if (towarFormMode.value === 'edit' && editedTowarId.value !== null) {
-        const index = towary.value.findIndex(item => item.id === editedTowarId.value)
-
-        if (index !== -1) {
-          towary.value[index] = preparedTowar
+      const user = auth.currentUser
+      if (user) {
+        try {
+          await setDoc(getUserTowarDocRef(user.uid, preparedTowar.id), preparedTowar)
+        } catch (error) {
+          console.error("Błąd przy zapisie towaru:", error)
+          await showAlert('Nie udało się zapisać towaru', 'Błąd', '❌')
+          return
         }
+      }
+
+      // Aktualizacja lokalnego stanu (żeby widok się odświeżył)
+      const index = towary.value.findIndex(item => item.id === preparedTowar.id)
+      if (index !== -1) {
+        towary.value[index] = preparedTowar
       } else {
-        // =========================
-        // DODAWANIE
-        // =========================
         towary.value.push(preparedTowar)
       }
 
@@ -5973,7 +6331,6 @@ const preparedTowar = {
       // ZAMKNIĘCIE FORMULARZA
       // =========================
       closeTowarForm()
-      scheduleSave()
     }
 
 
@@ -7124,7 +7481,10 @@ const openZamawiarkaMenuFromHome = () => {
 
 
     return {
+      settingsView,
       appVersion,
+      eksportujBackup,
+      recepturyView,
       isLoggedIn,
       isLoggingIn,
       authForm,
@@ -7355,6 +7715,9 @@ const openZamawiarkaMenuFromHome = () => {
         animateMenuTiles,
         openZamawiarkaMenuFromHome,
 
+        fcSettings,
+        dishCategories,
+
 
       
 
@@ -7529,9 +7892,10 @@ html, body, #app {
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
   display: flex;
-  align-items: flex-start;  /* Modal wyrównuje się do góry... */
+  align-items: flex-start;
   justify-content: center;
-  padding: 120px 20px 20px 20px; /* ...ale jest odepchnięty na 120px, dając miejsce topbarowi! */
+  /* Zwiększyliśmy dolny padding z 20px na 50px */
+  padding: 120px 20px 50px 20px; 
   z-index: 300;
 }
 
@@ -7540,10 +7904,10 @@ html, body, #app {
   width: 100%;
   max-width: 420px;
   border-radius: 18px;
-  padding: 20px;
+  /* Dodajemy wsparcie dla paska systemowego iOS/Android */
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
-  /* DODANE LINIJKI: */
-  max-height: 100%; /* Teraz sztywno słucha paddingów swojej nakładki */
+  max-height: 100%;
   overflow-y: auto;
 }
 
@@ -8254,6 +8618,7 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center; /* 🔥 gwarantuje środek */
+  position: relative; /* Dodałem to, aby przycisk w rogu działał */
 }
 
 .home-account-ios {
