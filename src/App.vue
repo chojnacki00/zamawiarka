@@ -122,7 +122,7 @@
     >
       <span class="home-account-icon">👤</span>
       <span>Konto:</span>
-      <strong>{{ currentCompany.companyName }}</strong>
+      <strong translate="no" class="notranslate">{{ currentCompany.companyName }}</strong>
     </div>
   </div>
 
@@ -4067,6 +4067,8 @@ selectedWhoOrders !== 'wszystkie'
 
 
 <script>
+
+
 import ZamawiarkaView from './views/ZamawiarkaView.vue'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
@@ -4100,7 +4102,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('2.1.0')
+       const appVersion = ref('2.1.1')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -4267,21 +4269,26 @@ const saveAllAppStateToCloud = async () => {
   try {
     const appState = collectAppState()
 
-    // 🔒 BLOKADA TYLKO PRZY CAŁKOWICIE PUSTYM STANIE PO RESECIE
-const isReallyEmptyState =
-  (!appState.towary || appState.towary.length === 0) &&
-  (!appState.suppliers || appState.suppliers.length === 0) &&
-  (!appState.warehouses || appState.warehouses.length === 0) &&
-  (!appState.orderTimings || appState.orderTimings.length === 0) &&
-  (!appState.units || appState.units.length === 0) &&
-  (!appState.categories || appState.categories.length === 0) &&
-  (!appState.whoOrders || appState.whoOrders.length === 0) &&
-  (!appState.ordersRegister || appState.ordersRegister.length === 0)
+    // ✂️ ODCIĘCIE: Wyrzucamy towary ze starego worka przed zapisem do bazy
+    if (appState.towary) {
+      delete appState.towary
+    }
 
-if (isReallyEmptyState) {
-  console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
-  return
-}
+    // 🔒 BLOKADA TYLKO PRZY CAŁKOWICIE PUSTYM STANIE PO RESECIE
+    // (Usunięto sprawdzanie appState.towary, bo już go tu nie ma)
+    const isReallyEmptyState =
+      (!appState.suppliers || appState.suppliers.length === 0) &&
+      (!appState.warehouses || appState.warehouses.length === 0) &&
+      (!appState.orderTimings || appState.orderTimings.length === 0) &&
+      (!appState.units || appState.units.length === 0) &&
+      (!appState.categories || appState.categories.length === 0) &&
+      (!appState.whoOrders || appState.whoOrders.length === 0) &&
+      (!appState.ordersRegister || appState.ordersRegister.length === 0)
+
+    if (isReallyEmptyState) {
+      console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
+      return
+    }
 
     await saveUserStateToFirestore(uid, appState)
   } catch (error) {
@@ -4360,6 +4367,31 @@ const subscribeCartItems = (uid) => {
   cart.value = nextCart
   customCartItems.value = nextCustomCartItems
 })
+}
+
+// Zmienna do trzymania "połączenia" na żywo z towarami
+let unsubscribeTowary = null
+
+const subscribeTowary = (uid) => {
+  // Jeśli już nasłuchujemy, rozłączamy stare połączenie
+  if (unsubscribeTowary) {
+    unsubscribeTowary()
+    unsubscribeTowary = null
+  }
+
+  const towaryRef = getUserTowaryCollectionRef(uid)
+
+  // Zaczynamy nasłuchiwać nowej kolekcji!
+  unsubscribeTowary = onSnapshot(towaryRef, (snapshot) => {
+    const nextTowary = []
+    
+    snapshot.forEach((docSnap) => {
+      nextTowary.push(docSnap.data())
+    })
+
+    // Aktualizujemy listę na ekranie w czasie rzeczywistym
+    towary.value = nextTowary
+  })
 }
 
 const scheduleSave = () => {
@@ -4459,14 +4491,20 @@ const eksportujBackup = async () => {
   try {
     const backupData = {
       exportedAt: new Date().toISOString(),
-      state: {}, // Tu wylądują dane z dokumentu state
-      collections: {} // Tu wylądują dane z kolekcji
+      state: {}, // Tu wylądują dane z dokumentu state (bez towarów)
+      collections: {} // Tu wylądują dane z kolekcji (w tym nowa kolekcja 'towary')
     };
 
-    // 1. Pobieramy główny dokument stanu (gdzie trzymasz np. categories, orderTimings)
+    // 1. Pobieramy główny dokument stanu
     const stateDoc = await getDoc(getUserStateDocRef(user.uid));
     if (stateDoc.exists()) {
       backupData.state = stateDoc.data();
+      
+      // 🧹 Gwarancja czystości: na wszelki wypadek usuwamy stary worek towarów ze stanu,
+      // żeby nowy plik backupu był w 100% zgodny z nową architekturą.
+      if (backupData.state.towary) {
+        delete backupData.state.towary;
+      }
     }
 
     // 2. Pobieramy pozostałe kolekcje
@@ -4480,20 +4518,26 @@ const eksportujBackup = async () => {
       }));
     }
 
-    // Pobieranie i zapis (tak jak miałeś)
+    // 3. Generowanie poprawnej daty lokalnej (rozwiązuje problem "wczorajszej daty" po północy!)
+    const now = new Date();
+    const localDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
+      .toISOString()
+      .split('T')[0];
+
+    // Zapis pliku
     const dataStr = JSON.stringify(backupData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_pelny_${new Date().toISOString().split('T')[0]}.json`;
+    // Zmiana nazwy pliku na dedykowaną z poprawną datą
+    link.download = `GastroManager_backup_${localDate}.json`;
     link.click();
   } catch (error) {
     console.error("Błąd backupu:", error);
     await showAlert('Nie udało się wygenerować pełnego backupu.', 'Błąd', '❌');
   }
 };
-
 
 const backupInputRef = ref(null);
 
@@ -4503,6 +4547,7 @@ const triggerFileInput = () => {
   }
 };
 
+// --- FUNKCJA WCZYTYWANIA BACKUPU ---
 const wczytajBackup = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -4511,17 +4556,14 @@ const wczytajBackup = async (event) => {
   
   reader.onload = async (e) => {
     try {
-      // 1. Odszyfrowanie pliku JSON
       const backupData = JSON.parse(e.target.result);
 
-      // 2. Sprawdzenie czy to na pewno nasz plik z GastroManagera
       if (!backupData.state || !backupData.collections) {
         await showAlert('Nieprawidłowy format pliku kopii zapasowej.', 'Błąd pliku', '❌');
         event.target.value = '';
         return;
       }
 
-      // 3. Ostatnie ostrzeżenie
       const confirmed = await showConfirm(
         'Czy na pewno chcesz nadpisać WSZYSTKIE obecne dane w aplikacji? Tej operacji nie można cofnąć!',
         'Uwaga: Przywracanie danych',
@@ -4533,21 +4575,27 @@ const wczytajBackup = async (event) => {
         return;
       }
 
-      // 4. Tutaj w następnym kroku wgramy dane do Firebase
       const user = auth.currentUser;
       if (!user) return;
 
-      // Pokazujemy spinner ładowania
       isDataLoaded.value = false;
 
-      // Zapisujemy główny stan (state)
+      // 1. Zapisujemy główny stan aplikacji (nie zawiera już starych towarów)
       if (backupData.state) {
         await setDoc(getUserStateDocRef(user.uid), backupData.state);
       }
 
-      // Zapisujemy kolekcje (towary, magazyny, itd.)
+      // 2. Zapisujemy kolekcje (w tym 'towary')
       if (backupData.collections) {
         for (const [colName, docsArray] of Object.entries(backupData.collections)) {
+          
+          // Złota zasada: Najpierw w pełni czyścimy istniejącą kolekcję na żywo...
+          const currentCollectionSnapshot = await getDocs(collection(db, 'users', user.uid, colName));
+          for (const docSnap of currentCollectionSnapshot.docs) {
+            await deleteDoc(docSnap.ref);
+          }
+
+          // ...a potem zapisujemy do niej idealnie odwzorowane dane z pliku.
           for (const itemData of docsArray) {
             const docRef = doc(db, 'users', user.uid, colName, String(itemData.id));
             await setDoc(docRef, itemData);
@@ -4555,23 +4603,20 @@ const wczytajBackup = async (event) => {
         }
       }
 
-      // Odświeżamy aplikację, żeby zaciągnęła nowe dane z bazy
       await loadCompanyDataWithFallback();
+      await showAlert('Kopia zapasowa wczytana pomyślnie! Aplikacja zostanie odświeżona.', 'Sukces', '✅');
       
-      await showAlert('Kopia zapasowa wczytana pomyślnie!', 'Sukces', '✅');
-      
-      // Wracamy na główny ekran
-      currentScreen.value = 'home';
+      // Magiczna linijka – robi automatyczne F5, gwarantując idealne załadowanie widoku
+      window.location.reload();
 
     } catch (error) {
       console.error("Błąd odczytu pliku:", error);
       await showAlert('Nie udało się odczytać pliku. Plik jest uszkodzony.', 'Błąd', '❌');
     }
     
-    event.target.value = ''; // Reset inputa po wszystkim
+    event.target.value = ''; 
   };
   
-  // Rozpoczęcie czytania pliku
   reader.readAsText(file);
 };
 
@@ -6189,14 +6234,32 @@ const closeTowarForm = async () => {
   )
   if (!confirmed) return
 
-  towary.value = towary.value.filter(
-    item => !selectedTowaryIds.value.includes(item.id)
-  )
+  const uid = auth.currentUser?.uid
+  if (!uid) return
 
-  selectedTowaryIds.value = []
-  towarySelectionMode.value = false
+  try {
+    // 1. Przygotowujemy paczkę (batch) z poleceniami usunięcia w chmurze
+    const batch = writeBatch(db)
 
-  scheduleSave()
+    selectedTowaryIds.value.forEach(id => {
+      const docRef = getUserTowarDocRef(uid, String(id))
+      batch.delete(docRef)
+    })
+
+    // 2. Odpalamy wszystkie usunięcia w Firebase w ułamku sekundy
+    await batch.commit()
+
+    // 3. Usuwamy towary z ekranu
+    towary.value = towary.value.filter(
+      item => !selectedTowaryIds.value.includes(item.id)
+    )
+
+    selectedTowaryIds.value = []
+    towarySelectionMode.value = false
+    // scheduleSave() zostało stąd całkowicie usunięte
+  } catch (error) {
+    console.error('Błąd podczas grupowego usuwania towarów:', error)
+  }
 }
 
 
@@ -6441,10 +6504,22 @@ const deleteTowar = async () => {
   )
   if (!confirmed) return
 
-  towary.value = towary.value.filter(item => item.id !== editedTowarId.value)
+  const uid = auth.currentUser?.uid
+  if (!uid) return
 
-  closeTowarForm()
-  scheduleSave()
+  try {
+    // 1. Usuwamy dokument bezpośrednio z nowej kolekcji w chmurze
+    const docRef = getUserTowarDocRef(uid, String(editedTowarId.value))
+    await deleteDoc(docRef)
+
+    // 2. Usuwamy towar z ekranu
+    towary.value = towary.value.filter(item => item.id !== editedTowarId.value)
+
+    closeTowarForm()
+    // Odcięto scheduleSave() – nie jest już tutaj potrzebne!
+  } catch (error) {
+    console.error('Błąd podczas usuwania towaru:', error)
+  }
 }
 
 
@@ -7305,18 +7380,24 @@ let unsubscribeAuth = null
 
 onMounted(() => {
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-        if (!user) {
-  if (unsubscribeCartItems) {
-    unsubscribeCartItems()
-    unsubscribeCartItems = null
-  }
+    if (!user) {
+      if (unsubscribeCartItems) {
+        unsubscribeCartItems()
+        unsubscribeCartItems = null
+      }
 
-  if (unsubscribeUserState) {
-    unsubscribeUserState()
-    unsubscribeUserState = null
-  }
+      // Odpięcie nasłuchiwania towarów przy wylogowaniu
+      if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) {
+        unsubscribeTowary()
+        unsubscribeTowary = null
+      }
 
-  isDataLoaded.value = false
+      if (unsubscribeUserState) {
+        unsubscribeUserState()
+        unsubscribeUserState = null
+      }
+
+      isDataLoaded.value = false
       isLoggedIn.value = false
       currentCompany.value = null
       resetCompanyDataState()
@@ -7335,8 +7416,11 @@ onMounted(() => {
     }
 
     await loadCompanyDataWithFallback()
-        subscribeCartItems(user.uid)
-        subscribeUserState(user.uid)
+    subscribeCartItems(user.uid)
+    subscribeUserState(user.uid)
+    
+    // Uruchomienie nasłuchiwania towarów na żywo po zalogowaniu
+    subscribeTowary(user.uid)
   })
 })
 
