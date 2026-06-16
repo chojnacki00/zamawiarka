@@ -389,36 +389,92 @@
         
         <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Cele i alarmy</h3>
         
-        <div class="item-card" style="margin-bottom: 24px;">
+        <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px;">
           <div class="supplier-form-group">
-            <label class="supplier-form-label">Docelowy Food Cost (%)</label>
-            <input v-model.number="fcSettings.target" type="number" class="supplier-form-input" placeholder="np. 30" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość, do której dążysz. Poniżej tej wartości wskaźniki będą zielone.</div>
+            <label class="supplier-form-label"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
+            <input v-model.number="fcSettings.target" type="number" class="supplier-form-input" placeholder="podaj FC %" />
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
           </div>
 
           <div class="supplier-form-group" style="margin-bottom: 0;">
-            <label class="supplier-form-label">Dopuszczalne odchylenie - Delta (%)</label>
-            <input v-model.number="fcSettings.tolerance" type="number" class="supplier-form-input" placeholder="np. 2" />
-          </div>
-
-          <div class="supplier-form-group" style="margin-top: 14px; margin-bottom: 0;">
-            <label class="supplier-form-label">Tarcza ochronna "Dojna krowa" (%)</label>
-            <input v-model.number="fcSettings.cashCowBonusPct" type="number" class="supplier-form-input" placeholder="np. 20" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile % marża kwotowa (zł) dania musi być wyższa od średniej marży całego menu, aby system zignorował zbyt wysoki Food Cost.</div>
+            <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
+            <input v-model.number="fcSettings.tolerance" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
           </div>
         </div>
 
-        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Kategorie menu</h3>
-        
-        <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
-          <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-weight: 600;">{{ cat.name }}</span>
-            <button class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px;">✏️</button>
-          </div>
-          <button class="ios-home-pill" style="margin-top: 8px; justify-content: center; width: 100%; border: 1px dashed #cbd5e1; background: transparent; color: #007aff; box-shadow: none;">
-            + Dodaj kategorię
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="font-size: 16px; color: #111827; margin: 0;">Kategorie menu</h3>
+          <button @click="openDishCategoryForm" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
+            + Dodaj
           </button>
         </div>
+        
+        <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
+          <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; align-items: center; position: relative;">
+            <div style="flex: 1; text-align: center;">
+              <div style="font-weight: 600;">{{ cat.name }}</div>
+              <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
+                Cel FC: <strong style="color: #111827;">{{ cat.targetFC ? cat.targetFC + '%' : 'wg ogólnych ustawień' }}</strong>
+              </div>
+            </div>
+            <button @click="editDishCategory(cat)" class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px; position: absolute; right: 12px;">✏️</button>
+          </div>
+        </div>
+
+
+        <div v-if="showDishCategoryForm" class="supplier-modal-overlay">
+        <div class="supplier-modal-card">
+          <h3 class="supplier-modal-title">
+            {{ dishCategoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
+          </h3>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Nazwa kategorii</label>
+            <input
+              v-model="dishCategoryForm.name"
+              type="text"
+              placeholder="Np. Przystawki, Zupy"
+              class="supplier-form-input"
+            />
+          </div>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Indywidualny Food Cost (%)</label>
+            <input
+              v-model="dishCategoryForm.targetFC"
+              type="number"
+              placeholder="wg ogólnych ustawień"
+              class="supplier-form-input"
+            />
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+              Aktualnie używany cel: 
+              <strong style="color: #111827;">{{ dishCategoryForm.targetFC ? dishCategoryForm.targetFC + '% (własny)' : fcSettings.target + '% (ogólny)' }}</strong>
+            </div>
+          </div>
+
+          <div class="supplier-modal-actions">
+            <button
+              v-if="dishCategoryFormMode === 'edit'"
+              @click="deleteDishCategory"
+              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
+            >
+              Usuń
+            </button>
+
+            <button @click="closeDishCategoryForm" class="supplier-cancel-button">
+              Anuluj
+            </button>
+
+            <button @click="saveDishCategory" class="supplier-save-button">
+              Zapisz
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+
 
       </div>
 
@@ -3950,10 +4006,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-  <!-- =========================
-     UKRYTY SZABLON PDF
-========================== -->
-<div
+  <div
   style="
     position:fixed;
     left:-99999px;
@@ -3989,53 +4042,32 @@ selectedWhoOrders !== 'wszystkie'
       </div>
     </div>
 
-    <div
-      style="
-        display:grid;
-        grid-template-columns: minmax(0, 1fr) 90px 80px 120px;
-        gap:12px;
-        padding:10px 0;
-        border-top:2px solid #111827;
-        border-bottom:2px solid #111827;
-        font-weight:700;
-        font-size:15px;
-      "
-    >
-      <div>Nazwa</div>
-      <div style="text-align:center;">Ilość</div>
-      <div style="text-align:center;">JM</div>
-      <div style="text-align:right;">Wartość</div>
-    </div>
-
-    <div
-      v-for="item in pdfPreviewOrder.items"
-      :key="item.id"
-      style="
-        display:grid;
-        grid-template-columns: minmax(0, 1fr) 90px 80px 120px;
-        gap:12px;
-        padding:10px 0;
-        border-bottom:1px solid #e5e7eb;
-        font-size:15px;
-        align-items:start;
-      "
-    >
-      <div style="word-break:break-word;">
-        {{ item.name }}
-      </div>
-
-      <div style="text-align:center;">
-        {{ item.qty }}
-      </div>
-
-      <div style="text-align:center;">
-        {{ item.unit || '' }}
-      </div>
-
-      <div style="text-align:right;">
-        {{ Number(item.value || 0).toFixed(2) }}
-      </div>
-    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:15px; text-align:left;">
+      <thead>
+        <tr>
+          <th style="padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Nazwa</th>
+          <th style="width:90px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Ilość</th>
+          <th style="width:80px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">JM</th>
+          <th style="width:120px; text-align:right; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Wartość</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in pdfPreviewOrder.items" :key="item.id">
+          <td style="padding:10px 0; border-bottom:1px solid #e5e7eb; word-break:break-word;">
+            {{ item.name }}
+          </td>
+          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+            {{ item.qty }}
+          </td>
+          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+            {{ item.unit || '' }}
+          </td>
+          <td style="text-align:right; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+            {{ Number(item.value || 0).toFixed(2) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
     <div
       style="
@@ -4102,7 +4134,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('2.1.1')
+       const appVersion = ref('2.1.4')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -4150,6 +4182,15 @@ const getUserTowaryCollectionRef = (uid) => {
 // Referencja do konkretnego towaru
 const getUserTowarDocRef = (uid, towarId) => {
   return doc(db, 'users', uid, 'towary', String(towarId))
+}
+
+// Referencje do nowej kolekcji zamówień
+const getUserOrdersCollectionRef = (uid) => {
+  return collection(db, 'users', uid, 'orders')
+}
+
+const getUserOrderDocRef = (uid, orderId) => {
+  return doc(db, 'users', uid, 'orders', String(orderId))
 }
 
 
@@ -4240,8 +4281,8 @@ const handleLogout = async () => {
   orderTimings: orderTimings.value,
   units: units.value,
   categories: categories.value,
-  whoOrders: whoOrders.value,
-  ordersRegister: ordersRegister.value
+  whoOrders: whoOrders.value
+  // ordersRegister ZABRANE - teraz żyje we własnej kolekcji!
 })
 
 const applyAppState = (state) => {
@@ -4257,7 +4298,7 @@ const applyAppState = (state) => {
   units.value = safeState.units
   categories.value = safeState.categories
   whoOrders.value = safeState.whoOrders
-  ordersRegister.value = safeState.ordersRegister
+  // ordersRegister pobierane bezpośrednio z onSnapshot w subscribeOrders
 }
 
 
@@ -4368,6 +4409,29 @@ const subscribeCartItems = (uid) => {
   customCartItems.value = nextCustomCartItems
 })
 }
+
+
+let unsubscribeOrders = null
+
+const subscribeOrders = (uid) => {
+  if (unsubscribeOrders) {
+    unsubscribeOrders()
+    unsubscribeOrders = null
+  }
+
+  const ordersRef = getUserOrdersCollectionRef(uid)
+
+  unsubscribeOrders = onSnapshot(ordersRef, (snapshot) => {
+    const nextOrders = []
+    snapshot.forEach((docSnap) => {
+      nextOrders.push(docSnap.data())
+    })
+    // Aktualizujemy listę i upewniamy się, że najnowsze są na górze
+    ordersRegister.value = nextOrders.sort((a, b) => b.id - a.id)
+  })
+}
+
+
 
 // Zmienna do trzymania "połączenia" na żywo z towarami
 let unsubscribeTowary = null
@@ -4664,6 +4728,86 @@ const towarFormSource = ref('towary')
       { id: 1, name: 'Przystawki' },
       { id: 2, name: 'Dania główne' }
     ])
+
+
+    // Stan modala i formularza kategorii menu
+    const showDishCategoryForm = ref(false)
+    const dishCategoryFormMode = ref('add') // 'add' lub 'edit'
+    const editedDishCategoryId = ref(null)
+
+    const dishCategoryForm = ref({
+      name: '',
+      targetFC: '' // Jeśli puste, dziedziczy po ogólnym FC
+    })
+
+
+    // Funkcje do zarządzania kategoriami menu (Rentowność)
+    const openDishCategoryForm = () => {
+      dishCategoryFormMode.value = 'add'
+      editedDishCategoryId.value = null
+      dishCategoryForm.value = { name: '', targetFC: '' }
+      showDishCategoryForm.value = true
+    }
+
+    const closeDishCategoryForm = () => {
+      showDishCategoryForm.value = false
+      dishCategoryFormMode.value = 'add'
+      editedDishCategoryId.value = null
+      dishCategoryForm.value = { name: '', targetFC: '' }
+    }
+
+    const editDishCategory = (category) => {
+      dishCategoryFormMode.value = 'edit'
+      editedDishCategoryId.value = category.id
+      dishCategoryForm.value = { 
+        name: category.name || '', 
+        targetFC: category.targetFC !== undefined && category.targetFC !== null ? String(category.targetFC) : '' 
+      }
+      showDishCategoryForm.value = true
+    }
+
+    const saveDishCategory = async () => {
+      const name = cleanName(dishCategoryForm.value.name)
+      if (!name) return
+
+      // Sprawdzenie, czy kategoria o takiej nazwie już istnieje (wykorzystujemy Twoją funkcję hasDuplicateName)
+      if (hasDuplicateName(dishCategories.value, name, editedDishCategoryId.value)) {
+        await showAlert('Taka kategoria już istnieje', 'Duplikat', '⚠️')
+        return
+      }
+
+      // Formatowanie FC: jeśli ktoś wpisał liczbę, zapisujemy ją, jeśli puste - dajemy null
+      const targetFCParsed = dishCategoryForm.value.targetFC !== '' ? Number(dishCategoryForm.value.targetFC) : null
+
+      if (dishCategoryFormMode.value === 'edit' && editedDishCategoryId.value !== null) {
+        // Zapisujemy edycję
+        const itemToUpdate = dishCategories.value.find(item => item.id === editedDishCategoryId.value)
+        if (itemToUpdate) {
+          itemToUpdate.name = name
+          itemToUpdate.targetFC = targetFCParsed
+        }
+      } else {
+        // Dodajemy nową kategorię
+        dishCategories.value.push({
+          id: Date.now(),
+          name,
+          targetFC: targetFCParsed
+        })
+      }
+
+      closeDishCategoryForm()
+      // Później dopniemy to do zapisu w Firebase!
+    }
+
+    const deleteDishCategory = async () => {
+      if (editedDishCategoryId.value === null) return
+
+      const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę kategorię?', 'Usuń kategorię', '🗑️')
+      if (!confirmed) return
+
+      dishCategories.value = dishCategories.value.filter(item => item.id !== editedDishCategoryId.value)
+      closeDishCategoryForm()
+    }
 
 
 
@@ -6944,13 +7088,16 @@ const bValid = !isNaN(bOrder) && bOrder > 0
 
 
 // =========================
-// ZAPIS AKTUALNEGO ZAMÓWIENIA DO REJESTRU
+// ZAPIS AKTUALNEGO ZAMÓWIENIA DO REJESTRU (OSOBNA KOLEKCJA)
 // =========================
 const saveCurrentOrderToRegister = async () => {
   if (filteredCartItems.value.length === 0) {
     await showAlert('Brak pozycji do zapisania w aktualnym widoku koszyka', 'Brak pozycji', '⚠️')
     return null
   }
+
+  const user = auth.currentUser
+  if (!user) return null
 
   const now = new Date()
 
@@ -7002,10 +7149,46 @@ const saveCurrentOrderToRegister = async () => {
     items
   }
 
-  ordersRegister.value.unshift(orderRecord)
-  scheduleSave()
-  return orderRecord
-  
+  try {
+    // 1. TWARDY ZAPIS: Aplikacja musi poczekać, aż baza w chmurze potwierdzi zapis.
+    const docRef = getUserOrderDocRef(user.uid, orderRecord.id)
+    await setDoc(docRef, orderRecord)
+    
+    // Zwracamy obiekt dla mechanizmu PDF. Nasłuch onSnapshot sam zaktualizuje widok historii.
+    return orderRecord
+  } catch (error) {
+    console.error('Błąd zapisu do chmury:', error)
+    await showAlert('Błąd połączenia. Zamówienie mogło nie zostać zapisane.', 'Błąd', '❌')
+    return null
+  }
+}
+
+// =========================
+// REJESTR ZAMÓWIEŃ - USUWANIE (Z CHMURY)
+// =========================
+const deleteOrderFromRegister = async (orderId) => {
+  const confirmed = await showConfirm(
+    'Czy na pewno chcesz usunąć to zamówienie?',
+    'Potwierdź usunięcie',
+    '🗑️'
+  )
+
+  if (!confirmed) return
+
+  const user = auth.currentUser
+  if (!user) return
+
+  try {
+    const docRef = getUserOrderDocRef(user.uid, orderId)
+    await deleteDoc(docRef)
+
+    if (expandedOrderId.value === orderId) {
+      expandedOrderId.value = null
+    }
+  } catch (error) {
+    console.error('Błąd usuwania:', error)
+    await showAlert('Nie udało się usunąć zamówienia.', 'Błąd', '❌')
+  }
 }
 
 
@@ -7104,12 +7287,17 @@ const buildOrderPayload = () => {
 // =========================
 // PDF - ELEMENT HTML DO PDF Z POPRAWNYMI MARGINESAMI
 // =========================
+// =========================
+// PDF - ELEMENT HTML DO PDF Z POPRAWNYMI MARGINESAMI (ZOPTYMALIZOWANE DLA TELEFONÓW)
+// =========================
 const createPdfFromElement = async (element, fileName) => {
   if (!element) return null
 
+  // 1. Zmiana skali na 1, aby telefon nie dusił się przy renderowaniu Canvasa
   const canvas = await html2canvas(element, {
-    scale: 2,
-    backgroundColor: '#ffffff'
+    scale: 1, 
+    backgroundColor: '#ffffff',
+    logging: false // Wyłączenie logów biblioteki też lekko odciąża proces
   })
 
   const pdf = new jsPDF({
@@ -7153,14 +7341,16 @@ const createPdfFromElement = async (element, fileName) => {
       sliceHeight
     )
 
-    const imgData = pageCanvas.toDataURL('image/png')
+    // 2. Zmiana ciężkiego PNG na lekki JPEG. Wartość 0.8 to świetny kompromis jakości do wagi pliku.
+    const imgData = pageCanvas.toDataURL('image/jpeg', 0.8)
     const imgHeight = (sliceHeight * imgWidth) / canvas.width
 
     if (pageIndex > 0) {
       pdf.addPage()
     }
 
-    pdf.addImage(imgData, 'PNG', pageMargin, pageMargin, imgWidth, imgHeight)
+    // 3. Wstrzyknięcie skompresowanego JPEG do pliku PDF
+    pdf.addImage(imgData, 'JPEG', pageMargin, pageMargin, imgWidth, imgHeight)
 
     sourceY += sliceHeight
     pageIndex += 1
@@ -7202,25 +7392,7 @@ const toggleOrderDetails = (orderId) => {
 }
 
 
-// =========================
-// REJESTR ZAMÓWIEŃ - USUWANIE
-// =========================
-const deleteOrderFromRegister = async (orderId) => {
-  const confirmed = await showConfirm(
-    'Czy na pewno chcesz usunąć to zamówienie?',
-    'Potwierdź usunięcie',
-    '🗑️'
-  )
 
-  if (!confirmed) return
-
-  ordersRegister.value = ordersRegister.value.filter(order => order.id !== orderId)
-
-  if (expandedOrderId.value === orderId) {
-    expandedOrderId.value = null
-  }
-  scheduleSave()
-}
 
 
 // =========================
@@ -7391,6 +7563,12 @@ onMounted(() => {
         unsubscribeTowary()
         unsubscribeTowary = null
       }
+      
+      if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) {
+        unsubscribeOrders()
+        unsubscribeOrders = null
+      }
+
 
       if (unsubscribeUserState) {
         unsubscribeUserState()
@@ -7419,8 +7597,9 @@ onMounted(() => {
     subscribeCartItems(user.uid)
     subscribeUserState(user.uid)
     
-    // Uruchomienie nasłuchiwania towarów na żywo po zalogowaniu
+   // Uruchomienie nasłuchiwania na żywo po zalogowaniu
     subscribeTowary(user.uid)
+    subscribeOrders(user.uid)
   })
 })
 
@@ -7895,6 +8074,14 @@ const openZamawiarkaMenuFromHome = () => {
 
         fcSettings,
         dishCategories,
+        showDishCategoryForm,
+      dishCategoryFormMode,
+      dishCategoryForm,
+      openDishCategoryForm,
+      closeDishCategoryForm,
+      editDishCategory,
+      saveDishCategory,
+      deleteDishCategory,
         backupInputRef,
       triggerFileInput,
       wczytajBackup,
