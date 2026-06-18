@@ -4196,8 +4196,11 @@ const createEmptyCloudState = () => ({
   units: [],
   categories: [],
   whoOrders: [],
-  ordersRegister: []
+  ordersRegister: [],
+  fcSettings: { target: 30, tolerance: 5 },
+  dishCategories: []
 })
+
 
 const getUserStateDocRef = (uid) => {
   return doc(db, 'users', uid, 'app', 'state')
@@ -4311,15 +4314,16 @@ const handleLogout = async () => {
 
 
 
-  const collectAppState = () => ({
+ const collectAppState = () => ({
   suppliers: suppliers.value,
   towary: towary.value,
   warehouses: warehouses.value,
   orderTimings: orderTimings.value,
   units: units.value,
   categories: categories.value,
-  whoOrders: whoOrders.value
-  // ordersRegister ZABRANE - teraz żyje we własnej kolekcji!
+  whoOrders: whoOrders.value,
+  fcSettings: fcSettings.value,
+  dishCategories: dishCategories.value
 })
 
 const applyAppState = (state) => {
@@ -4335,7 +4339,14 @@ const applyAppState = (state) => {
   units.value = safeState.units
   categories.value = safeState.categories
   whoOrders.value = safeState.whoOrders
-  // ordersRegister pobierane bezpośrednio z onSnapshot w subscribeOrders
+  
+  if (state?.fcSettings) {
+    fcSettings.value = state.fcSettings
+  }
+  
+  if (state?.dishCategories) {
+    dishCategories.value = state.dishCategories
+  }
 }
 
 
@@ -4756,9 +4767,10 @@ const towarFormSource = ref('towary')
     // =========================
     const fcSettings = ref({
       target: 30, // docelowy % Food Cost
-      tolerance: 2, // dopuszczalna delta (odchylenie w %)
-      cashCowBonusPct: 20 // O ile % marża (zł) ma przebić średnią, by anulować alarm
+      tolerance: 5 // dopuszczalna delta (odchylenie w %)
     })
+
+    const isSettingsDirty = ref(false)
     
     // Lista kategorii dań (na start dajemy przykładowe)
     const dishCategories = ref([
@@ -4833,7 +4845,7 @@ const towarFormSource = ref('towary')
       }
 
       closeDishCategoryForm()
-      // Później dopniemy to do zapisu w Firebase!
+      scheduleSave()
     }
 
     const deleteDishCategory = async () => {
@@ -4844,6 +4856,7 @@ const towarFormSource = ref('towary')
 
       dishCategories.value = dishCategories.value.filter(item => item.id !== editedDishCategoryId.value)
       closeDishCategoryForm()
+      scheduleSave()
     }
 
 
