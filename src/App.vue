@@ -3888,6 +3888,34 @@ selectedWhoOrders !== 'wszystkie'
 
   </div>
 
+
+  <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
+  <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+    
+    <div style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f9fafb;">
+      <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #111827;">Podgląd zamówienia</h3>
+      <button @click="closePdfViewer" style="background: none; border: none; font-size: 28px; line-height: 1; cursor: pointer; color: #6b7280; padding: 0;">&times;</button>
+    </div>
+    
+    <div style="flex-grow: 1; background: #e5e7eb; position: relative; height: 65vh; width: 100%;">
+      <iframe :src="pdfViewerUrl" style="width: 100%; height: 100%; border: none;" title="Podgląd PDF"></iframe>
+    </div>
+    
+    <div style="padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;">
+      <button @click="closePdfViewer" style="padding: 10px 20px; border-radius: 8px; border: 1px solid #d1d5db; background: #ffffff; color: #374151; font-weight: bold; cursor: pointer;">
+        Zamknij
+      </button>
+      <button @click="sharePdf" style="padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <span style="font-size: 16px;">📤</span> Udostępnij / Zapisz
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+
+
   <!-- =========================
      MODAL POWIADOMIEŃ iOS
 ========================== -->
@@ -4134,7 +4162,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('2.1.4')
+       const appVersion = ref('2.1.8')
 
     // =========================
     // LOGOWANIE - STAN SESJI
@@ -4572,7 +4600,7 @@ const eksportujBackup = async () => {
     }
 
     // 2. Pobieramy pozostałe kolekcje
-    const collectionsToFetch = ['towary', 'cartItems', 'kategorie', 'magazyny', 'whoOrders'];
+    const collectionsToFetch = ['towary', 'cartItems'];
     for (const colName of collectionsToFetch) {
       const colRef = collection(db, 'users', user.uid, colName);
       const snapshot = await getDocs(colRef);
@@ -4886,6 +4914,17 @@ const customCartItems = ref([])
     const expandedOrderId = ref(null)
     const pdfTemplateRef = ref(null)
     const pdfPreviewOrder = ref(null)
+
+
+    // =========================
+    // ZMIENNE DO PODGLĄDU PDF
+    // =========================
+    const showPdfViewerModal = ref(false)
+    const pdfViewerUrl = ref('')
+    const pdfViewerFileName = ref('')
+    const currentPdfBlob = ref(null)
+
+
 
     const showTowaryPdfModal = ref(false)
 const towaryPdfTemplateRef = ref(null)
@@ -7220,7 +7259,6 @@ if (!confirmed) return
     return
   }
 
-  pdfResult.doc.save(pdfResult.fileName)
 
   zamawiarkaView.value = 'historia'
 }
@@ -7364,22 +7402,69 @@ const createPdfFromElement = async (element, fileName) => {
 
 
 // =========================
+// OBSŁUGA WBUDOWANEGO PODGLĄDU PDF (ZAPOBIEGA RESTARTOM iOS)
+// =========================
+const closePdfViewer = () => {
+  showPdfViewerModal.value = false
+  if (pdfViewerUrl.value) {
+    URL.revokeObjectURL(pdfViewerUrl.value)
+    pdfViewerUrl.value = ''
+  }
+  currentPdfBlob.value = null
+}
+
+const sharePdf = async () => {
+  if (!currentPdfBlob.value) return
+
+  const file = new File([currentPdfBlob.value], pdfViewerFileName.value, { type: 'application/pdf' })
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'Zamówienie GastroManager',
+        text: 'Przesyłam zamówienie w załączniku.'
+      })
+    } catch (error) {
+      console.log('Udostępnianie anulowane przez użytkownika', error)
+    }
+  } else {
+    // Tradycyjne pobieranie dla przeglądarek na PC
+    const a = document.createElement('a')
+    a.href = pdfViewerUrl.value
+    a.download = pdfViewerFileName.value
+    a.click()
+  }
+}
+
+// =========================
 // GENEROWANIE PDF
 // =========================
 const generateOrderPdf = async (order) => {
   if (!order) return null
 
   pdfPreviewOrder.value = order
-await nextTick()
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 150))
 
-// dajemy Vue chwilę na wyrenderowanie ukrytego szablonu PDF
-await new Promise(resolve => setTimeout(resolve, 150))
-
-const element = pdfTemplateRef.value
-
+  const element = pdfTemplateRef.value
   if (!element) return null
 
-  return await createPdfFromElement(element, getOrderFileName(order))
+  const pdfResult = await createPdfFromElement(element, getOrderFileName(order))
+  
+  if (pdfResult && pdfResult.doc) {
+    // ZAMIAST ZAPISYWAĆ, WYDOBYWAMY WIRTUALNY PLIK Z PAMIĘCI
+    const pdfBlob = pdfResult.doc.output('blob')
+    
+    currentPdfBlob.value = pdfBlob
+    pdfViewerFileName.value = pdfResult.fileName
+    pdfViewerUrl.value = URL.createObjectURL(pdfBlob)
+    
+    // Otwieramy nasz wbudowany podgląd
+    showPdfViewerModal.value = true
+  }
+  
+  return pdfResult
 }
 
 
@@ -7540,7 +7625,6 @@ if (!confirmed) return
     return
   }
 
-  pdfResult.doc.save(pdfResult.fileName)
 }
 
 
@@ -8040,6 +8124,10 @@ const openZamawiarkaMenuFromHome = () => {
       deleteOrderFromRegister,
       generatePdfFromRegister,
       showTowaryPdfModal,
+      showPdfViewerModal,
+      pdfViewerUrl,
+      closePdfViewer,
+      sharePdf,
       openTowaryPdfModal,
       handleGenerateTowaryPdf,
       towaryPdfTemplateRef,
