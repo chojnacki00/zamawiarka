@@ -391,18 +391,22 @@
         
         <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Cele i alarmy</h3>
         
-        <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px;">
+        <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
           <div class="supplier-form-group">
             <label class="supplier-form-label"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
-            <input v-model.number="fcSettings.target" type="number" class="supplier-form-input" placeholder="podaj FC %" />
+            <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
             <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
           </div>
 
           <div class="supplier-form-group" style="margin-bottom: 0;">
             <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
-            <input v-model.number="fcSettings.tolerance" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
+            <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
             <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
           </div>
+
+          <button v-if="isSettingsDirty" @click="saveSettings" style="margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #28a745; color: white; font-weight: 700; cursor: pointer;">
+            ✅ Zapisz zmiany
+          </button>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -4347,6 +4351,7 @@ const applyAppState = (state) => {
   if (state?.dishCategories) {
     dishCategories.value = state.dishCategories
   }
+  isSettingsDirty.value = false
 }
 
 
@@ -4857,6 +4862,16 @@ const towarFormSource = ref('towary')
       dishCategories.value = dishCategories.value.filter(item => item.id !== editedDishCategoryId.value)
       closeDishCategoryForm()
       scheduleSave()
+    }
+
+
+    const markSettingsDirty = () => {
+      isSettingsDirty.value = true
+    }
+
+    const saveSettings = () => {
+      scheduleSave()
+      isSettingsDirty.value = false
     }
 
 
@@ -8196,6 +8211,12 @@ const openZamawiarkaMenuFromHome = () => {
         backupInputRef,
       triggerFileInput,
       wczytajBackup,
+
+      isSettingsDirty,
+      markSettingsDirty,
+      saveSettings,
+
+      
 
 
     }
