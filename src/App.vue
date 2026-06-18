@@ -133,6 +133,7 @@
       
       <!-- KAFELEK 1: ZAMAWIARKA -->
       <button
+        v-if="aktywneModuly.includes('zamawiarka')"
         @click="openZamawiarkaMenuFromHome"
         class="ios-menu-tile"
         style="margin: 0; min-height: 140px; box-sizing: border-box;"
@@ -149,6 +150,7 @@
 
       <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
       <button
+        v-if="aktywneModuly.includes('rentownosc')"
         @click="currentScreen = 'receptury'; recepturyView = 'dashboard'"
         class="ios-menu-tile"
         style="margin: 0; min-height: 140px; box-sizing: border-box;"
@@ -4164,6 +4166,13 @@ export default {
 
        const appVersion = ref('2.1.8')
 
+
+       // =========================
+    // FEATURE FLAGS (UPRAWNIENIA)
+    // =========================
+    const aktywneModuly = ref(['zamawiarka', 'rentownosc'])
+
+
     // =========================
     // LOGOWANIE - STAN SESJI
     // =========================
@@ -7924,6 +7933,7 @@ const openZamawiarkaMenuFromHome = () => {
     return {
       settingsView,
       appVersion,
+      aktywneModuly,
       eksportujBackup,
       recepturyView,
       isLoggedIn,
