@@ -354,10 +354,87 @@
           </button>
         </div>
 
-        <div class="empty-state" style="margin-top: 20px;">
-          <div style="font-size: 40px; margin-bottom: 10px;">🍽️</div>
-          <div class="empty-title">Menu jest puste</div>
-          <div class="empty-subtitle">Dodaj pierwsze danie, aby zacząć liczyć Food Cost.</div>
+        <!-- Lista kategorii -->
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
+          <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
+            
+                        <button 
+              @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
+              class="item-card" 
+              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #ddd', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#ffffff' }"
+            >
+              <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                  {{ menuItems.filter(item => item.category === cat.name).length }} pozycji
+                </span>
+                <span style="font-size: 16px; color: #2563eb;">
+                  {{ selectedCategory === cat.name ? '▲' : '▼' }}
+                </span>
+              </div>
+            </button>
+
+                        <div v-if="selectedCategory === cat.name" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px;">
+              
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="display: flex; gap: 16px;">
+                  <div>
+                    <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
+                    <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+                      {{ currentCategoryFC }}%
+                    </div>
+                  </div>
+                  <div style="width: 1px; background: #e2e8f0;"></div>
+                  <div>
+                    <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #111827;">
+                      {{ cat.targetFC || fcSettings.target }}%
+                    </div>
+                  </div>
+                </div>
+
+                                <button 
+                  @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
+                  style="display: flex; align-items: center; gap: 4px; background: none; border: none; color: #007aff; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 8px; border-radius: 6px;"
+                >
+                  Sortuj FC
+                  <span style="font-size: 16px; line-height: 1;">
+                    {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
+                  </span>
+                </button>
+              </div>
+
+                            <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
+                Brak dań w tej kategorii.
+              </div>
+
+              <div 
+                v-for="item in filteredMenuItems" 
+                :key="item.id" 
+                class="item-card" 
+                style="padding: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none;"
+              >
+                <div>
+                  <div style="font-weight: 700; font-size: 14px; color: #111827;">{{ item.name }}</div>
+                  <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Koszt: {{ item.koszt || 0 }} zł | Cena: {{ item.cena || 0 }} zł</div>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div :style="{ fontWeight: '800', fontSize: '13px', padding: '4px 8px', borderRadius: '6px', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#fee2e2' : '#dcfce7', color: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+                    {{ (item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0 }}%
+                  </div>
+                  <button 
+                    @click="duplicateMenuItem(item)" 
+                    class="supplier-edit-button" 
+                    style="width: 32px; height: 32px; font-size: 14px;" 
+                    title="Duplikuj pozycję"
+                  >
+                    📑
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div> 
@@ -4193,16 +4270,16 @@ export default {
 
 
 const createEmptyCloudState = () => ({
-  suppliers: [],
-  towary: [],
-  warehouses: [],
-  orderTimings: [],
-  units: [],
-  categories: [],
-  whoOrders: [],
-  ordersRegister: [],
+  suppliers: suppliers.value,
+  towary: towary.value,
+  warehouses: warehouses.value,
+  orderTimings: orderTimings.value,
+  units: units.value,
+  categories: categories.value,
+  whoOrders: whoOrders.value,
   fcSettings: { target: 30, tolerance: 5 },
-  dishCategories: []
+  dishCategories: [],
+  menuItems: []
 })
 
 
@@ -4318,7 +4395,7 @@ const handleLogout = async () => {
 
 
 
- const collectAppState = () => ({
+const collectAppState = () => ({
   suppliers: suppliers.value,
   towary: towary.value,
   warehouses: warehouses.value,
@@ -4327,7 +4404,8 @@ const handleLogout = async () => {
   categories: categories.value,
   whoOrders: whoOrders.value,
   fcSettings: fcSettings.value,
-  dishCategories: dishCategories.value
+  dishCategories: dishCategories.value,
+  menuItems: menuItems.value
 })
 
 const applyAppState = (state) => {
@@ -4351,6 +4429,11 @@ const applyAppState = (state) => {
   if (state?.dishCategories) {
     dishCategories.value = state.dishCategories
   }
+
+  if (state?.menuItems) {
+    menuItems.value = state.menuItems
+  }
+  
   isSettingsDirty.value = false
 }
 
@@ -4778,10 +4861,46 @@ const towarFormSource = ref('towary')
     const isSettingsDirty = ref(false)
     
     // Lista kategorii dań (na start dajemy przykładowe)
-    const dishCategories = ref([
-      { id: 1, name: 'Przystawki' },
-      { id: 2, name: 'Dania główne' }
-    ])
+    const dishCategories = ref([])
+
+    const menuItems = ref([])
+
+    const selectedCategory = ref(null)
+
+    // Stan sortowania: 'desc' (od najwyższego FC) lub 'asc' (od najniższego FC)
+    const fcSortOrder = ref('desc')
+
+    const filteredMenuItems = computed(() => {
+      // 1. Filtrowanie
+      let filtered = menuItems.value
+      if (selectedCategory.value) {
+        filtered = filtered.filter(item => item.category === selectedCategory.value)
+      }
+      
+      // 2. Sortowanie po wyliczonym FC (koszt / cena)
+      return filtered.slice().sort((a, b) => {
+        const fcA = (a.cena && a.cena > 0) ? (a.koszt / a.cena) : 0
+        const fcB = (b.cena && b.cena > 0) ? (b.koszt / b.cena) : 0
+        
+        return fcSortOrder.value === 'desc' ? fcB - fcA : fcA - fcB
+      })
+    })
+
+    // Obliczanie średniego FC dla aktualnie wyświetlanej kategorii
+    const currentCategoryFC = computed(() => {
+      if (filteredMenuItems.value.length === 0) return 0
+      
+      let totalCost = 0
+      let totalPrice = 0
+      
+      filteredMenuItems.value.forEach(item => {
+        totalCost += Number(item.koszt || 0)
+        totalPrice += Number(item.cena || 0)
+      })
+      
+      if (totalPrice === 0) return 0
+      return ((totalCost / totalPrice) * 100).toFixed(1)
+    })
 
 
     // Stan modala i formularza kategorii menu
@@ -4863,6 +4982,17 @@ const towarFormSource = ref('towary')
       closeDishCategoryForm()
       scheduleSave()
     }
+
+    // --- FUNKCJE MENU ---
+const duplicateMenuItem = (item) => {
+  const newItem = {
+    ...item,
+    id: Date.now(), 
+    name: `${item.name} (kopia)`
+  }
+  menuItems.value.push(newItem)
+  scheduleSave()
+}
 
 
     const markSettingsDirty = () => {
@@ -8198,9 +8328,14 @@ const openZamawiarkaMenuFromHome = () => {
         animateMenuTiles,
         openZamawiarkaMenuFromHome,
 
-        fcSettings,
-        dishCategories,
-        showDishCategoryForm,
+       fcSettings,
+      dishCategories,
+      menuItems,
+      selectedCategory,
+      fcSortOrder,
+      filteredMenuItems,
+      currentCategoryFC,
+      showDishCategoryForm,
       dishCategoryFormMode,
       dishCategoryForm,
       openDishCategoryForm,
@@ -8208,6 +8343,7 @@ const openZamawiarkaMenuFromHome = () => {
       editDishCategory,
       saveDishCategory,
       deleteDishCategory,
+      duplicateMenuItem,
         backupInputRef,
       triggerFileInput,
       wczytajBackup,
