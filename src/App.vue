@@ -349,7 +349,7 @@
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
           <h3 style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
-          <button @click="recepturyView = 'kalkulator'" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
+          <button @click="openDishForm()" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
             + Dodaj danie
           </button>
         </div>
@@ -440,6 +440,17 @@
         </div>
 
       </div> 
+
+
+
+      
+
+
+
+
+
+
+
       <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
         <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
           <span style="font-size: 24px;">📋</span>
@@ -455,6 +466,73 @@
         </button>
       </div>
     </div>
+
+
+
+    <div v-if="currentScreen === 'receptury' && recepturyView === 'form'" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; background: #f8fafc; padding-bottom: 100px;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <button @click="closeDishForm" style="background: none; border: none; color: #64748b; font-size: 24px; font-weight: 700; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Wróć do listy">
+          ←
+        </button>
+        <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
+          {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
+        </h2>
+        <button @click="saveDishForm" style="background: #22c55e; border: none; color: #ffffff; font-size: 20px; cursor: pointer; padding: 8px 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(34,197,94,0.2);" title="Zapisz">
+          💾
+        </button>
+      </div>
+
+      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+        
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Nazwa dania w karcie</label>
+          <input v-model="editingDish.name" type="text" placeholder="Wpisz nazwę..." autocomplete="off" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 600; color: #1e293b; box-sizing: border-box; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Kategoria</label>
+          <select v-model="editingDish.category" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fafafa; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%2364748b%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; font-size: 15px; font-weight: 600; color: #1e293b; box-sizing: border-box; appearance: none; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#fafafa'">
+            <option value="" disabled selected>Wybierz kategorię...</option>
+            <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
+            <input 
+              v-model.number="editingDish.cena" 
+              type="number" 
+              step="0.01" 
+              @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
+              @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
+              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: right; outline: none; transition: all 0.2s;" 
+              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+          </div>
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">VAT (%)</label>
+            <input 
+              v-model.number="editingDish.vat" 
+              type="number" 
+              placeholder="np. 8"
+              @focus="editingDish.vat === 0 ? editingDish.vat = '' : null"
+              @blur="editingDish.vat === '' ? editingDish.vat = 0 : null"
+              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 700; color: #1e293b; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
+              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; color: #94a3b8; font-weight: 600;">
+        Sekcja budowania receptury (kalkulator surowców) zaraz tu wjedzie.
+      </div>
+    </div>
+
+
+
 
 
     <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
@@ -5092,11 +5170,59 @@ const deleteMenuItem = async (id) => {
       }
     }
 
-    // Zalążek funkcji do Fazy 3 (otwieranie wielkiego formularza edycji receptury)
-    const openDishForm = (item) => {
-      closeDishDetails()
-      // Tutaj w następnym kroku zmienimy widok (np. recepturyView.value = 'form')
-      console.log('Otwieram formularz dla:', item)
+    // --- WIDOK FORMULARZA RECEPTURY ---
+    const editingDish = ref(null)
+
+    const openDishForm = (item = null) => {
+      if (showDishDetailsModal.value) closeDishDetails()
+
+      if (item) {
+        editingDish.value = JSON.parse(JSON.stringify(item))
+        if (!editingDish.value.recipe) editingDish.value.recipe = []
+      } else {
+        // Nowe danie
+        editingDish.value = {
+          id: Date.now(),
+          name: '',
+          category: '', // Zostawiamy puste, żeby wymusić komunikat "Wybierz kategorię..."
+          cena: 0,
+          koszt: 0,
+          vat: 8, 
+          recipe: []
+        }
+      }
+      recepturyView.value = 'form'
+    }
+
+    const closeDishForm = () => {
+      editingDish.value = null
+      recepturyView.value = 'lista'
+    }
+
+    const saveDishForm = async () => { // Zmieniamy na async
+      // 1. Walidacja nazwy
+      if (!editingDish.value.name || editingDish.value.name.trim() === '') {
+        await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
+        return // Zatrzymujemy funkcję, zapis nie dojdzie do skutku
+      }
+
+      // 2. Walidacja kategorii
+      if (!editingDish.value.category || editingDish.value.category === '') {
+        await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
+        return // Zatrzymujemy funkcję, zapis nie dojdzie do skutku
+      }
+      
+      const index = menuItems.value.findIndex(i => i.id === editingDish.value.id)
+      
+      if (index !== -1) {
+        menuItems.value[index] = editingDish.value
+      } else {
+        menuItems.value.push(editingDish.value)
+      }
+      
+      scheduleSave()
+      closeDishForm()
+      // Opcjonalnie: jeśli chcesz potwierdzenie zapisu, możesz tu dodać kolejny showAlert
     }
 
 
@@ -8443,6 +8569,9 @@ const openZamawiarkaMenuFromHome = () => {
       handleDuplicateFromDetails,
       handleDeleteFromDetails,
       openDishForm,
+      editingDish,
+      closeDishForm,
+      saveDishForm,
       selectedCategory,
       fcSortOrder,
       filteredMenuItems,
