@@ -4431,8 +4431,8 @@ const applyAppState = (state) => {
   }
 
   if (state?.menuItems) {
-    menuItems.value = state.menuItems
-  }
+        menuItems.value = state.menuItems
+      }
   
   isSettingsDirty.value = false
 }
@@ -4860,9 +4860,7 @@ const towarFormSource = ref('towary')
 
     const isSettingsDirty = ref(false)
     
-    // Lista kategorii dań (na start dajemy przykładowe)
-    const dishCategories = ref([])
-
+   const dishCategories = ref([])
     const menuItems = ref([])
 
     const selectedCategory = ref(null)
