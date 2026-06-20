@@ -374,20 +374,20 @@
               </div>
             </button>
 
-                        <div v-if="selectedCategory === cat.name" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px;">
+                        <div v-if="selectedCategory === cat.name" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
               
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
                 <div style="display: flex; gap: 16px;">
                   <div>
-                    <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
+                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
                     <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
                       {{ currentCategoryFC }}%
                     </div>
                   </div>
-                  <div style="width: 1px; background: #e2e8f0;"></div>
+                  <div style="width: 1px; background: #cbd5e1;"></div>
                   <div>
-                    <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #111827;">
+                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #1e293b;">
                       {{ cat.targetFC || fcSettings.target }}%
                     </div>
                   </div>
@@ -395,42 +395,54 @@
 
                                 <button 
                   @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
-                  style="display: flex; align-items: center; gap: 4px; background: none; border: none; color: #007aff; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 8px; border-radius: 6px;"
+                  style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
                 >
-                  Sortuj FC
-                  <span style="font-size: 16px; line-height: 1;">
+                  Sortuj
+                  <span style="font-size: 14px; line-height: 1;">
                     {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
                   </span>
                 </button>
               </div>
 
-                            <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
-                Brak dań w tej kategorii.
-              </div>
-
-              <div 
-                v-for="item in filteredMenuItems" 
-                :key="item.id" 
-                class="item-card" 
-                style="padding: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none;"
-              >
-                <div>
-                  <div style="font-weight: 700; font-size: 14px; color: #111827;">{{ item.name }}</div>
-                  <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Koszt: {{ item.koszt || 0 }} zł | Cena: {{ item.cena || 0 }} zł</div>
+                            <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
+                  Brak dań w tej kategorii.
                 </div>
-                
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <div :style="{ fontWeight: '800', fontSize: '13px', padding: '4px 8px', borderRadius: '6px', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#fee2e2' : '#dcfce7', color: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
-                    {{ (item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0 }}%
+
+                <div 
+                  v-for="item in filteredMenuItems" 
+                  :key="item.id" 
+                  class="item-card" 
+                  style="padding: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none;"
+                >
+                  <div>
+                    <div style="font-weight: 700; font-size: 14px; color: #111827;">{{ item.name }}</div>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Koszt: {{ item.koszt || 0 }} zł | Cena: {{ item.cena || 0 }} zł</div>
                   </div>
-                  <button 
-                    @click="duplicateMenuItem(item)" 
-                    class="supplier-edit-button" 
-                    style="width: 32px; height: 32px; font-size: 14px;" 
-                    title="Duplikuj pozycję"
-                  >
-                    📑
-                  </button>
+                  
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div :style="{ fontWeight: '800', fontSize: '13px', padding: '4px 8px', borderRadius: '6px', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#fee2e2' : '#dcfce7', color: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+                      {{ (item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0 }}%
+                    </div>
+                    
+                                        <button 
+                      @click="duplicateMenuItem(item)" 
+                      class="supplier-edit-button" 
+                      style="width: 32px; height: 32px; font-size: 14px;" 
+                      title="Duplikuj pozycję"
+                    >
+                      📑
+                    </button>
+
+                                        <button 
+                      @click="deleteMenuItem(item.id)" 
+                      class="supplier-edit-button" 
+                      style="width: 32px; height: 32px; font-size: 14px; background: #fee2e2; color: #dc2626;" 
+                      title="Usuń pozycję"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4992,6 +5004,14 @@ const duplicateMenuItem = (item) => {
   scheduleSave()
 }
 
+const deleteMenuItem = async (id) => {
+      const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę pozycję z menu?', 'Usuń danie', '🗑️')
+      if (!confirmed) return
+      
+      menuItems.value = menuItems.value.filter(item => item.id !== id)
+      scheduleSave()
+    }
+
 
     const markSettingsDirty = () => {
       isSettingsDirty.value = true
@@ -8342,6 +8362,7 @@ const openZamawiarkaMenuFromHome = () => {
       saveDishCategory,
       deleteDishCategory,
       duplicateMenuItem,
+      deleteMenuItem,
         backupInputRef,
       triggerFileInput,
       wczytajBackup,
