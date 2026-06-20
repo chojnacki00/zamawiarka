@@ -412,36 +412,26 @@
                 <div 
                   v-for="item in filteredMenuItems" 
                   :key="item.id" 
+                  @click="openDishDetails(item)"
                   class="item-card" 
-                  style="padding: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none;"
+                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none; cursor: pointer; transition: background-color 0.15s ease; outline: none; -webkit-tap-highlight-color: transparent; user-select: none;"
+                  tabindex="0"
+                  onmouseover="this.style.backgroundColor='#f8fafc'"
+                  onmouseout="this.style.backgroundColor='#ffffff'"
                 >
-                  <div>
-                    <div style="font-weight: 700; font-size: 14px; color: #111827;">{{ item.name }}</div>
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Koszt: {{ item.koszt || 0 }} zł | Cena: {{ item.cena || 0 }} zł</div>
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ item.name }}</div>
+                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł</div>
                   </div>
                   
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <div :style="{ fontWeight: '800', fontSize: '13px', padding: '4px 8px', borderRadius: '6px', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#fee2e2' : '#dcfce7', color: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
-                      {{ (item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0 }}%
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                    <div 
+                      :title="'Food Cost: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'"
+                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#ef4444' : '#22c55e' }"
+                    ></div>
+                    <div style="font-size: 18px; font-weight: 800; color: #111827;">
+                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 14px; font-weight: 600; color: #6b7280;">zł</span>
                     </div>
-                    
-                                        <button 
-                      @click="duplicateMenuItem(item)" 
-                      class="supplier-edit-button" 
-                      style="width: 32px; height: 32px; font-size: 14px;" 
-                      title="Duplikuj pozycję"
-                    >
-                      📑
-                    </button>
-
-                                        <button 
-                      @click="deleteMenuItem(item.id)" 
-                      class="supplier-edit-button" 
-                      style="width: 32px; height: 32px; font-size: 14px; background: #fee2e2; color: #dc2626;" 
-                      title="Usuń pozycję"
-                    >
-                      🗑️
-                    </button>
                   </div>
                 </div>
               </div>
@@ -4014,6 +4004,62 @@ selectedWhoOrders !== 'wszystkie'
   <!-- =========================
      MODAL POWIADOMIEŃ iOS
 ========================== -->
+<div v-if="showDishDetailsModal" class="supplier-modal-overlay">
+  <div class="supplier-modal-card" style="max-width: 450px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+      <div>
+        <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
+          {{ selectedDishDetails?.name }}
+        </h3>
+        <div style="font-size: 13px; color: #6b7280; margin-top: 4px; font-weight: 600;">
+          Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
+        </div>
+      </div>
+      <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
+            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
+        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Cena</div>
+        <div style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 11px; font-weight: 600;">zł</span></div>
+      </div>
+            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
+        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Koszt</div>
+        <div style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 11px; font-weight: 600;">zł</span></div>
+      </div>
+            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
+        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
+        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '4px', color: ((selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? (selectedDishDetails?.koszt / selectedDishDetails?.cena * 100) : 0) > (dishCategories.find(c => c.name === selectedDishDetails?.category)?.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+          {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / selectedDishDetails?.cena) * 100).toFixed(1) : 0 }}%
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
+      <div style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
+        Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+      <button @click="handleDuplicateFromDetails" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <span>📑</span> Powiel
+      </button>
+      <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span>🗑️</span> Usuń
+      </button>
+    </div>
+
+    <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); transition: transform 0.15s ease;" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
+      Edytuj danie / Recepturę
+    </button>
+  </div>
+</div>
+
+
+
 
 <div
   v-if="appDialog.show"
@@ -4872,9 +4918,24 @@ const towarFormSource = ref('towary')
 
     const isSettingsDirty = ref(false)
     
-   const dishCategories = ref([])
+   // Lista kategorii dań (na start dajemy przykładowe)
+    const dishCategories = ref([])
+
     const menuItems = ref([])
 
+    // Zmienne do modala Szczegółów Dania
+    const showDishDetailsModal = ref(false)
+    const selectedDishDetails = ref(null)
+
+    const openDishDetails = (item) => {
+      selectedDishDetails.value = item
+      showDishDetailsModal.value = true
+    }
+
+    const closeDishDetails = () => {
+      showDishDetailsModal.value = false
+      selectedDishDetails.value = null
+    }
     const selectedCategory = ref(null)
 
     // Stan sortowania: 'desc' (od najwyższego FC) lub 'asc' (od najniższego FC)
@@ -5010,6 +5071,32 @@ const deleteMenuItem = async (id) => {
       
       menuItems.value = menuItems.value.filter(item => item.id !== id)
       scheduleSave()
+      
+      // Jeśli usuwamy danie mając otwarty jego modal, zamykamy go.
+      if (showDishDetailsModal.value && selectedDishDetails.value?.id === id) {
+        closeDishDetails()
+      }
+    }
+
+    // Funkcje "Nakładki" dla przycisków w Modalu Szczegółów
+    const handleDuplicateFromDetails = () => {
+      if (selectedDishDetails.value) {
+        duplicateMenuItem(selectedDishDetails.value)
+        closeDishDetails() // Po sklonowaniu zamykamy modal
+      }
+    }
+
+    const handleDeleteFromDetails = async () => {
+      if (selectedDishDetails.value) {
+        await deleteMenuItem(selectedDishDetails.value.id)
+      }
+    }
+
+    // Zalążek funkcji do Fazy 3 (otwieranie wielkiego formularza edycji receptury)
+    const openDishForm = (item) => {
+      closeDishDetails()
+      // Tutaj w następnym kroku zmienimy widok (np. recepturyView.value = 'form')
+      console.log('Otwieram formularz dla:', item)
     }
 
 
@@ -8349,6 +8436,13 @@ const openZamawiarkaMenuFromHome = () => {
        fcSettings,
       dishCategories,
       menuItems,
+      showDishDetailsModal,
+      selectedDishDetails,
+      openDishDetails,
+      closeDishDetails,
+      handleDuplicateFromDetails,
+      handleDeleteFromDetails,
+      openDishForm,
       selectedCategory,
       fcSortOrder,
       filteredMenuItems,
