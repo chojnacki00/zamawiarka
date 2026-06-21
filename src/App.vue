@@ -346,11 +346,12 @@
       </div>
 
       <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
-        
+
+        <!-- dodaje danie do menu -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
           <h3 style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
-          <button @click="openDishForm()" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
-            + Dodaj danie
+          <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+            +
           </button>
         </div>
 
@@ -538,9 +539,132 @@
         </div>
       </div>
 
-      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; color: #94a3b8; font-weight: 600;">
-        Sekcja budowania receptury (kalkulator surowców) zaraz tu wjedzie.
+      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">Składniki receptury</h3>
+          <button @click="openIngredientModal()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj składnik">
+            +
+          </button>
+        </div>
+
+        <div v-if="!editingDish.recipe || editingDish.recipe.length === 0" style="text-align: center; padding: 20px; color: #94a3b8; font-weight: 600; border: 1px dashed #cbd5e1; border-radius: 12px; font-size: 14px;">
+          Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
+        </div>
+
+        <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+          <div
+            v-for="(ing, index) in editingDish.recipe"
+            :key="ing.id"
+            @click="editRecipeIngredient(ing, index)"
+            class="item-card"
+            style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
+          >
+            <div style="min-width: 0;">
+              <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ ing.name }}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ ing.unit }}</div>
+            </div>
+            <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
+              {{ (ing.qty * ing.netPrice).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+            </div>
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+            <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Całkowity koszt:</div>
+            <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ calculateTotalRecipeCost().toFixed(2) }} <span style="font-size: 13px; color: #64748b;">zł</span></div>
+          </div>
+        </div>
       </div>
+
+      <div v-if="showIngredientModal" class="supplier-modal-overlay" style="z-index: 9999; padding-top: 60px;">
+        <div class="supplier-modal-card" style="display: flex; flex-direction: column; max-height: 85vh; padding: 20px;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 class="supplier-modal-title" style="margin: 0; font-size: 18px;">
+              {{ selectedIngredientTowar ? 'PODAJ ILOŚĆ' : 'WYBIERZ SUROWIEC' }}
+            </h3>
+            <button @click="closeIngredientModal" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
+          </div>
+
+          <div v-if="!selectedIngredientTowar" style="display: flex; flex-direction: column; min-height: 0; flex: 1;">
+            <input
+              v-model="ingredientSearch"
+              type="text"
+              placeholder="Szukaj towaru po nazwie..."
+              class="towary-search-input"
+              style="margin-bottom: 12px; flex-shrink: 0;"
+            />
+            
+            <div class="scroll-area" style="padding-bottom: 20px;">
+              <div v-if="filteredIngredientTowary.length === 0" style="text-align: center; color: #6b7280; font-size: 13px; margin-top: 20px;">
+                Brak wyników wyszukiwania
+              </div>
+              
+              <div
+                v-for="item in filteredIngredientTowary"
+                :key="item.id"
+                @click="selectIngredient(item)"
+                class="towary-row-fixed"
+                style="grid-template-columns: 1fr auto; cursor: pointer; margin-bottom: 8px; min-height: unset; padding: 12px;"
+              >
+                <div style="min-width: 0;">
+                  <div class="towary-col-name" style="font-size: 15px;">{{ item.name }}</div>
+                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ item.supplier || 'Brak hurtowni' }}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div class="towary-col-price" style="font-size: 15px;">{{ Number(item.netPrice || 0).toFixed(2) }} zł</div>
+                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">za 1 {{ item.unit }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ selectedIngredientTowar.name }}</div>
+              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Cena netto: {{ Number(selectedIngredientTowar.netPrice || 0).toFixed(2) }} zł / {{ selectedIngredientTowar.unit }}</div>
+            </div>
+
+            <div class="supplier-form-group">
+              <label class="supplier-form-label">Zużycie na porcję (w: {{ selectedIngredientTowar.unit }})</label>
+              <input
+                v-model.number="ingredientQty"
+                type="number"
+                step="0.001"
+                placeholder="np. 0.15"
+                class="supplier-form-input"
+              />
+            </div>
+
+            <div class="supplier-modal-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+              <button 
+                v-if="editingRecipeIndex !== null" 
+                @click="removeIngredientFromRecipe" 
+                style="width: 48px; flex-shrink: 0; background: #fee2e2; border: none; border-radius: 10px; color: #dc2626; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+              >
+                🗑️
+              </button>
+              
+              <button 
+                @click="goBackToIngredientList" 
+                class="supplier-cancel-button" 
+                style="flex: 1;" 
+              >
+                {{ editingRecipeIndex !== null ? 'Anuluj' : 'Wróć' }}
+              </button>
+              
+              <button 
+                @click="saveIngredientToRecipe" 
+                class="supplier-save-button" 
+                style="flex: 1;"
+              >
+                {{ editingRecipeIndex !== null ? 'Zapisz' : 'Dodaj' }}
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
 
 
@@ -578,10 +702,11 @@
           </button>
         </div>
 
+            <!--dodaje kategorie dania-->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <h3 style="font-size: 16px; color: #111827; margin: 0;">Kategorie menu</h3>
-          <button @click="openDishCategoryForm" style="background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer;">
-            + Dodaj
+          <button @click="openDishCategoryForm" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
+            +
           </button>
         </div>
         
@@ -5206,6 +5331,10 @@ const deleteMenuItem = async (id) => {
       recepturyView.value = 'form'
     }
 
+    
+
+
+
     const closeDishForm = () => {
       editingDish.value = null
       recepturyView.value = 'lista'
@@ -5236,6 +5365,123 @@ const deleteMenuItem = async (id) => {
       closeDishForm()
       // Opcjonalnie: jeśli chcesz potwierdzenie zapisu, możesz tu dodać kolejny showAlert
     }
+
+
+
+
+    // =========================
+    // RECEPTURA - SKŁADNIKI
+    // =========================
+    const showIngredientModal = ref(false)
+    const ingredientSearch = ref('')
+    const selectedIngredientTowar = ref(null)
+    const ingredientQty = ref('')
+    const editingRecipeIndex = ref(null)
+
+    const filteredIngredientTowary = computed(() => {
+      if (!towary.value) return []
+      return towary.value.filter(item => {
+        if (item.active === false) return false
+        if (ingredientSearch.value.trim() === '') return true
+        return item.name.toLowerCase().includes(ingredientSearch.value.toLowerCase())
+      })
+    })
+
+    const closeIngredientModal = () => {
+      showIngredientModal.value = false
+      ingredientSearch.value = ''
+      selectedIngredientTowar.value = null
+      ingredientQty.value = ''
+      editingRecipeIndex.value = null
+    }
+
+    const openIngredientModal = () => {
+      editingRecipeIndex.value = null
+      selectedIngredientTowar.value = null
+      ingredientSearch.value = ''
+      ingredientQty.value = ''
+      showIngredientModal.value = true
+    }
+
+    const selectIngredient = (item) => {
+      selectedIngredientTowar.value = item
+      ingredientQty.value = ''
+    }
+
+    const editRecipeIngredient = (ing, index) => {
+      editingRecipeIndex.value = index
+      selectedIngredientTowar.value = {
+        id: ing.towarId,
+        name: ing.name,
+        unit: ing.unit,
+        netPrice: ing.netPrice 
+      }
+      ingredientQty.value = ing.qty
+      showIngredientModal.value = true
+    }
+
+    const goBackToIngredientList = () => {
+      if (editingRecipeIndex.value !== null) {
+        closeIngredientModal()
+      } else {
+        selectedIngredientTowar.value = null
+        ingredientQty.value = ''
+      }
+    }
+
+    const updateDishTotalCost = () => {
+      if (!editingDish.value.recipe) return
+      const total = editingDish.value.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0)
+      editingDish.value.koszt = Number(total.toFixed(2))
+    }
+
+    const calculateTotalRecipeCost = () => {
+      if (!editingDish.value || !editingDish.value.recipe) return 0
+      return editingDish.value.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0)
+    }
+
+    const saveIngredientToRecipe = async () => {
+      if (!ingredientQty.value || ingredientQty.value <= 0) {
+        await showAlert('Wpisz poprawną ilość zużycia.', 'Błąd', '⚠️')
+        return
+      }
+      
+      const newIngredient = {
+        id: editingRecipeIndex.value !== null ? editingDish.value.recipe[editingRecipeIndex.value].id : Date.now(),
+        towarId: selectedIngredientTowar.value.id,
+        name: selectedIngredientTowar.value.name,
+        unit: selectedIngredientTowar.value.unit,
+        netPrice: Number(selectedIngredientTowar.value.netPrice || 0),
+        qty: Number(ingredientQty.value)
+      }
+
+      if (!editingDish.value.recipe) {
+        editingDish.value.recipe = []
+      }
+
+      if (editingRecipeIndex.value !== null) {
+        editingDish.value.recipe[editingRecipeIndex.value] = newIngredient
+      } else {
+        editingDish.value.recipe.push(newIngredient)
+      }
+      
+      updateDishTotalCost()
+      closeIngredientModal()
+    }
+
+    const removeIngredientFromRecipe = async () => {
+      const confirmed = await showConfirm('Usunąć ten składnik z receptury?', 'Usuń składnik', '🗑️')
+      if (!confirmed) return
+      
+      if (editingRecipeIndex.value !== null) {
+        editingDish.value.recipe.splice(editingRecipeIndex.value, 1)
+        updateDishTotalCost()
+      }
+      closeIngredientModal()
+    }
+
+
+
 
 
     const markSettingsDirty = () => {
@@ -8605,6 +8851,22 @@ const openZamawiarkaMenuFromHome = () => {
       isSettingsDirty,
       markSettingsDirty,
       saveSettings,
+
+      showIngredientModal,
+      openIngredientModal,
+      ingredientSearch,
+      selectedIngredientTowar,
+      ingredientQty,
+      filteredIngredientTowary,
+      closeIngredientModal,
+      selectIngredient,
+      editingRecipeIndex,
+      editRecipeIngredient,
+      goBackToIngredientList,
+      updateDishTotalCost,
+      calculateTotalRecipeCost,
+      saveIngredientToRecipe,
+      removeIngredientFromRecipe,
 
       
 
