@@ -409,30 +409,42 @@
                   Brak dań w tej kategorii.
                 </div>
 
-                <div 
+               <div
                   v-for="item in filteredMenuItems" 
                   :key="item.id" 
                   @click="openDishDetails(item)"
                   class="item-card" 
-                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; box-shadow: none; cursor: pointer; transition: background-color 0.15s ease; outline: none; -webkit-tap-highlight-color: transparent; user-select: none;"
-                  tabindex="0"
-                  onmouseover="this.style.backgroundColor='#f8fafc'"
-                  onmouseout="this.style.backgroundColor='#ffffff'"
+                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px;"
                 >
-                                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ item.name }}</div>
-                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł</div>
-                  </div>
-                  
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                    <div 
-                      :title="'Food Cost: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'"
-                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#ef4444' : '#22c55e' }"
-                    ></div>
-                    <div style="font-size: 18px; font-weight: 800; color: #111827;">
-                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 14px; font-weight: 600; color: #6b7280;">zł</span>
+                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                      {{ item.name }}
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
                     </div>
                   </div>
+                  
+                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                    <div 
+                      :title="'Food Cost: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#ef4444' : '#22c55e' }"
+                    ></div>
+                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                    </div>
+                  </div>
+
+
+
+
+
+
+                  
+                  
+
+
+
                 </div>
               </div>
             </div>
