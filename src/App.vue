@@ -359,7 +359,7 @@
         <div style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
           <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
             
-           <button 
+          <button 
               @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
               class="item-card" 
               :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #ddd', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#ffffff' }"
@@ -370,16 +370,16 @@
                     width: '10px', 
                     height: '10px', 
                     borderRadius: '50%', 
-                    backgroundColor: menuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (menuItems.some(i => i.category === cat.name && ((i.cena > 0 ? (i.koszt / i.cena) * 100 : 0) > (cat.targetFC || fcSettings.target))) ? '#ef4444' : '#22c55e') 
+                    backgroundColor: dynamicMenuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? '#ef4444' : '#22c55e') 
                   }"
-                  :title="menuItems.some(i => i.category === cat.name && ((i.cena > 0 ? (i.koszt / i.cena) * 100 : 0) > (cat.targetFC || fcSettings.target))) ? 'Uwaga: Przekroczony Food Cost!' : 'Wszystko w normie'"
+                  :title="dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? 'Przekroczony Food Cost (z uwzgl. tolerancji)' : 'Wszystko w normie'"
                 ></div>
                 <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
               </div>
 
               <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
-                  {{ menuItems.filter(item => item.category === cat.name).length }} pozycji
+                  {{ dynamicMenuItems.filter(item => item.category === cat.name).length }} pozycji
                 </span>
                 <span style="font-size: 16px; color: #2563eb;">
                   {{ selectedCategory === cat.name ? '▲' : '▼' }}
@@ -440,8 +440,8 @@
                   
                   <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
                     <div 
-                      :title="'Food Cost: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
-                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ((item.cena && item.cena > 0) ? (item.koszt / item.cena) * 100 : 0) > (cat.targetFC || fcSettings.target) ? '#ef4444' : '#22c55e' }"
+                      :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
                     ></div>
                     <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
                       {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
@@ -532,7 +532,7 @@
               step="0.01" 
               @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
               @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
-              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: right; outline: none; transition: all 0.2s;" 
+              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
               onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
               onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
           </div>
@@ -563,7 +563,7 @@
           Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
         </div>
 
-        <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+       <div v-else style="display: flex; flex-direction: column; gap: 8px;">
           <div
             v-for="(ing, index) in editingDish.recipe"
             :key="ing.id"
@@ -572,11 +572,11 @@
             style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
           >
             <div style="min-width: 0;">
-              <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ ing.name }}</div>
-              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ ing.unit }}</div>
+              <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
             </div>
             <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
-              {{ (ing.qty * ing.netPrice).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+              {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
             </div>
           </div>
           
@@ -642,7 +642,7 @@
                 v-model.number="ingredientQty"
                 type="number"
                 step="0.001"
-                placeholder="np. 0.15"
+                placeholder="0.000"
                 class="supplier-form-input"
               />
             </div>
@@ -4257,7 +4257,7 @@ selectedWhoOrders !== 'wszystkie'
       </div>
             <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
         <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
-        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '4px', color: ((selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? (selectedDishDetails?.koszt / selectedDishDetails?.cena * 100) : 0) > (dishCategories.find(c => c.name === selectedDishDetails?.category)?.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '4px', color: selectedDishDetails ? (isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a') : '#111827' }">
           {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / selectedDishDetails?.cena) * 100).toFixed(1) : 0 }}%
         </div>
       </div>
@@ -4277,18 +4277,18 @@ selectedWhoOrders !== 'wszystkie'
           style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
         >
           <div style="min-width: 0;">
-            <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ ing.name }}</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ ing.unit }}</div>
+            <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
           </div>
           <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
-            {{ (ing.qty * ing.netPrice).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+            {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
           </div>
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
           <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
           <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
-            {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
+            {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * getIngredientLivePrice(ing)), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
           </div>
         </div>
       </div>
@@ -5174,6 +5174,45 @@ const towarFormSource = ref('towary')
 
     const menuItems = ref([])
 
+
+    // =========================
+    // DYNAMICZNE MENU I KOSZTY
+    // =========================
+    const dynamicMenuItems = computed(() => {
+      return menuItems.value.map(dish => {
+        let currentCost = Number(dish.koszt || 0)
+        let updatedRecipe = dish.recipe || []
+        
+        // Magia synchronizacji: pobieramy żywe ceny z magazynu towarów!
+        if (dish.recipe && dish.recipe.length > 0) {
+          updatedRecipe = dish.recipe.map(ing => {
+            const currentTowar = towary.value.find(t => String(t.id) === String(ing.towarId))
+            const livePrice = currentTowar ? Number(currentTowar.netPrice || 0) : Number(ing.netPrice || 0)
+            return { ...ing, livePrice } // Zapisujemy "żywą" cenę
+          })
+          
+          currentCost = updatedRecipe.reduce((sum, ing) => sum + (ing.qty * ing.livePrice), 0)
+        }
+        
+        return { ...dish, koszt: currentCost, recipe: updatedRecipe }
+      })
+    })
+
+    // Inteligentny radar FC: sprawdza cel i uwzględnia Twoją tolerancję!
+    const isDishFcExceeded = (dish) => {
+      if (!dish.cena || dish.cena <= 0) return false
+      const actualFc = (dish.koszt / dish.cena) * 100
+      
+      const category = dishCategories.value.find(c => c.name === dish.category)
+      const targetFc = (category && category.targetFC !== null && category.targetFC !== undefined) ? Number(category.targetFC) : Number(fcSettings.value.target || 0)
+      const tolerance = Number(fcSettings.value.tolerance || 0)
+      
+      return actualFc > (targetFc + tolerance)
+    }
+
+
+
+
     // Zmienne do modala Szczegółów Dania
     const showDishDetailsModal = ref(false)
     const selectedDishDetails = ref(null)
@@ -5193,8 +5232,8 @@ const towarFormSource = ref('towary')
     const fcSortOrder = ref('desc')
 
     const filteredMenuItems = computed(() => {
-      // 1. Filtrowanie
-      let filtered = menuItems.value
+      // 1. Filtrowanie (POBIERAMY Z DYNAMICZNEGO MENU Z AKTUALNYMI CENAMI)
+      let filtered = dynamicMenuItems.value
       if (selectedCategory.value) {
         filtered = filtered.filter(item => item.category === selectedCategory.value)
       }
@@ -5446,12 +5485,15 @@ const deleteMenuItem = async (id) => {
 
     const editRecipeIngredient = (ing, index) => {
       editingRecipeIndex.value = index
+      
+      // Ładujemy do modala "żywe" dane prosto z magazynu za pomocą naszych pomocników!
       selectedIngredientTowar.value = {
         id: ing.towarId,
-        name: ing.name,
-        unit: ing.unit,
-        netPrice: ing.netPrice 
+        name: getIngredientLiveName(ing),
+        unit: getIngredientLiveUnit(ing),
+        netPrice: getIngredientLivePrice(ing) 
       }
+      
       ingredientQty.value = ing.qty
       showIngredientModal.value = true
     }
@@ -5465,15 +5507,41 @@ const deleteMenuItem = async (id) => {
       }
     }
 
+
+    const getIngredientLivePrice = (ing) => {
+      const t = towary.value.find(t => String(t.id) === String(ing.towarId))
+      return t ? Number(t.netPrice || 0) : Number(ing.netPrice || 0)
+    }
+
+    const getIngredientLiveName = (ing) => {
+      const t = towary.value.find(t => String(t.id) === String(ing.towarId))
+      return t && t.name ? t.name : ing.name // Jeśli towar istnieje, bierzemy żywą nazwę. Jeśli go usunięto, zostaje stara z przepisu.
+    }
+
+    const getIngredientLiveUnit = (ing) => {
+      const t = towary.value.find(t => String(t.id) === String(ing.towarId))
+      return t && t.unit ? t.unit : ing.unit
+    }
+
+
+
     const updateDishTotalCost = () => {
       if (!editingDish.value.recipe) return
-      const total = editingDish.value.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0)
+      const total = editingDish.value.recipe.reduce((sum, ing) => {
+        const t = towary.value.find(t => String(t.id) === String(ing.towarId))
+        const price = t ? Number(t.netPrice || 0) : Number(ing.netPrice || 0)
+        return sum + (ing.qty * price)
+      }, 0)
       editingDish.value.koszt = Number(total.toFixed(2))
     }
 
     const calculateTotalRecipeCost = () => {
       if (!editingDish.value || !editingDish.value.recipe) return 0
-      return editingDish.value.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0)
+      return editingDish.value.recipe.reduce((sum, ing) => {
+        const t = towary.value.find(t => String(t.id) === String(ing.towarId))
+        const price = t ? Number(t.netPrice || 0) : Number(ing.netPrice || 0)
+        return sum + (ing.qty * price)
+      }, 0)
     }
 
     const saveIngredientToRecipe = async () => {
@@ -8856,6 +8924,8 @@ const openZamawiarkaMenuFromHome = () => {
        fcSettings,
       dishCategories,
       menuItems,
+      dynamicMenuItems,
+      isDishFcExceeded,
       showDishDetailsModal,
       selectedDishDetails,
       openDishDetails,
@@ -8903,6 +8973,10 @@ const openZamawiarkaMenuFromHome = () => {
       calculateTotalRecipeCost,
       saveIngredientToRecipe,
       removeIngredientFromRecipe,
+
+      getIngredientLivePrice,
+      getIngredientLiveName,
+      getIngredientLiveUnit,
 
       
 
