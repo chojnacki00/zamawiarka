@@ -359,12 +359,24 @@
         <div style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
           <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
             
-                        <button 
+           <button 
               @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
               class="item-card" 
               :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #ddd', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#ffffff' }"
             >
-              <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div 
+                  :style="{ 
+                    width: '10px', 
+                    height: '10px', 
+                    borderRadius: '50%', 
+                    backgroundColor: menuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (menuItems.some(i => i.category === cat.name && ((i.cena > 0 ? (i.koszt / i.cena) * 100 : 0) > (cat.targetFC || fcSettings.target))) ? '#ef4444' : '#22c55e') 
+                  }"
+                  :title="menuItems.some(i => i.category === cat.name && ((i.cena > 0 ? (i.koszt / i.cena) * 100 : 0) > (cat.targetFC || fcSettings.target))) ? 'Uwaga: Przekroczony Food Cost!' : 'Wszystko w normie'"
+                ></div>
+                <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
+              </div>
+
               <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
                   {{ menuItems.filter(item => item.category === cat.name).length }} pozycji
@@ -415,7 +427,7 @@
                   :key="item.id" 
                   @click="openDishDetails(item)"
                   class="item-card" 
-                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px;"
+                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
                 >
                   <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
                     <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
@@ -491,8 +503,8 @@
         <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
           {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
         </h2>
-        <button @click="saveDishForm" style="background: #22c55e; border: none; color: #ffffff; font-size: 20px; cursor: pointer; padding: 8px 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(34,197,94,0.2);" title="Zapisz">
-          💾
+        <button @click="saveDishForm" style="background: transparent; border: none; color: #22c55e; font-size: 28px; font-weight: bold; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Zapisz">
+          ✓
         </button>
       </div>
 
@@ -682,17 +694,17 @@
 
       <div class="scroll-area" style="padding: 0 16px;">
         
-        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px;">Cele i alarmy</h3>
+        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px; text-align: center;">Cele i alarmy</h3>
         
         <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
           <div class="supplier-form-group">
-            <label class="supplier-form-label"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
+            <label class="supplier-form-label" style="color: #0284c7;"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
             <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
             <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
           </div>
 
           <div class="supplier-form-group" style="margin-bottom: 0;">
-            <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
+            <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px; color: #0284c7;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
             <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
             <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
           </div>
@@ -703,9 +715,9 @@
         </div>
 
             <!--dodaje kategorie dania-->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3 style="font-size: 16px; color: #111827; margin: 0;">Kategorie menu</h3>
-          <button @click="openDishCategoryForm" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
+        <div style="position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; margin-top: 10px;">
+          <h3 style="font-size: 16px; color: #111827; margin: 0; text-align: center;">Kategorie menu</h3>
+          <button @click="openDishCategoryForm" style="position: absolute; right: 0; background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
             +
           </button>
         </div>
@@ -4222,7 +4234,7 @@ selectedWhoOrders !== 'wszystkie'
 <div v-if="showDishDetailsModal" class="supplier-modal-overlay">
   <div class="supplier-modal-card" style="max-width: 450px;">
     
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+    <div style="position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10; margin: -20px -20px 20px -20px; padding: 20px 20px 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
       <div>
         <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
           {{ selectedDishDetails?.name }}
@@ -4231,7 +4243,7 @@ selectedWhoOrders !== 'wszystkie'
           Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
         </div>
       </div>
-      <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
+      <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
@@ -4253,8 +4265,32 @@ selectedWhoOrders !== 'wszystkie'
 
     <div style="margin-bottom: 24px;">
       <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
-      <div style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
+      
+      <div v-if="!selectedDishDetails?.recipe || selectedDishDetails.recipe.length === 0" style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
         Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
+      </div>
+
+      <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+        <div
+          v-for="ing in selectedDishDetails.recipe"
+          :key="ing.id"
+          style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
+        >
+          <div style="min-width: 0;">
+            <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ ing.name }}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ ing.unit }}</div>
+          </div>
+          <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
+            {{ (ing.qty * ing.netPrice).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+          </div>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+          <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
+          <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
+            {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * ing.netPrice), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -4267,7 +4303,7 @@ selectedWhoOrders !== 'wszystkie'
       </button>
     </div>
 
-    <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); transition: transform 0.15s ease;" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
+    <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
       Edytuj danie / Recepturę
     </button>
   </div>
