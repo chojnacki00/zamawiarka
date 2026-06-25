@@ -4703,13 +4703,15 @@ const getUserTowarDocRef = (uid, towarId) => {
   return doc(db, 'users', uid, 'towary', String(towarId))
 }
 
-// Referencje do nowej kolekcji zamówień
-const getUserOrdersCollectionRef = (uid) => {
-  return collection(db, 'users', uid, 'orders')
+// =========================
+// REFERENCJE KOLEKCJI MENU (RECEPTURY)
+// =========================
+const getUserMenuItemsCollectionRef = (uid) => {
+  return collection(db, 'users', uid, 'menuItems')
 }
 
-const getUserOrderDocRef = (uid, orderId) => {
-  return doc(db, 'users', uid, 'orders', String(orderId))
+const getUserMenuItemDocRef = (uid, dishId) => {
+  return doc(db, 'users', uid, 'menuItems', String(dishId))
 }
 
 
@@ -4802,8 +4804,8 @@ const collectAppState = () => ({
   categories: categories.value,
   whoOrders: whoOrders.value,
   fcSettings: fcSettings.value,
-  dishCategories: dishCategories.value,
-  menuItems: menuItems.value
+  dishCategories: dishCategories.value
+  // Usunęliśmy menuItems z głównego stanu!
 })
 
 const applyAppState = (state) => {
@@ -4827,10 +4829,6 @@ const applyAppState = (state) => {
   if (state?.dishCategories) {
     dishCategories.value = state.dishCategories
   }
-
-  if (state?.menuItems) {
-        menuItems.value = state.menuItems
-      }
   
   isSettingsDirty.value = false
 }
@@ -4962,6 +4960,26 @@ const subscribeOrders = (uid) => {
     })
     // Aktualizujemy listę i upewniamy się, że najnowsze są na górze
     ordersRegister.value = nextOrders.sort((a, b) => b.id - a.id)
+  })
+}
+
+
+let unsubscribeMenuItems = null
+
+const subscribeMenuItems = (uid) => {
+  if (unsubscribeMenuItems) {
+    unsubscribeMenuItems()
+    unsubscribeMenuItems = null
+  }
+
+  const menuRef = getUserMenuItemsCollectionRef(uid)
+
+  unsubscribeMenuItems = onSnapshot(menuRef, (snapshot) => {
+    const nextMenuItems = []
+    snapshot.forEach((docSnap) => {
+      nextMenuItems.push(docSnap.data())
+    })
+    menuItems.value = nextMenuItems
   })
 }
 
@@ -5105,8 +5123,8 @@ const eksportujBackup = async () => {
       }
     }
 
-    // 2. Pobieramy pozostałe kolekcje
-    const collectionsToFetch = ['towary', 'cartItems'];
+    // 2. Pobieramy pozostałe kolekcje - Zapis kolekcji 
+    const collectionsToFetch = ['towary', 'cartItems', 'menuItems'];
     for (const colName of collectionsToFetch) {
       const colRef = collection(db, 'users', user.uid, colName);
       const snapshot = await getDocs(colRef);
@@ -5486,12 +5504,19 @@ const deleteMenuItem = async (id) => {
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę pozycję z menu?', 'Usuń danie', '🗑️')
       if (!confirmed) return
       
-      menuItems.value = menuItems.value.filter(item => item.id !== id)
-      scheduleSave()
-      
-      // Jeśli usuwamy danie mając otwarty jego modal, zamykamy go.
-      if (showDishDetailsModal.value && selectedDishDetails.value?.id === id) {
-        closeDishDetails()
+      const user = auth.currentUser
+      if (!user) return
+
+      try {
+        const docRef = getUserMenuItemDocRef(user.uid, id)
+        await deleteDoc(docRef) // Usuwamy twardo z bazy
+        
+        // Nasłuch sam usunie danie z ekranu!
+        if (showDishDetailsModal.value && selectedDishDetails.value?.id === id) {
+          closeDishDetails()
+        }
+      } catch (error) {
+        console.error("Błąd podczas usuwania dania:", error)
       }
     }
 
@@ -5523,7 +5548,7 @@ const deleteMenuItem = async (id) => {
         editingDish.value = {
           id: Date.now(),
           name: '',
-          category: '', // Zostawiamy puste, żeby wymusić komunikat "Wybierz kategorię..."
+          category: '', 
           cena: 0,
           koszt: 0,
           vat: 8, 
@@ -5533,39 +5558,33 @@ const deleteMenuItem = async (id) => {
       recepturyView.value = 'form'
     }
 
-    
-
-
-
     const closeDishForm = () => {
       editingDish.value = null
       recepturyView.value = 'lista'
     }
 
-    const saveDishForm = async () => { // Zmieniamy na async
-      // 1. Walidacja nazwy
+    const saveDishForm = async () => { 
       if (!editingDish.value.name || editingDish.value.name.trim() === '') {
         await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
-        return // Zatrzymujemy funkcję, zapis nie dojdzie do skutku
+        return 
       }
 
-      // 2. Walidacja kategorii
       if (!editingDish.value.category || editingDish.value.category === '') {
         await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
-        return // Zatrzymujemy funkcję, zapis nie dojdzie do skutku
+        return 
       }
       
-      const index = menuItems.value.findIndex(i => i.id === editingDish.value.id)
-      
-      if (index !== -1) {
-        menuItems.value[index] = editingDish.value
-      } else {
-        menuItems.value.push(editingDish.value)
+      const user = auth.currentUser
+      if (!user) return
+
+      try {
+        const docRef = getUserMenuItemDocRef(user.uid, editingDish.value.id)
+        await setDoc(docRef, editingDish.value) // Twardy zapis do Firebase
+        closeDishForm()
+      } catch (error) {
+        console.error("Błąd przy zapisie dania:", error)
+        await showAlert('Wystąpił błąd przy zapisie dania do bazy.', 'Błąd', '❌')
       }
-      
-      scheduleSave()
-      closeDishForm()
-      // Opcjonalnie: jeśli chcesz potwierdzenie zapisu, możesz tu dodać kolejny showAlert
     }
 
 
@@ -8696,6 +8715,7 @@ onMounted(() => {
    // Uruchomienie nasłuchiwania na żywo po zalogowaniu
     subscribeTowary(user.uid)
     subscribeOrders(user.uid)
+    subscribeMenuItems(user.uid)
   })
 })
 
@@ -8713,7 +8733,14 @@ onUnmounted(() => {
     unsubscribeUserState()
     unsubscribeUserState = null
   }
+
+  if (unsubscribeMenuItems) {
+    unsubscribeMenuItems()
+    unsubscribeMenuItems = null
+  }
 })
+
+
 
 
 // =========================
