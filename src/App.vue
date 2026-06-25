@@ -240,78 +240,98 @@
 
       <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
-          
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
           <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Średni FC</div>
-            <div style="font-size: 24px; font-weight: 800; color: #111827; margin-top: 4px;">28.4%</div>
+            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średni FC Menu</div>
+            <div style="font-size: 24px; font-weight: 800; color: #111827; margin-top: 4px;">{{ dashboardMetrics.avgFc }}%</div>
+          </div>
+          <div class="item-card" style="padding: 14px; text-align: center;">
+            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średnia Marża</div>
+            <div style="font-size: 24px; font-weight: 800; color: #16a34a; margin-top: 4px;">{{ dashboardMetrics.avgMargin }}%</div>
           </div>
           
-          <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Średnia Marża %</div>
-            <div style="font-size: 24px; font-weight: 800; color: #16a34a; margin-top: 4px;">18.5%</div>
-          </div>
-          
-          <div class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fef2f2; border-color: #fca5a5;">
+          <div v-if="dashboardMetrics.exceededCount > 0" class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fef2f2; border-color: #fca5a5;">
             <span style="font-size: 24px;">🚨</span>
             <div style="text-align: left;">
-              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">4 pozycje</div>
-              <div style="font-size: 12px; color: #991b1b; font-weight: 600;">wymagają pilnej uwagi!</div>
+              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ dashboardMetrics.exceededCount }} pozycje</div>
+              <div style="font-size: 12px; color: #991b1b; font-weight: 700;">przekroczyły próg Food Cost!</div>
+            </div>
+          </div>
+          <div v-else class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #f0fdf4; border-color: #bbf7d0;">
+            <span style="font-size: 24px;">✅</span>
+            <div style="text-align: left;">
+              <div style="font-size: 18px; font-weight: 800; color: #16a34a;">Menu w normie</div>
+              <div style="font-size: 12px; color: #166534; font-weight: 700;">Wszystkie pozycje trzymają FC.</div>
             </div>
           </div>
         </div>
 
-        <div style="margin-bottom: 20px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="font-size: 15px; color: #dc2626; margin: 0; display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 18px;">🔻</span> Najwyższy FC
-            </h3>
-            <button style="background: none; border: none; color: #007aff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;">Pokaż (5)</button>
-          </div>
-          
-          <div class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-weight: 700; font-size: 14px;">Burger Szefa (Atrapa)</div>
-              <div style="font-size: 11px; color: #6b7280;">Koszt: 12.50 zł | Zysk: 16.50 zł</div>
+        <div v-if="dashboardWorstFC.length > 0" style="margin-bottom: 24px;">
+          <h3 style="font-size: 15px; color: #dc2626; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🔻</span> Największe odchylenia FC
+          </h3>
+          <div v-for="item in dashboardWorstFC" :key="item.id" class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="min-width: 0;">
+              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
+              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
+                Cel: {{ item.target }}% | Odchylenie: <span style="color: #dc2626; font-weight: 700;">+{{ item.deviation.toFixed(1) }}%</span>
+              </div>
             </div>
-            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">43.1%</div>
-          </div>
-          
-          <div class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-weight: 700; font-size: 14px;">Żeberka BBQ (Atrapa)</div>
-              <div style="font-size: 11px; color: #6b7280;">Koszt: 18.20 zł | Zysk: 21.80 zł</div>
+            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
+              {{ item.fc.toFixed(1) }}%
             </div>
-            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">41.5%</div>
           </div>
         </div>
 
-        <div style="margin-bottom: 20px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="font-size: 15px; color: #16a34a; margin: 0; display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 18px;">🏆</span> Najniższy FC
-            </h3>
-            <button style="background: none; border: none; color: #007aff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;">Pokaż (5)</button>
-          </div>
-          
-          <div class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-weight: 700; font-size: 14px;">Zupa Pomidorowa (Atrapa)</div>
-              <div style="font-size: 11px; color: #6b7280;">Koszt: 3.20 zł | Zysk: 14.80 zł</div>
+        <div v-if="dashboardGoldenShots.length > 0" style="margin-bottom: 24px;">
+          <h3 style="font-size: 15px; color: #d97706; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🏆</span> Złote strzały (Polecaj)
+          </h3>
+          <div v-for="item in dashboardGoldenShots" :key="item.id" class="item-card" style="border-left: 4px solid #d97706; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="min-width: 0;">
+              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
+              <div style="font-size: 11px; color: #16a34a; font-weight: 700; margin-top: 2px;">FC w normie: {{ item.fc.toFixed(1) }}%</div>
             </div>
-            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">17.7%</div>
-          </div>
-          
-          <div class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-weight: 700; font-size: 14px;">Lemoniada (Atrapa)</div>
-              <div style="font-size: 11px; color: #6b7280;">Koszt: 1.50 zł | Zysk: 13.50 zł</div>
+            <div style="text-align: right; margin-left: 8px;">
+              <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Zysk</div>
+              <div style="color: #d97706; font-weight: 800; font-size: 15px;">{{ item.zysk.toFixed(2) }} zł</div>
             </div>
-            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 13px;">10.0%</div>
           </div>
         </div>
 
-      </div> 
+        <div v-if="dashboardBestFC.length > 0" style="margin-bottom: 24px;">
+          <h3 style="font-size: 15px; color: #16a34a; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🛡️</span> Największy bufor (Najniższy FC)
+          </h3>
+          <div v-for="item in dashboardBestFC" :key="item.id" class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="min-width: 0;">
+              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
+              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
+                Cel: {{ item.target }}% | <span style="color: #16a34a; font-weight: 700;">-{{ item.deviation.toFixed(1) }}%</span> poniżej progu
+              </div>
+            </div>
+            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
+              {{ item.fc.toFixed(1) }}%
+            </div>
+          </div>
+        </div>
+
+        <div v-if="dashboardCategoryHealth.length > 0" style="margin-bottom: 24px;">
+          <h3 style="font-size: 15px; color: #3b82f6; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">📊</span> Kondycja kategorii
+          </h3>
+          <div v-for="cat in dashboardCategoryHealth" :key="cat.name" class="item-card" :style="{ borderLeft: cat.isExceeded ? '4px solid #dc2626' : '4px solid #16a34a', padding: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }">
+            <div style="font-weight: 800; font-size: 14px; color: #111827;">{{ cat.name }}</div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <div style="font-size: 11px; color: #64748b; font-weight: 600; text-align: right;">Cel:<br>{{ cat.target }}%</div>
+              <div :style="{ background: cat.isExceeded ? '#fee2e2' : '#dcfce7', color: cat.isExceeded ? '#dc2626' : '#16a34a', padding: '4px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '14px', width: '45px', textAlign: 'center' }">
+                {{ cat.avgFc }}%
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
       <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
         
         <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
@@ -347,22 +367,74 @@
 
       <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
 
-        <!-- dodaje danie do menu -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-          <h3 style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
-          <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
-            +
-          </button>
+        <!-- dodaje danie do menu + lupka wyszukiwarki -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px;">
+          
+          <h3 v-if="!showMenuSearch" style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
+          
+          <div v-if="showMenuSearch" style="display: flex; align-items: center; flex: 1; gap: 10px; margin-right: 12px;">
+            <button @click="showMenuSearch = false; menuSearch = ''" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; padding: 0;">
+              ←
+            </button>
+            <input 
+              v-model="menuSearch" 
+              type="text" 
+              placeholder="Szukaj pozycji menu..." 
+              style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #111827; font-weight: 600; font-size: 15px; outline: none;"
+            />
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+            <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
+              🔍
+            </button>
+            <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+              +
+            </button>
+          </div>
         </div>
 
         <!-- Lista kategorii -->
-        <div style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
+        <div v-if="menuSearch" style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px;">
+          <div v-if="dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase())).length === 0" style="text-align: center; color: #6b7280; font-size: 14px; margin-top: 20px;">
+            Brak dań o nazwie "{{ menuSearch }}"
+          </div>
+          
+          <div
+            v-for="item in dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
+            :key="item.id" 
+            @click="openDishDetails(item)"
+            class="item-card" 
+            style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex-shrink: 0;"
+          >
+            <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+              <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                {{ item.name }}
+              </div>
+              <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+              </div>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+              <div 
+                :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
+              ></div>
+              <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!menuSearch" style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
           <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
             
           <button 
               @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
               class="item-card" 
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #ddd', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#ffffff' }"
+              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#f1f5f9' }"
             >
               <div style="display: flex; align-items: center; gap: 10px;">
                 <div 
@@ -411,6 +483,7 @@
                   style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
                 >
                   Sortuj
+                   wg FC
                   <span style="font-size: 14px; line-height: 1;">
                     {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
                   </span>
@@ -423,11 +496,11 @@
                 </div>
 
                <div
-                  v-for="item in filteredMenuItems" 
+                  v-for="item in filteredMenuItems.filter(i => !menuSearch || i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
                   :key="item.id" 
                   @click="openDishDetails(item)"
                   class="item-card" 
-                  style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
                 >
                   <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
                     <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
@@ -523,7 +596,7 @@
           </select>
         </div>
 
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+       <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
           <div>
             <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
             <input 
@@ -548,6 +621,10 @@
               onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
               onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
           </div>
+        </div>
+        
+        <div v-if="suggestedDishPriceBrutto > 0" style="font-size: 12px; color: #64748b; font-weight: 600; margin-top: 8px; text-align: left; padding-left: 2px;">
+          💡 Sugerowana cena brutto: <span style="color: #2563eb; font-weight: 700;">{{ suggestedDishPriceBrutto }},00 zł</span>
         </div>
       </div>
 
@@ -4246,21 +4323,33 @@ selectedWhoOrders !== 'wszystkie'
       <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
-            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
-        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Cena</div>
-        <div style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 11px; font-weight: 600;">zł</span></div>
-      </div>
-            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
-        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Koszt</div>
-        <div style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 11px; font-weight: 600;">zł</span></div>
-      </div>
-            <div style="background: #f8fafc; padding: 12px 8px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;">
-        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
-        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '4px', color: selectedDishDetails ? (isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a') : '#111827' }">
-          {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / selectedDishDetails?.cena) * 100).toFixed(1) : 0 }}%
+   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
+      
+      <div style="background: #f8fafc; padding: 8px 6px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center;">
+        <div style="margin-bottom: 6px;">
+          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Cena:</div>
+          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+        </div>
+        <div>
+          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Koszt:</div>
+          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
         </div>
       </div>
+
+      <div :style="{ background: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fecaca' : '#bbf7d0', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#991b1b' : '#166534' }">FC Rzecz.</div>
+        <div :style="{ fontSize: '16px', fontWeight: '800', marginTop: '2px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a' }">
+          {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / (selectedDishDetails.cena / (1 + (Number(selectedDishDetails.vat || 0) / 100)))) * 100).toFixed(1) : 0 }}%
+        </div>
+      </div>
+
+      <div :style="{ background: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#f0fdf4' : '#fef2f2', border: '1px solid', borderColor: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#bbf7d0' : '#fecaca', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#166534' : '#991b1b' }">Zysk</div>
+        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '2px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#16a34a' : '#dc2626' }">
+          {{ ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span>
+        </div>
+      </div>
+
     </div>
 
     <div style="margin-bottom: 24px;">
@@ -4295,7 +4384,7 @@ selectedWhoOrders !== 'wszystkie'
     </div>
 
     <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-      <button @click="handleDuplicateFromDetails" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
         <span>📑</span> Powiel
       </button>
       <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -5201,7 +5290,12 @@ const towarFormSource = ref('towary')
     // Inteligentny radar FC: sprawdza cel i uwzględnia Twoją tolerancję!
     const isDishFcExceeded = (dish) => {
       if (!dish.cena || dish.cena <= 0) return false
-      const actualFc = (dish.koszt / dish.cena) * 100
+      
+      // Wyciągamy cenę netto dla pojedynczego dania
+      const vatRate = Number(dish.vat || 0)
+      const priceNetto = Number(dish.cena) / (1 + (vatRate / 100))
+      
+      const actualFc = (dish.koszt / priceNetto) * 100
       
       const category = dishCategories.value.find(c => c.name === dish.category)
       const targetFc = (category && category.targetFC !== null && category.targetFC !== undefined) ? Number(category.targetFC) : Number(fcSettings.value.target || 0)
@@ -5252,16 +5346,49 @@ const towarFormSource = ref('towary')
       if (filteredMenuItems.value.length === 0) return 0
       
       let totalCost = 0
-      let totalPrice = 0
+      let totalPriceNetto = 0
       
       filteredMenuItems.value.forEach(item => {
         totalCost += Number(item.koszt || 0)
-        totalPrice += Number(item.cena || 0)
+        
+        const vatRate = Number(item.vat || 0)
+        const priceNetto = Number(item.cena || 0) / (1 + (vatRate / 100))
+        
+        totalPriceNetto += priceNetto
       })
       
-      if (totalPrice === 0) return 0
-      return ((totalCost / totalPrice) * 100).toFixed(1)
+      if (totalPriceNetto === 0) return 0
+      return ((totalCost / totalPriceNetto) * 100).toFixed(1)
     })
+
+
+
+
+    const suggestedDishPriceBrutto = computed(() => {
+      if (!editingDish.value || !editingDish.value.category) return 0
+      
+      const currentCost = calculateTotalRecipeCost()
+      if (currentCost <= 0) return 0
+
+      // 1. Szukamy celu FC dla wybranej kategorii, jeśli brak - bierzemy ogólny
+      const cat = dishCategories.value.find(c => c.name === editingDish.value.category)
+      const targetFc = (cat && cat.targetFC !== null && cat.targetFC !== undefined) ? Number(cat.targetFC) : Number(fcSettings.value.target || 30)
+      
+      if (targetFc <= 0) return 0
+
+      // 2. Wyliczamy sugerowaną cenę netto
+      const priceNetto = (currentCost / targetFc) * 100
+
+      // 3. Dorzucamy VAT dania (np. 8%)
+      const vatRate = Number(editingDish.value.vat || 0)
+      const priceBrutto = priceNetto * (1 + (vatRate / 100))
+
+      // 4. Zaokrąglamy w górę do pełnych złotych!
+      return Math.ceil(priceBrutto)
+    })
+
+
+
 
 
     // Stan modala i formularza kategorii menu
@@ -5498,6 +5625,23 @@ const deleteMenuItem = async (id) => {
       showIngredientModal.value = true
     }
 
+
+
+    const duplicateDishToForm = () => {
+      if (!selectedDishDetails.value) return
+      
+      // 1. Przygotowujemy idealną kopię z nowym ID i dopiskiem
+      const dishCopy = JSON.parse(JSON.stringify(selectedDishDetails.value))
+      dishCopy.id = Date.now()
+      dishCopy.name = dishCopy.name + " (Kopia)"
+      
+      // 2. Przekazujemy klona do fabrycznej funkcji, która bezbłędnie zamknie modal i otworzy formularz!
+      openDishForm(dishCopy)
+    }
+
+
+
+
     const goBackToIngredientList = () => {
       if (editingRecipeIndex.value !== null) {
         closeIngredientModal()
@@ -5625,6 +5769,114 @@ const deleteMenuItem = async (id) => {
     // =========================
     const showProductSearch = ref(false)
     const productSearch = ref('')
+
+
+    // =========================
+    // WYSZUKIWARKA W WIDOKU MENU (RENTOWNOŚĆ)
+    // =========================
+    const showMenuSearch = ref(false)
+    const menuSearch = ref('')
+
+
+
+    // =========================
+    // ANALIZA (DASHBOARD) - MATEMATYKA
+    // =========================
+    
+    // Pomocnicza funkcja wyciągająca cenę netto i procentowy FC
+    const getDashboardFC = (item) => {
+      if (!item.cena || item.cena <= 0) return 0;
+      const netto = item.cena / (1 + (Number(item.vat || 0) / 100));
+      return (item.koszt / netto) * 100;
+    };
+
+    // Pomocnicza funkcja wyciągająca cel FC z uwzględnieniem kategorii
+    const getDashboardTarget = (item) => {
+      const cat = dishCategories.value.find(c => c.name === item.category);
+      return (cat && cat.targetFC) ? cat.targetFC : fcSettings.value.target;
+    };
+
+    // 1. Główne kafelki (Średnia i Alarmy)
+    const dashboardMetrics = computed(() => {
+      const items = dynamicMenuItems.value.filter(i => i.cena && i.cena > 0);
+      if (items.length === 0) return { avgFc: 0, avgMargin: 0, exceededCount: 0 };
+
+      let totalFc = 0;
+      let totalMargin = 0;
+      let exceededCount = 0;
+
+      items.forEach(item => {
+        const netto = item.cena / (1 + (Number(item.vat || 0) / 100));
+        const fc = (item.koszt / netto) * 100;
+        const marginPerc = ((netto - item.koszt) / netto) * 100;
+
+        totalFc += fc;
+        totalMargin += marginPerc;
+        if (isDishFcExceeded(item)) exceededCount++;
+      });
+
+      return {
+        avgFc: (totalFc / items.length).toFixed(1),
+        avgMargin: (totalMargin / items.length).toFixed(1),
+        exceededCount
+      };
+    });
+
+    // 2. Największe odchylenia FC (Alarmy - przekroczony cel)
+    const dashboardWorstFC = computed(() => {
+      return dynamicMenuItems.value
+        .filter(i => i.cena && i.cena > 0)
+        .map(i => {
+          const fc = getDashboardFC(i);
+          const target = getDashboardTarget(i);
+          return { ...i, fc, target, deviation: fc - target };
+        })
+        .filter(i => i.deviation > 0)
+        .sort((a, b) => b.deviation - a.deviation)
+        .slice(0, 5);
+    });
+
+    // 3. Najniższy FC (Prymusi - najdalsze od celu w dół)
+    const dashboardBestFC = computed(() => {
+      return dynamicMenuItems.value
+        .filter(i => i.cena && i.cena > 0)
+        .map(i => {
+          const fc = getDashboardFC(i);
+          const target = getDashboardTarget(i);
+          return { ...i, fc, target, deviation: target - fc }; 
+        })
+        .filter(i => i.deviation > 0)
+        .sort((a, b) => b.deviation - a.deviation)
+        .slice(0, 5);
+    });
+
+    // 4. Złote Strzały (Najwyższy zysk w PLN, ale TYLKO z zielonym FC)
+    const dashboardGoldenShots = computed(() => {
+      return dynamicMenuItems.value
+        .filter(i => i.cena && i.cena > 0 && !isDishFcExceeded(i))
+        .map(i => {
+          const netto = i.cena / (1 + (Number(i.vat || 0) / 100));
+          return { ...i, zysk: netto - i.koszt, fc: getDashboardFC(i) };
+        })
+        .sort((a, b) => b.zysk - a.zysk)
+        .slice(0, 5);
+    });
+
+    // 5. Kondycja poszczególnych kategorii
+    const dashboardCategoryHealth = computed(() => {
+      return dishCategories.value.map(cat => {
+        const items = dynamicMenuItems.value.filter(i => i.category === cat.name && i.cena && i.cena > 0);
+        if (items.length === 0) return null;
+
+        const avgFc = items.reduce((sum, i) => sum + getDashboardFC(i), 0) / items.length;
+        const target = cat.targetFC || fcSettings.value.target;
+
+        return { name: cat.name, avgFc: avgFc.toFixed(1), target, isExceeded: avgFc > target };
+      }).filter(c => c !== null);
+    });
+
+
+
 
 
     // =========================
@@ -8977,7 +9229,18 @@ const openZamawiarkaMenuFromHome = () => {
       getIngredientLivePrice,
       getIngredientLiveName,
       getIngredientLiveUnit,
+      duplicateDishToForm,
+      
+      suggestedDishPriceBrutto,
 
+      showMenuSearch,
+      menuSearch,
+
+      dashboardMetrics,
+      dashboardWorstFC,
+      dashboardBestFC,
+      dashboardGoldenShots,
+      dashboardCategoryHealth,
       
 
 
