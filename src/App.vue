@@ -4643,7 +4643,7 @@ export default {
     // wersja aplikacji    
     // =========================
 
-       const appVersion = ref('2.1.9')
+       const appVersion = ref('3.0.0')
 
 
        // =========================
