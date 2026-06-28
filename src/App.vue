@@ -4642,8 +4642,9 @@ export default {
     // =========================
     // wersja aplikacji    
     // =========================
+    // BARDZO WIDOCZNY TEST BRANCHA NA WERSJI 3.0.1
 
-       const appVersion = ref('3.0.0')
+       const appVersion = ref('3.0.1')
 
 
        // =========================
