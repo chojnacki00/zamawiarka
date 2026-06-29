@@ -535,6 +535,58 @@
               </div>
             </div>
           </div>
+
+          <div v-if="dynamicMenuItems.some(i => !i.category)" style="display:flex; flex-direction:column; gap:8px;">
+            <button 
+              @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
+              class="item-card" 
+              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === 'brak_kategorii' ? '2px solid #64748b' : '1px solid #e2e8f0', backgroundColor: selectedCategory === 'brak_kategorii' ? '#f8fafc' : '#f1f5f9' }"
+            >
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
+                <span style="font-size: 16px; color: #475569; font-style: italic;">Bez kategorii</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                  {{ dynamicMenuItems.filter(item => !item.category).length }} pozycji
+                </span>
+                <span style="font-size: 16px; color: #64748b;">
+                  {{ selectedCategory === 'brak_kategorii' ? '▲' : '▼' }}
+                </span>
+              </div>
+            </button>
+
+            <div v-if="selectedCategory === 'brak_kategorii'" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                <div
+                  v-for="item in dynamicMenuItems.filter(i => !i.category)" 
+                  :key="item.id" 
+                  @click="openDishDetails(item)"
+                  class="item-card" 
+                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                >
+                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                      {{ item.name }}
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                    </div>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+
         </div>
 
       </div> 
@@ -4715,6 +4767,17 @@ const getUserMenuItemDocRef = (uid, dishId) => {
   return doc(db, 'users', uid, 'menuItems', String(dishId))
 }
 
+// =========================
+// REFERENCJE KOLEKCJI ZAMÓWIEŃ (HISTORIA)
+// =========================
+const getUserOrdersCollectionRef = (uid) => {
+  return collection(db, 'users', uid, 'orders')
+}
+
+const getUserOrderDocRef = (uid, orderId) => {
+  return doc(db, 'users', uid, 'orders', String(orderId))
+}
+
 
 const loadUserStateFromFirestore = async (uid) => {
   const stateRef = getUserStateDocRef(uid)
@@ -4775,8 +4838,17 @@ const saveUserStateToFirestore = async (uid, state) => {
 }
 
 const handleLogout = async () => {
+  // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
+  if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null; }
+  if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null; }
+  if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null; }
+  if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null; }
+  if (typeof unsubscribeMenuItems !== 'undefined' && unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null; }
+
+  // 2. Wylogowanie z Firebase
   await signOut(auth)
 
+  // 3. Czyszczenie stanu aplikacji
   isDataLoaded.value = false
   resetCompanyDataState()
 
@@ -5450,21 +5522,41 @@ const towarFormSource = ref('towary')
       const name = cleanName(dishCategoryForm.value.name)
       if (!name) return
 
-      // Sprawdzenie, czy kategoria o takiej nazwie już istnieje (wykorzystujemy Twoją funkcję hasDuplicateName)
+      // Sprawdzenie, czy kategoria o takiej nazwie już istnieje
       if (hasDuplicateName(dishCategories.value, name, editedDishCategoryId.value)) {
         await showAlert('Taka kategoria już istnieje', 'Duplikat', '⚠️')
         return
       }
 
-      // Formatowanie FC: jeśli ktoś wpisał liczbę, zapisujemy ją, jeśli puste - dajemy null
+      // Formatowanie FC
       const targetFCParsed = dishCategoryForm.value.targetFC !== '' ? Number(dishCategoryForm.value.targetFC) : null
 
       if (dishCategoryFormMode.value === 'edit' && editedDishCategoryId.value !== null) {
         // Zapisujemy edycję
         const itemToUpdate = dishCategories.value.find(item => item.id === editedDishCategoryId.value)
         if (itemToUpdate) {
+          const oldName = itemToUpdate.name // ZAPAMIĘTUJEMY STARĄ NAZWĘ!
+
           itemToUpdate.name = name
           itemToUpdate.targetFC = targetFCParsed
+
+          // MAGIA: Jeśli nazwa się zmieniła, aktualizujemy też wszystkie dania!
+          if (oldName !== name) {
+            const user = auth.currentUser
+            if (user) {
+              const batch = writeBatch(db) // Paczka aktualizacji dla Firestore
+              
+              menuItems.value.forEach(dish => {
+                if (dish.category === oldName) {
+                  dish.category = name // Zmiana lokalna na ekranie
+                  const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+                  batch.update(docRef, { category: name }) // Zmiana w chmurze
+                }
+              })
+              
+              await batch.commit().catch(e => console.error("Błąd aktualizacji dań:", e))
+            }
+          }
         }
       } else {
         // Dodajemy nową kategorię
@@ -5482,10 +5574,33 @@ const towarFormSource = ref('towary')
     const deleteDishCategory = async () => {
       if (editedDishCategoryId.value === null) return
 
-      const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę kategorię?', 'Usuń kategorię', '🗑️')
+      const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę kategorię? (Dania w niej pozostaną bez kategorii)', 'Usuń kategorię', '🗑️')
       if (!confirmed) return
 
+      const categoryToDelete = dishCategories.value.find(item => item.id === editedDishCategoryId.value)
+      const categoryNameToDelete = categoryToDelete?.name || ''
+
+      // Usuwamy kategorię z listy
       dishCategories.value = dishCategories.value.filter(item => item.id !== editedDishCategoryId.value)
+
+      // MAGIA: Wyrzucamy usuniętą kategorię ze wszystkich dań (robią się "Brak")
+      if (categoryNameToDelete) {
+        const user = auth.currentUser
+        if (user) {
+          const batch = writeBatch(db)
+          
+          menuItems.value.forEach(dish => {
+            if (dish.category === categoryNameToDelete) {
+              dish.category = '' // Czyścimy kategorię lokalnie
+              const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+              batch.update(docRef, { category: '' }) // Czyścimy w chmurze
+            }
+          })
+          
+          await batch.commit().catch(e => console.error("Błąd czyszczenia kategorii w daniach:", e))
+        }
+      }
+
       closeDishCategoryForm()
       scheduleSave()
     }
