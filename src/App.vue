@@ -1092,7 +1092,7 @@
 </button>
 
 <button
-  @click="generateHelpText(); zamawiarkaView = 'pomoc'"
+  @click="zamawiarkaView = 'pomoc'"
   class="ios-menu-tile"
 >
   <div class="ios-menu-icon ios-menu-icon-red">
@@ -1125,36 +1125,10 @@
     <!-- =========================
      WIDOK: POMOC
 ========================== -->
-<Transition name="screen-soft" appear>
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'pomoc'" class="screen-with-topbar">
-  <div class="towary-topbar">
-    <div class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-  @click="zamawiarkaView = 'menu'"
-  class="towary-icon-button"
-  title="Wróć"
->
-  ←
-</button>
-
-        <h2 class="towary-title towary-title-center">POMOC</h2>
-      </div>
-    </div>
-  </div>
-
-  <div class="help-ios-screen">
-    <div class="help-ios-card">
-      <div class="help-ios-icon">💡</div>
-
-      <div class="help-typing">
- <span class="help-line help-line-1">{{ helpLine1 }}</span>
-<span class="help-line help-line-2">{{ helpLine2 }}</span>
-</div>
-    </div>
-  </div>
-</div>
-</Transition>
+<ZamawiarkaPomocView 
+  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'pomoc'" 
+  @close="zamawiarkaView = 'menu'" 
+/>
 
 
 
@@ -1627,30 +1601,16 @@ selectedWhoOrders !== 'wszystkie'
       </div>
 
       <div class="towary-topbar-right">
-        <button
+      <button
           @click="handleGenerateOrder"
+          class="towary-icon-button"
           title="Generuj PDF"
-          style="
-            width:44px;
-            height:44px;
-            border:none;
-            border-radius:12px;
-            background:#ffffff;
-            color:#2563eb;
-            border:1px solid #2563eb;
-            font-size:20px;
-            cursor:pointer;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            box-shadow:0 6px 14px rgba(34, 69, 167, 0.35);
-            transition:all 0.15s ease;
-          "
-          onmousedown="this.style.transform='scale(0.95)'"
-          onmouseup="this.style.transform='scale(1)'"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16l4-3 4 3 4-3 4 3V8z"/>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M14 2v6h6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
+            <rect x="2.5" y="12.5" width="19" height="7.5" rx="1.5" fill="#dc2626" stroke="#b91c1c" stroke-width="0.5"/>
+            <text x="12" y="17.8" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="5.5" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">PDF</text>
           </svg>
         </button>
 
@@ -4662,7 +4622,7 @@ selectedWhoOrders !== 'wszystkie'
 <script>
 
 
-import ZamawiarkaView from './views/ZamawiarkaView.vue'
+import ZamawiarkaPomocView from './views/ZamawiarkaPomocView.vue'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
@@ -4684,11 +4644,9 @@ import {
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 
 export default {
-
-
-
-
-
+  components: {
+    ZamawiarkaPomocView
+  },
   setup() {
 
     // =========================
@@ -4696,7 +4654,7 @@ export default {
     // =========================
     
 
-       const appVersion = ref('3.0.1')
+       const appVersion = ref('3.0.3')
 
 
        // =========================
@@ -8924,49 +8882,7 @@ watch(
 
 
 
-const helpTexts = [
-  [
-    "Jeśli sam sobie nie pomożesz",
-    "to nikt Ci nie pomoże :-)"
-  ],
-  [
-    "Teraz to pomocy pomocy!!!",
-    "A czy Ty pomagasz innym?😄"
-  ],
-  [
-    "Wyglądasz mi na Geniusza",
-    "wiec sobie poradzisz😉"
-  ],
-  [
-    "No weź przestań, ",
-    "nie udawaj że nie wiesz😄"
-  ],
-  [
-    "Oj tam oj tam....",
-    "spróbuj jeszcze raz 😄"
-  ],
-  [
-    "No weź przestań, ",
-    "nie udawaj że nie wiesz😄"
-  ],
-  [
-    "Nie bój się prosić o pomoc",
-    "Napisz do mnie na priv 😄"
-  ],
-  [
-    "Nie chce Cie martwić, ale  ",
-    "tylko Ty pomocy potrzebujesz 😄"
-  ]
-]
 
-const helpLine1 = ref('')
-const helpLine2 = ref('')
-
-function generateHelpText() {
-  const random = helpTexts[Math.floor(Math.random() * helpTexts.length)]
-  helpLine1.value = random[0]
-  helpLine2.value = random[1]
-}
 
 
 
@@ -9301,11 +9217,7 @@ const openZamawiarkaMenuFromHome = () => {
 
       fieldFilledClass,
 
-
-        helpLine1,
-        helpLine2,
-        generateHelpText,
-
+       
         appDialog,
         showAlert,
         showConfirm,
@@ -9401,232 +9313,33 @@ const openZamawiarkaMenuFromHome = () => {
 <style>
 
 
-.field-empty,
-.supplier-click-field.field-empty {
-  background-color: #fffaf5;
-  border: 1.5px solid #f59e0b !important;
-  color: #111827;
-}
-
-.field-filled,
-.supplier-click-field.field-filled {
-  background-color: #f8fafc;
-  border: 1.5px solid #cbd5f5 !important;
-  color: #111827;
-}
-
-
-
-
-
-html, body, #app {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  touch-action: manipulation;
-  -webkit-text-size-adjust: 100%;
-}
-
-.app {
-  width: 100%;
-  min-height: 100vh;
-  box-sizing: border-box;
-  padding: 20px;
-  font-family: sans-serif;
-  background: #f5f5f7;
-  overflow-x: hidden;
-}
-
-
-.screen-with-topbar {
-  height: calc(100dvh - 40px);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.scroll-area {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 120px;
-}
-
-
-
-
-
-/* =========================
-   CART - BOUNCE
-========================= */
-
-@keyframes cart-bounce {
-  0% { transform: scale(1); }
-  30% { transform: scale(1.25); }
-  60% { transform: scale(0.95); }
-  100% { transform: scale(1); }
-}
-
-.cart-bounce {
-  animation: cart-bounce 0.4s ease;
-}
 
 
 
 
 
 
-/* =========================
-   HURTOWNIE - KARTY
-========================= */
-.item-card {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px solid #ddd;
-  background: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-}
 
-.supplier-name {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 0;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
 
-.supplier-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-  font-size: 14px;
-  word-break: break-word;
-}
 
-.supplier-label {
-  font-weight: 600;
-}
 
-/* =========================
-   HURTOWNIE - FAB "+"
-========================= */
-.fab-add-button {
-  position: fixed;
-  right: 20px;
-  bottom: 90px;
-  width: 58px;
-  height: 58px;
-  border: none;
-  border-radius: 50%;
-  background: #1e3a8a;
-  color: #fff;
-  font-size: 34px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
 
-.fab-add-button:active {
-  transform: scale(0.96);
-}
 
-/* =========================
-   HURTOWNIE - MODAL
-========================= */
-.supplier-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  /* Zwiększyliśmy dolny padding z 20px na 50px */
-  padding: 120px 20px 50px 20px; 
-  z-index: 300;
-}
 
-.supplier-modal-card {
-  background: #ffffff;
-  width: 100%;
-  max-width: 420px;
-  border-radius: 18px;
-  /* Dodajemy wsparcie dla paska systemowego iOS/Android */
-  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
-  max-height: 100%;
-  overflow-y: auto;
-}
 
-.supplier-modal-title {
-  margin-top: 0;
-  margin-bottom: 18px;
-  font-size: 20px;
-}
 
-.supplier-form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-}
 
-.supplier-form-label {
-  font-size: 14px;
-  font-weight: 600;
-}
 
-.supplier-form-input {
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid #ccc;
-  font-size: 16px;
-  text-align: center;
-}
 
-.supplier-form-input select {
-  text-align: center;
-}
 
-.supplier-modal-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
 
-.supplier-cancel-button,
-.supplier-save-button {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  border-radius: 10px;
-  color: white;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-}
 
-.supplier-cancel-button {
-  background:rgb(153, 146, 146);
-}
 
-.supplier-save-button {
-  background: #28a745;
-}
+
+
+
+
+
 
 /* =========================
    HURTOWNIE - GÓRA KARTY + EDYCJA
@@ -9652,27 +9365,7 @@ html, body, #app {
   flex-grow: 0;
 }
 
-/* =========================
-   PUSTY STAN
-========================= */
-.empty-state {
-  text-align: center;
-  padding: 30px 16px;
-  border: 1px dashed #d1d5db;
-  border-radius: 16px;
-  background: #f9fafb;
-}
 
-.empty-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.empty-subtitle {
-  font-size: 14px;
-  color: #6b7280;
-}
 
 
 
@@ -10007,20 +9700,10 @@ html, body, #app {
   border-color: #2563eb;
 }
 
-input,
-select,
-textarea {
-  font-size: 16px;
-}
 
 
-.company-name {
-  font-size: 18px;
-  font-weight: 700;
-  text-decoration: underline;
-  color: #111827;
-  text-transform: uppercase;
-}
+
+
 
 
 
@@ -10240,132 +9923,7 @@ textarea {
 }
 
 
-/* =========================
-   ZAMAWIARKA MENU - GRID iOS
-========================= */
 
-.zamawiarka-menu-grid-ios {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.home-wallet-tile,
-.home-logout-ios {
-  box-sizing: border-box;
-}
-
-
-.home-account-ios {
-  background: #eef0f3 !important;
-}
-
-.home-account-ios {
-  width: 82% !important;
-  max-width: 230px !important;
-  min-height: 34px;
-  padding: 6px 12px !important;
-  border-radius: 999px !important;
-  background: #eef0f3 !important;
-  box-shadow: none !important;
-}
-
-.home-account-ios strong {
-  max-width: 120px !important;
-  font-size: 15px !important;
-}
-
-.home-header-ios {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* 🔥 gwarantuje środek */
-  position: relative; /* Dodałem to, aby przycisk w rogu działał */
-}
-
-.home-account-ios {
-  margin-top: 16px !important; /* 🔥 większy odstęp od "wersja" */
-}
-
-
-/* =========================
-   ZAMAWIARKA MENU - KAFELKI iOS
-========================= */
-
-.ios-menu-tile {
-  min-height: 150px;
-  padding: 18px;
-  border: none;
-  border-radius: 24px;
-  background: #ffffff;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.10);
-  display: flex;
-  flex-direction: column;
-    align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  cursor: pointer;
-  text-align: center;
-  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.18s ease;
-}
-
-.ios-menu-tile:active {
-  transform: scale(0.94);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.14);
-}
-
-.ios-menu-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-}
-
-.ios-menu-icon svg {
-  width: 40px;
-  height: 40px;
-}
-
-.ios-menu-icon-blue {
-  background: linear-gradient(135deg, #2563eb, #60a5fa);
-}
-
-.ios-menu-title {
-  margin-top: 2px;
-  font-size: 15px;
-  font-weight: 800;
-  color: #111827;
-}
-
-.ios-menu-subtitle {
-  font-size: 12px;
-  margin-top: -6px;
-  color: #6b7280;
-  line-height: 1.2;
-}
-
-
-.ios-menu-icon-green {
-  background: linear-gradient(135deg, #16a34a, #4ade80);
-}
-
-.ios-menu-icon-orange {
-  background: linear-gradient(135deg, #f97316, #fb923c);
-}
-
-.ios-menu-icon-purple {
-  background: linear-gradient(135deg, #7c3aed, #a78bfa);
-}
-
-.ios-menu-icon-gray {
-  background: linear-gradient(135deg, #6b7280, #9ca3af);
-}
-
-.ios-menu-icon-red {
-  background: linear-gradient(135deg, #ef4444, #f87171);
-}
 
 /* =========================
    POMOC - iOS
@@ -10461,200 +10019,17 @@ textarea {
 }
 
 
-.view-title {
-  width: 100%;
-  text-align: center;
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 20px;
-}
-
-.towary-title-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.towary-topbar {
-  background: #ffffff;
-  border-bottom: 1px solid #e5e5ea;
-}
-
-.towary-title {
-  color: #000;
-}
-
-.towary-icon-button {
-  color: #007aff;
-}
-
-
-.zamawiarka-menu-topbar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e5e5ea;
-  margin-bottom: 20px;
-  background: #ffffff;
-}
-
-.zamawiarka-menu-back {
-  border: none;
-  background: #f2f2f7;
-  color: #007aff;
-  font-size: 20px;
-  cursor: pointer;
-
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.zamawiarka-menu-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: #111827;
-}
 
 
 
-/* =========================
-   MODAL POWIADOMIEŃ iOS
-========================= */
-
-.app-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.app-dialog-card {
-  width: 100%;
-  max-width: 330px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
-  padding: 24px 20px 18px 20px;
-  box-sizing: border-box;
-  text-align: center;
-  animation: appDialogIn 0.18s ease-out;
-}
-
-.app-dialog-icon {
-  width: 58px;
-  height: 58px;
-  margin: 0 auto 14px auto;
-  border-radius: 18px;
-  background: #f2f2f7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 30px;
-}
-
-.app-dialog-title {
-  font-size: 19px;
-  font-weight: 800;
-  color: #111827;
-  margin-bottom: 8px;
-}
-
-.app-dialog-message {
-  font-size: 15px;
-  line-height: 1.35;
-  color: #6b7280;
-  margin-bottom: 20px;
-  white-space: pre-line;
-}
-
-.app-dialog-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.app-dialog-button {
-  flex: 1;
-  border: none;
-  border-radius: 16px;
-  padding: 13px 12px;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.app-dialog-cancel {
-  background: #f2f2f7;
-  color: #111827;
-}
-
-.app-dialog-ok {
-  background: #007aff;
-  color: #ffffff;
-}
-
-.app-dialog-button:active {
-  transform: scale(0.97);
-}
-
-@keyframes appDialogIn {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
 
 
-/* =========================
-   SUBTELNE PRZEJŚCIE WIDOKU
-========================= */
 
-.screen-soft-enter-active {
-  transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
 
-.screen-soft-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
 
-.screen-soft-enter-from {
-  opacity: 0;
-  transform: translateY(28px) scale(0.97);
-}
 
-.screen-soft-leave-to {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.99);
-}
 
-.screen-soft-enter-to,
-.screen-soft-leave-from {
-  opacity: 1;
-  transform: translateY(0);
-}
+
 
 
 
@@ -10683,42 +10058,7 @@ textarea {
 
 
 
-.ios-home-pill {
-  padding: 12px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: #007aff;
-  font-size: 16px;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
-}
 
-.ios-home-pill:active {
-  transform: scale(0.95);
-  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.18);
-}
-
-.ios-home-pill-icon {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ios-home-pill-icon svg {
-  width: 22px;
-  height: 22px;
-}
 
 
 
