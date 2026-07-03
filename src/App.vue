@@ -4654,7 +4654,7 @@ export default {
     // =========================
     
 
-       const appVersion = ref('3.0.3')
+       const appVersion = ref('3.0.4')
 
 
        // =========================
@@ -6371,7 +6371,7 @@ openTowarEdit(fullTowar || product)
 
 
 
-    // =========================
+ // =========================
     // FUNKCJE HURTOWNI
     // =========================
     const openSupplierForm = () => {
@@ -6415,51 +6415,44 @@ openTowarEdit(fullTowar || product)
     const saveSupplier = async () => {
       if (!supplierForm.value.name.trim()) return
 
+      // =========================
+      // DUPLIKAT - HURTOWNIA
+      // =========================
+      if (hasDuplicateName(
+        suppliers.value,
+        supplierForm.value.name,
+        editedSupplierId.value
+      )) {
+        await showAlert('Taka hurtownia już istnieje', 'Duplikat', '⚠️')
+        return
+      }
 
+      // =========================
+      // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
+      // =========================
+      if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
+        const index = suppliers.value.findIndex(
+          supplier => supplier.id === editedSupplierId.value
+        )
 
-
-
-
-
-
-           // =========================
-            // DUPLIKAT - HURTOWNIA
-             // =========================
-                  if (hasDuplicateName(
-                    suppliers.value,
-                    supplierForm.value.name,
-                     editedSupplierId.value
-                  )) {
-                  await showAlert('Taka hurtownia już istnieje', 'Duplikat', '⚠️')
-                    return
-                   }
-
-
-
-
-            // =========================
-            // TRYB EDYCJI
-             // =========================
-           if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
-            const supplierToUpdate = suppliers.value.find(
-            supplier => supplier.id === editedSupplierId.value
-            )
-
-           if (supplierToUpdate) {
-          supplierToUpdate.name = cleanName(supplierForm.value.name)
-          supplierToUpdate.phone = supplierForm.value.phone
-          supplierToUpdate.email = supplierForm.value.email
+        if (index !== -1) {
+          suppliers.value[index] = {
+            ...suppliers.value[index],
+            name: cleanName(supplierForm.value.name),
+            phone: supplierForm.value.phone,
+            email: supplierForm.value.email
+          }
         }
       } else {
         // =========================
         // TRYB DODAWANIA
         // =========================
         suppliers.value.push({
-  id: Date.now(),
-  name: cleanName(supplierForm.value.name),
-  phone: supplierForm.value.phone,
-  email: supplierForm.value.email
-})
+          id: Date.now(),
+          name: cleanName(supplierForm.value.name),
+          phone: supplierForm.value.phone,
+          email: supplierForm.value.email
+        })
       }
 
       supplierForm.value = {
@@ -6473,8 +6466,6 @@ openTowarEdit(fullTowar || product)
       editedSupplierId.value = null
       scheduleSave()
     }
-
-
 
 // =========================
 // USUWANIE HURTOWNI (Z POTWIERDZENIEM)
@@ -6496,6 +6487,7 @@ const deleteSupplier = async () => {
 )
 if (!confirmed) return
 
+  // Aktualizacja listy metodą filter (Niemutowalność)
   suppliers.value = suppliers.value.filter(
     supplier => supplier.id !== editedSupplierId.value
   )
@@ -6523,11 +6515,6 @@ if (!confirmed) return
 
   scheduleSave()
 }
-
-
-
-
-
 
     // =========================
     // MAGAZYNY (LISTA + FORMULARZ)
@@ -6583,7 +6570,7 @@ if (!confirmed) return
       }
     }
 
-    const saveWarehouse =async () => {
+    const saveWarehouse = async () => {
   const name = cleanName(warehouseForm.value.name)
 
   if (!name) return
@@ -6601,15 +6588,18 @@ if (!confirmed) return
   }
 
   // =========================
-  // TRYB EDYCJI
+  // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
   // =========================
   if (warehouseFormMode.value === 'edit' && editedWarehouseId.value !== null) {
-    const warehouseToUpdate = warehouses.value.find(
+    const index = warehouses.value.findIndex(
       warehouse => warehouse.id === editedWarehouseId.value
     )
 
-    if (warehouseToUpdate) {
-      warehouseToUpdate.name = name
+    if (index !== -1) {
+      warehouses.value[index] = {
+        ...warehouses.value[index],
+        name: name
+      }
     }
   } else {
     // =========================
