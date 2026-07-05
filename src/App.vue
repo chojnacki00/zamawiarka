@@ -3397,6 +3397,14 @@ selectedWhoOrders !== 'wszystkie'
   :showWhoOrderForm="showWhoOrderForm"
   :whoOrderFormMode="whoOrderFormMode"
   :whoOrderForm="whoOrderForm"
+  :orderTimings="orderTimings"
+  :showOrderTimingForm="showOrderTimingForm"
+  :orderTimingFormMode="orderTimingFormMode"
+  :orderTimingForm="orderTimingForm"
+  :categories="categories"
+  :showCategoryForm="showCategoryForm"
+  :categoryFormMode="categoryFormMode"
+  :categoryForm="categoryForm"
   @close="zamawiarkaView = 'menu'"
   @openSupplierForm="openSupplierForm"
   @editSupplier="editSupplier"
@@ -3418,6 +3426,16 @@ selectedWhoOrders !== 'wszystkie'
   @closeWhoOrderForm="closeWhoOrderForm"
   @saveWhoOrder="saveWhoOrder"
   @deleteWhoOrder="deleteWhoOrder"
+  @openOrderTimingForm="openOrderTimingForm"
+  @editOrderTiming="editOrderTiming"
+  @closeOrderTimingForm="closeOrderTimingForm"
+  @saveOrderTiming="saveOrderTiming"
+  @deleteOrderTiming="deleteOrderTiming"
+  @openCategoryForm="openCategoryForm"
+  @editCategory="editCategory"
+  @closeCategoryForm="closeCategoryForm"
+  @saveCategory="saveCategory"
+  @deleteCategory="deleteCategory"
 />
 
 
@@ -3432,269 +3450,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-        <!-- =========================
-         WIDOK: KIEDY ZAMAWIANE
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'orderTiming'" class="suppliers-screen">
-      <div class="zamawiarka-menu-topbar">
-       <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">KIEDY ZAMAWIANE</h2>
-      </div>
-
-      <!-- LISTA -->
-      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="orderTimings.length === 0" class="empty-state">
-          <div class="empty-title">Brak pozycji</div>
-          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
-        </div>
-
-        <!-- LISTA POZYCJI -->
-        <div
-          v-for="item in orderTimings"
-          :key="item.id"
-          class="item-card"
-        >
-          <div class="item-card-top">
-            <div class="item-name">{{ item.name }}</div>
-
-            <button
-              @click="editOrderTiming(item)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openOrderTimingForm"
-        class="fab-add-button"
-        aria-label="Dodaj pozycję"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showOrderTimingForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ orderTimingFormMode === 'edit' ? 'EDYTUJ POZYCJĘ' : 'DODAJ POZYCJĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa</label>
-            <input
-              v-model="orderTimingForm.name"
-              type="text"
-              placeholder="Np. Poniedziałek albo Raz w miesiącu"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="orderTimingFormMode === 'edit'"
-              @click="deleteOrderTiming"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button
-              @click="closeOrderTimingForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <button
-              @click="saveOrderTiming"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
-
-
-
-
-
-
   
-
-
-
-
-
-
-
-
-        <!-- =========================
-         WIDOK: KATEGORIE TOWARÓW
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'categories'" class="suppliers-screen">
-      <div class="zamawiarka-menu-topbar">
-        <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">KATEGORIE TOWARÓW</h2>
-      </div>
-
-      <!-- LISTA -->
-      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="categories.length === 0" class="empty-state">
-          <div class="empty-title">Brak kategorii towarów</div>
-          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
-        </div>
-
-        <!-- LISTA POZYCJI -->
-        <div
-          v-for="item in categories"
-          :key="item.id"
-          class="item-card"
-        >
-          <div class="item-card-top">
-            <div class="supplier-name">{{ item.name }}</div>
-
-            <button
-              @click="editCategory(item)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openCategoryForm"
-        class="fab-add-button"
-        aria-label="Dodaj kategorię"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showCategoryForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ categoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa kategorii</label>
-            <input
-              v-model="categoryForm.name"
-              type="text"
-              placeholder="Np. Nabiał, Chemia, Mięso"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="categoryFormMode === 'edit'"
-              @click="deleteCategory"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button
-              @click="closeCategoryForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <button
-              @click="saveCategory"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
 
 
 
@@ -4082,7 +3838,7 @@ export default {
     // =========================
     
 
-       const appVersion = ref('3.0.6')
+       const appVersion = ref('3.1.0')
 
 
        // =========================

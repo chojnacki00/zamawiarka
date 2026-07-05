@@ -17,13 +17,6 @@
       </div>
     </div>
 
-    <div v-if="activeTab !== 'menu' && activeTab !== 'hurtownie' && activeTab !== 'magazyny' && activeTab !== 'units' && activeTab !== 'whoOrders'" style="padding: 60px 20px; text-align: center;">
-      <h3 style="color: #64748b; margin-bottom: 20px;">Ta sekcja czeka na przeniesienie w kolejnym kroku :)</h3>
-      <button @click="activeTab = 'menu'" style="padding: 12px 24px; border-radius: 8px; background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer;">
-        Wróć do menu ustawień
-      </button>
-    </div>
-
     <div v-if="activeTab === 'hurtownie'" class="suppliers-screen">
       <div class="zamawiarka-menu-topbar">
         <button @click="activeTab = 'menu'" class="zamawiarka-menu-back">←</button>
@@ -176,6 +169,94 @@
       </div>
     </div>
 
+    <div v-if="activeTab === 'orderTiming'" class="suppliers-screen">
+      <div class="zamawiarka-menu-topbar">
+        <button @click="activeTab = 'menu'" class="zamawiarka-menu-back">←</button>
+        <h2 class="zamawiarka-menu-title">KIEDY ZAMAWIANE</h2>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px; padding: 0 20px;">
+        <div v-if="orderTimings.length === 0" class="empty-state">
+          <div class="empty-title">Brak pozycji</div>
+          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
+        </div>
+
+        <div v-for="item in orderTimings" :key="item.id" class="item-card">
+          <div class="item-card-top">
+            <div class="item-name">{{ item.name }}</div>
+            <button @click="$emit('editOrderTiming', item)" class="supplier-edit-button" type="button">✏️</button>
+          </div>
+        </div>
+      </div>
+
+      <button @click="$emit('openOrderTimingForm')" class="fab-add-button" aria-label="Dodaj pozycję">+</button>
+
+      <div v-if="showOrderTimingForm" class="supplier-modal-overlay">
+        <div class="supplier-modal-card">
+          <h3 class="supplier-modal-title">
+            {{ orderTimingFormMode === 'edit' ? 'EDYTUJ POZYCJĘ' : 'DODAJ POZYCJĘ' }}
+          </h3>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Nazwa</label>
+            <input v-model="orderTimingForm.name" type="text" placeholder="Np. Poniedziałek albo Raz w miesiącu" autofocus class="supplier-form-input" />
+          </div>
+
+          <div class="supplier-modal-actions">
+            <button v-if="orderTimingFormMode === 'edit'" @click="$emit('deleteOrderTiming')" style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;">
+              Usuń
+            </button>
+            <button @click="$emit('closeOrderTimingForm')" class="supplier-cancel-button">Anuluj</button>
+            <button @click="$emit('saveOrderTiming')" class="supplier-save-button">Zapisz</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="activeTab === 'categories'" class="suppliers-screen">
+      <div class="zamawiarka-menu-topbar">
+        <button @click="activeTab = 'menu'" class="zamawiarka-menu-back">←</button>
+        <h2 class="zamawiarka-menu-title">KATEGORIE TOWARÓW</h2>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px; padding: 0 20px;">
+        <div v-if="categories.length === 0" class="empty-state">
+          <div class="empty-title">Brak kategorii towarów</div>
+          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
+        </div>
+
+        <div v-for="item in categories" :key="item.id" class="item-card">
+          <div class="item-card-top">
+            <div class="supplier-name">{{ item.name }}</div>
+            <button @click="$emit('editCategory', item)" class="supplier-edit-button" type="button">✏️</button>
+          </div>
+        </div>
+      </div>
+
+      <button @click="$emit('openCategoryForm')" class="fab-add-button" aria-label="Dodaj kategorię">+</button>
+
+      <div v-if="showCategoryForm" class="supplier-modal-overlay">
+        <div class="supplier-modal-card">
+          <h3 class="supplier-modal-title">
+            {{ categoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
+          </h3>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Nazwa kategorii</label>
+            <input v-model="categoryForm.name" type="text" placeholder="Np. Nabiał, Chemia, Mięso" autofocus class="supplier-form-input" />
+          </div>
+
+          <div class="supplier-modal-actions">
+            <button v-if="categoryFormMode === 'edit'" @click="$emit('deleteCategory')" style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;">
+              Usuń
+            </button>
+            <button @click="$emit('closeCategoryForm')" class="supplier-cancel-button">Anuluj</button>
+            <button @click="$emit('saveCategory')" class="supplier-save-button">Zapisz</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="activeTab === 'whoOrders'" class="suppliers-screen">
       <div class="zamawiarka-menu-topbar">
         <button @click="activeTab = 'menu'" class="zamawiarka-menu-back">←</button>
@@ -227,54 +308,22 @@
 import { ref } from 'vue'
 
 const props = defineProps([
-  // Hurtownie
-  'suppliers',
-  'showSupplierForm',
-  'supplierFormMode',
-  'supplierForm',
-  // Magazyny
-  'warehouses',
-  'showWarehouseForm',
-  'warehouseFormMode',
-  'warehouseForm',
-  // Jednostki miary
-  'units',
-  'showUnitForm',
-  'unitFormMode',
-  'unitForm',
-  // Kto zamawia
-  'whoOrders',
-  'showWhoOrderForm',
-  'whoOrderFormMode',
-  'whoOrderForm'
+  'suppliers', 'showSupplierForm', 'supplierFormMode', 'supplierForm',
+  'warehouses', 'showWarehouseForm', 'warehouseFormMode', 'warehouseForm',
+  'units', 'showUnitForm', 'unitFormMode', 'unitForm',
+  'whoOrders', 'showWhoOrderForm', 'whoOrderFormMode', 'whoOrderForm',
+  'orderTimings', 'showOrderTimingForm', 'orderTimingFormMode', 'orderTimingForm',
+  'categories', 'showCategoryForm', 'categoryFormMode', 'categoryForm'
 ])
 
 const emit = defineEmits([
   'close',
-  // Hurtownie
-  'openSupplierForm',
-  'editSupplier',
-  'closeSupplierForm',
-  'saveSupplier',
-  'deleteSupplier',
-  // Magazyny
-  'openWarehouseForm',
-  'editWarehouse',
-  'closeWarehouseForm',
-  'saveWarehouse',
-  'deleteWarehouse',
-  // Jednostki miary
-  'openUnitForm',
-  'editUnit',
-  'closeUnitForm',
-  'saveUnit',
-  'deleteUnit',
-  // Kto zamawia
-  'openWhoOrderForm',
-  'editWhoOrder',
-  'closeWhoOrderForm',
-  'saveWhoOrder',
-  'deleteWhoOrder'
+  'openSupplierForm', 'editSupplier', 'closeSupplierForm', 'saveSupplier', 'deleteSupplier',
+  'openWarehouseForm', 'editWarehouse', 'closeWarehouseForm', 'saveWarehouse', 'deleteWarehouse',
+  'openUnitForm', 'editUnit', 'closeUnitForm', 'saveUnit', 'deleteUnit',
+  'openWhoOrderForm', 'editWhoOrder', 'closeWhoOrderForm', 'saveWhoOrder', 'deleteWhoOrder',
+  'openOrderTimingForm', 'editOrderTiming', 'closeOrderTimingForm', 'saveOrderTiming', 'deleteOrderTiming',
+  'openCategoryForm', 'editCategory', 'closeCategoryForm', 'saveCategory', 'deleteCategory'
 ])
 
 const activeTab = ref('menu')
