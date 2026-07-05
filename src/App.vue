@@ -3379,385 +3379,43 @@ selectedWhoOrders !== 'wszystkie'
     <!-- =========================
      WIDOK: USTAWIENIA
 ========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia'">
-  <div class="zamawiarka-menu-topbar">
-    <button
-  @click="zamawiarkaView = 'menu'"
-  class="zamawiarka-menu-back"
->
-      ←
-    </button>
-    <h2 class="zamawiarka-menu-title">USTAWIENIA</h2>
-  </div>
-
-  <div style="display:flex; flex-direction:column; gap:10px;">
-    <button
-      @click="zamawiarkaView = 'hurtownie'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Hurtownie
-    </button>
-
-    <button
-      @click="zamawiarkaView = 'magazyny'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Magazyny
-    </button>
-
-    <button
-      @click="zamawiarkaView = 'units'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Jednostki miary
-    </button>
-
-    <button
-      @click="zamawiarkaView = 'orderTiming'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Kiedy zamawiane
-    </button>
-
-    <!-- NOWY PRZYCISK -->
-    <button
-      @click="zamawiarkaView = 'categories'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Kategorie towarów
-    </button>
-
-    <button
-      @click="zamawiarkaView = 'whoOrders'"
-      style="padding:15px; border-radius:12px;"
-    >
-      Kto zamawia
-    </button>
-
-
-
-
-  </div>
-
-  <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-    <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-  </div>
-</div>
+<ZamawiarkaUstawieniaView
+  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia'"
+  :suppliers="suppliers"
+  :showSupplierForm="showSupplierForm"
+  :supplierFormMode="supplierFormMode"
+  :supplierForm="supplierForm"
+  :warehouses="warehouses"
+  :showWarehouseForm="showWarehouseForm"
+  :warehouseFormMode="warehouseFormMode"
+  :warehouseForm="warehouseForm"
+  :units="units"
+  :showUnitForm="showUnitForm"
+  :unitFormMode="unitFormMode"
+  :unitForm="unitForm"
+  @close="zamawiarkaView = 'menu'"
+  @openSupplierForm="openSupplierForm"
+  @editSupplier="editSupplier"
+  @closeSupplierForm="closeSupplierForm"
+  @saveSupplier="saveSupplier"
+  @deleteSupplier="deleteSupplier"
+  @openWarehouseForm="openWarehouseForm"
+  @editWarehouse="editWarehouse"
+  @closeWarehouseForm="closeWarehouseForm"
+  @saveWarehouse="saveWarehouse"
+  @deleteWarehouse="deleteWarehouse"
+  @openUnitForm="openUnitForm"
+  @editUnit="editUnit"
+  @closeUnitForm="closeUnitForm"
+  @saveUnit="saveUnit"
+  @deleteUnit="deleteUnit"
+/>
 
 
 
 
 
 
-        <!-- =========================
-         WIDOK: HURTOWNIE
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'hurtownie'" class="suppliers-screen">
-      <!-- NAGŁÓWEK -->
-      <div class="zamawiarka-menu-topbar">
-        <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">HURTOWNIE</h2>
-      </div>
-
-      <!-- LISTA HURTOWNI -->
-            <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="suppliers.length === 0" class="empty-state">
-          <div class="empty-title">Brak hurtowni</div>
-          <div class="empty-subtitle">Kliknij + aby dodać</div>
-        </div>
-
-        <!-- LISTA -->
-        <div
-          v-for="supplier in suppliers"
-          :key="supplier.id"
-          class="item-card"
-        >
-          <!-- GÓRA KARTY: NAZWA + PRZYCISK EDYCJI -->
-          <div class="item-card-top">
-            <div class="supplier-name">{{ supplier.name }}</div>
-
-            <button
-              @click="editSupplier(supplier)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-
-          <!-- DANE HURTOWNI -->
-          <div v-if="supplier.phone" class="supplier-row">
-            <span class="supplier-label">📞 Telefon:</span>
-            <span>{{ supplier.phone }}</span>
-          </div>
-
-          <div v-if="supplier.email" class="supplier-row">
-            <span class="supplier-label">✉️ E-mail:</span>
-            <span>{{ supplier.email }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openSupplierForm"
-        class="fab-add-button"
-        aria-label="Dodaj hurtownię"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showSupplierForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ supplierFormMode === 'edit' ? 'EDYTUJ HURTOWNIĘ' : 'DODAJ HURTOWNIĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa</label>
-            <input
-              v-model="supplierForm.name"
-              type="text"
-              placeholder="Np. Makro"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Telefon</label>
-            <input
-              v-model="supplierForm.phone"
-              type="tel"
-              placeholder="Np. 123456789"
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">E-mail</label>
-            <input
-              v-model="supplierForm.email"
-              type="email"
-              placeholder="Np. kontakt@firma.pl"
-              class="supplier-form-input"
-            />
-          </div>
-
-                    <div class="supplier-modal-actions">
-            <!-- PRZYCISK USUWANIA - TYLKO W TRYBIE EDYCJI -->
-            <button
-              v-if="supplierFormMode === 'edit'"
-              @click="deleteSupplier"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <!-- PRZYCISK ANULUJ -->
-            <button
-              @click="closeSupplierForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <!-- PRZYCISK ZAPISZ -->
-            <button
-              @click="saveSupplier"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
-
-
-
-
-
-        <!-- =========================
-         WIDOK: MAGAZYNY
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'magazyny'" class="suppliers-screen">
-      <div class="zamawiarka-menu-topbar">
-        <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">MAGAZYNY</h2>
-      </div>
-
-      <!-- LISTA MAGAZYNÓW -->
-      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="warehouses.length === 0" class="empty-state">
-          <div class="empty-title">Brak magazynów</div>
-          <div class="empty-subtitle">Kliknij + aby dodać pierwszy</div>
-        </div>
-
-        <!-- LISTA -->
-        <div
-          v-for="warehouse in warehouses"
-          :key="warehouse.id"
-          class="item-card"
-        >
-          <div class="item-card-top">
-            <div class="supplier-name">{{ warehouse.name }}</div>
-
-            <button
-              @click="editWarehouse(warehouse)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openWarehouseForm"
-        class="fab-add-button"
-        aria-label="Dodaj magazyn"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showWarehouseForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ warehouseFormMode === 'edit' ? 'EDYTUJ MAGAZYN' : 'DODAJ MAGAZYN' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa magazynu</label>
-            <input
-              v-model="warehouseForm.name"
-              type="text"
-              placeholder="Np. Magazyn Główny"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="warehouseFormMode === 'edit'"
-              @click="deleteWarehouse"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button
-              @click="closeWarehouseForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <button
-              @click="saveWarehouse"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
 
 
 
@@ -3895,130 +3553,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-        <!-- =========================
-         WIDOK: JEDNOSTKI MIARY
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'units'" class="suppliers-screen">
-      <div class="zamawiarka-menu-topbar">
-        <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">JEDNOSTKI MIARY</h2>
-      </div>
-
-      <!-- LISTA -->
-      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="units.length === 0" class="empty-state">
-          <div class="empty-title">Brak jednostek miary</div>
-          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
-        </div>
-
-        <!-- LISTA POZYCJI -->
-        <div
-          v-for="item in units"
-          :key="item.id"
-          class="item-card"
-        >
-          <div class="item-card-top">
-            <div class="supplier-name">{{ item.name }}</div>
-
-            <button
-              @click="editUnit(item)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openUnitForm"
-        class="fab-add-button"
-        aria-label="Dodaj jednostkę miary"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showUnitForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ unitFormMode === 'edit' ? 'EDYTUJ JEDNOSTKĘ MIARY' : 'DODAJ JEDNOSTKĘ MIARY' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa jednostki</label>
-            <input
-              v-model="unitForm.name"
-              type="text"
-              placeholder="Np. szt, kg, l"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="unitFormMode === 'edit'"
-              @click="deleteUnit"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button
-              @click="closeUnitForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <button
-              @click="saveUnit"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
+  
 
 
 
@@ -4623,6 +4158,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 import ZamawiarkaPomocView from './views/ZamawiarkaPomocView.vue'
+import ZamawiarkaUstawieniaView from './views/ZamawiarkaUstawieniaView.vue'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
@@ -4645,7 +4181,8 @@ import { useRegisterSW } from 'virtual:pwa-register/vue'
 
 export default {
   components: {
-    ZamawiarkaPomocView
+    ZamawiarkaPomocView,
+    ZamawiarkaUstawieniaView
   },
   setup() {
 
@@ -4654,7 +4191,7 @@ export default {
     // =========================
     
 
-       const appVersion = ref('3.0.4')
+       const appVersion = ref('3.0.5')
 
 
        // =========================
