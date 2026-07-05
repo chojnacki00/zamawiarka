@@ -3393,6 +3393,10 @@ selectedWhoOrders !== 'wszystkie'
   :showUnitForm="showUnitForm"
   :unitFormMode="unitFormMode"
   :unitForm="unitForm"
+  :whoOrders="whoOrders"
+  :showWhoOrderForm="showWhoOrderForm"
+  :whoOrderFormMode="whoOrderFormMode"
+  :whoOrderForm="whoOrderForm"
   @close="zamawiarkaView = 'menu'"
   @openSupplierForm="openSupplierForm"
   @editSupplier="editSupplier"
@@ -3409,6 +3413,11 @@ selectedWhoOrders !== 'wszystkie'
   @closeUnitForm="closeUnitForm"
   @saveUnit="saveUnit"
   @deleteUnit="deleteUnit"
+  @openWhoOrderForm="openWhoOrderForm"
+  @editWhoOrder="editWhoOrder"
+  @closeWhoOrderForm="closeWhoOrderForm"
+  @saveWhoOrder="saveWhoOrder"
+  @deleteWhoOrder="deleteWhoOrder"
 />
 
 
@@ -3692,130 +3701,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-        <!-- =========================
-         WIDOK: KTO ZAMAWIA
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'whoOrders'" class="suppliers-screen">
-      <div class="zamawiarka-menu-topbar">
-        <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="zamawiarka-menu-back"
->
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title">KTO ZAMAWIA</h2>
-      </div>
 
-            <!-- LISTA -->
-      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px;">
-
-        <!-- PUSTY STAN -->
-        <div v-if="whoOrders.length === 0" class="empty-state">
-          <div class="empty-title">Brak pozycji</div>
-          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
-        </div>
-
-        <!-- LISTA POZYCJI -->
-        <div
-          v-for="item in whoOrders"
-          :key="item.id"
-          class="item-card"
-        >
-          <div class="item-card-top">
-            <div class="supplier-name">{{ item.name }}</div>
-
-            <button
-              @click="editWhoOrder(item)"
-              class="supplier-edit-button"
-              type="button"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- PŁYWAJĄCY PRZYCISK DODAWANIA -->
-      <button
-        @click="openWhoOrderForm"
-        class="fab-add-button"
-        aria-label="Dodaj pozycję"
-      >
-        +
-      </button>
-
-      <!-- OKNO FORMULARZA -->
-      <div
-        v-if="showWhoOrderForm"
-        class="supplier-modal-overlay"
-      >
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ whoOrderFormMode === 'edit' ? 'EDYTUJ POZYCJĘ' : 'DODAJ POZYCJĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Kto zamawia</label>
-            <input
-              v-model="whoOrderForm.name"
-              type="text"
-              placeholder="Np. Barman, Szef kuchni, Manager"
-              autofocus
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="whoOrderFormMode === 'edit'"
-              @click="deleteWhoOrder"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button
-              @click="closeWhoOrderForm"
-              class="supplier-cancel-button"
-            >
-              Anuluj
-            </button>
-
-            <button
-              @click="saveWhoOrder"
-              class="supplier-save-button"
-            >
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOLNY PRZYCISK HOME -->
-      <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-        <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-      </div>
-    </div>
 
 
 
@@ -3823,6 +3709,11 @@ selectedWhoOrders !== 'wszystkie'
 
 
   </div>
+
+
+  <!-- =========================
+     PODGLĄD PDF
+========================== -->
 
 
   <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
@@ -4191,7 +4082,7 @@ export default {
     // =========================
     
 
-       const appVersion = ref('3.0.5')
+       const appVersion = ref('3.0.6')
 
 
        // =========================

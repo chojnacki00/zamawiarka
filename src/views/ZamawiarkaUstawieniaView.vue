@@ -17,7 +17,7 @@
       </div>
     </div>
 
-    <div v-if="activeTab !== 'menu' && activeTab !== 'hurtownie' && activeTab !== 'magazyny' && activeTab !== 'units'" style="padding: 60px 20px; text-align: center;">
+    <div v-if="activeTab !== 'menu' && activeTab !== 'hurtownie' && activeTab !== 'magazyny' && activeTab !== 'units' && activeTab !== 'whoOrders'" style="padding: 60px 20px; text-align: center;">
       <h3 style="color: #64748b; margin-bottom: 20px;">Ta sekcja czeka na przeniesienie w kolejnym kroku :)</h3>
       <button @click="activeTab = 'menu'" style="padding: 12px 24px; border-radius: 8px; background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer;">
         Wróć do menu ustawień
@@ -176,6 +176,50 @@
       </div>
     </div>
 
+    <div v-if="activeTab === 'whoOrders'" class="suppliers-screen">
+      <div class="zamawiarka-menu-topbar">
+        <button @click="activeTab = 'menu'" class="zamawiarka-menu-back">←</button>
+        <h2 class="zamawiarka-menu-title">KTO ZAMAWIA</h2>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:110px; padding: 0 20px;">
+        <div v-if="whoOrders.length === 0" class="empty-state">
+          <div class="empty-title">Brak pozycji</div>
+          <div class="empty-subtitle">Kliknij + aby dodać pierwszą</div>
+        </div>
+
+        <div v-for="item in whoOrders" :key="item.id" class="item-card">
+          <div class="item-card-top">
+            <div class="supplier-name">{{ item.name }}</div>
+            <button @click="$emit('editWhoOrder', item)" class="supplier-edit-button" type="button">✏️</button>
+          </div>
+        </div>
+      </div>
+
+      <button @click="$emit('openWhoOrderForm')" class="fab-add-button" aria-label="Dodaj pozycję">+</button>
+
+      <div v-if="showWhoOrderForm" class="supplier-modal-overlay">
+        <div class="supplier-modal-card">
+          <h3 class="supplier-modal-title">
+            {{ whoOrderFormMode === 'edit' ? 'EDYTUJ POZYCJĘ' : 'DODAJ POZYCJĘ' }}
+          </h3>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label">Kto zamawia</label>
+            <input v-model="whoOrderForm.name" type="text" placeholder="Np. Barman, Szef kuchni, Manager" autofocus class="supplier-form-input" />
+          </div>
+
+          <div class="supplier-modal-actions">
+            <button v-if="whoOrderFormMode === 'edit'" @click="$emit('deleteWhoOrder')" style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;">
+              Usuń
+            </button>
+            <button @click="$emit('closeWhoOrderForm')" class="supplier-cancel-button">Anuluj</button>
+            <button @click="$emit('saveWhoOrder')" class="supplier-save-button">Zapisz</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -197,7 +241,12 @@ const props = defineProps([
   'units',
   'showUnitForm',
   'unitFormMode',
-  'unitForm'
+  'unitForm',
+  // Kto zamawia
+  'whoOrders',
+  'showWhoOrderForm',
+  'whoOrderFormMode',
+  'whoOrderForm'
 ])
 
 const emit = defineEmits([
@@ -219,7 +268,13 @@ const emit = defineEmits([
   'editUnit',
   'closeUnitForm',
   'saveUnit',
-  'deleteUnit'
+  'deleteUnit',
+  // Kto zamawia
+  'openWhoOrderForm',
+  'editWhoOrder',
+  'closeWhoOrderForm',
+  'saveWhoOrder',
+  'deleteWhoOrder'
 ])
 
 const activeTab = ref('menu')
