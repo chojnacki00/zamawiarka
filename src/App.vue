@@ -1,72 +1,8 @@
 <template>
   <!-- =========================
-       LOGIN commit2
+       ROUTER: WIDOK LOGOWANIA
   ========================== -->
-   <div
-    v-if="!isLoggedIn"
-    class="login-screen"
-  >
-    <form
-      class="login-card"
-      @submit.prevent="handleLogin"
-      autocomplete="on"
-    >
-      <h1 class="login-title">GastroManager</h1>
-      <div class="login-subtitle">Zaloguj się do swojej restauracji</div>
-
-      <div class="supplier-form-group" style="margin-top:20px;">
-  <label class="supplier-form-label" for="login-email">E-mail</label>
-  <input
-    id="login-email"
-    v-model="authForm.email"
-    type="email"
-    class="login-input"
-    placeholder="Wpisz e-mail"
-    name="email"
-    autocomplete="username"
-    autocapitalize="none"
-    autocorrect="off"
-    spellcheck="false"
-  />
-</div>
-
-      <div class="supplier-form-group">
-        <label class="supplier-form-label" for="login-password">Hasło</label>
-        <input
-          id="login-password"
-          v-model="authForm.password"
-          type="password"
-          class="login-input"
-          placeholder="Wpisz hasło"
-          name="password"
-          autocomplete="current-password"
-          autocapitalize="none"
-          autocorrect="off"
-          spellcheck="false"
-        />
-      </div>
-
-      <div
-        v-if="authError"
-        style="margin-top:10px; font-size:14px; color:#dc2626; font-weight:600;"
-      >
-        {{ authError }}
-      </div>
-
-  <button
-  class="login-button"
-  type="submit"
-  :disabled="isLoggingIn"
-  :class="{ 'login-button-loading': isLoggingIn }"
->
-  <span v-if="!isLoggingIn">Zaloguj</span>
-  <span v-else class="login-button-content">
-    <span class="login-spinner"></span>
-    <span>Logowanie...</span>
-  </span>
-</button>
-    </form>
-  </div>
+  <router-view v-if="!isLoggedIn" />
 
   <!-- =========================
        APP / KONTENER GŁÓWNY
@@ -202,20 +138,31 @@
 
   <div class="scroll-area" style="padding: 20px;">
     <button 
-      @click="eksportujBackup" 
+      @click="showBackupOptions = !showBackupOptions" 
       class="item-card" 
+      :class="{ 'item-card-active': showBackupOptions }"
       style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
     >
-      💾 Utwórz kopię zapasową
+      💾 Kopia zapasowa i przywracanie
     </button>
 
-    <button 
-      @click="triggerFileInput"
-      class="item-card" 
-      style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
-    >
-      📂 Przywróć dane z pliku
-    </button>
+   <div v-if="showBackupOptions" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">
+      <button 
+        @click="eksportujBackup" 
+        class="item-card item-card-sub" 
+        style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+      >
+        💾 Utwórz kopię zapasową
+      </button>
+
+      <button 
+        @click="triggerFileInput"
+        class="item-card item-card-sub" 
+        style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+      >
+        📂 Przywróć dane z pliku
+      </button>
+    </div>
 
     <input 
       type="file" 
@@ -540,11 +487,12 @@
             <button 
               @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
               class="item-card" 
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === 'brak_kategorii' ? '2px solid #64748b' : '1px solid #e2e8f0', backgroundColor: selectedCategory === 'brak_kategorii' ? '#f8fafc' : '#f1f5f9' }"
+              :class="{ 'item-card-active': selectedCategory === 'brak_kategorii' }"
+              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }"
             >
               <div style="display: flex; align-items: center; gap: 10px;">
                 <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
-                <span style="font-size: 16px; color: #475569; font-style: italic;">Bez kategorii</span>
+                <span style="font-size: 16px; color: #111827;">Bez kategorii</span>
               </div>
 
               <div style="display: flex; align-items: center; gap: 10px;">
@@ -3825,6 +3773,7 @@ import {
 } from 'firebase/firestore'
 
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+import { useRouter } from 'vue-router'
 
 export default {
   components: {
@@ -3832,6 +3781,7 @@ export default {
     ZamawiarkaUstawieniaView
   },
   setup() {
+    const router = useRouter()
 
     // =========================
     // wersja aplikacji    
@@ -4371,6 +4321,7 @@ const eksportujBackup = async () => {
 };
 
 const backupInputRef = ref(null);
+const showBackupOptions = ref(false)
 
 const triggerFileInput = () => {
   if (backupInputRef.value) {
@@ -7916,6 +7867,7 @@ let unsubscribeAuth = null
 onMounted(() => {
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
+      router.push('/login')
       if (unsubscribeCartItems) {
         unsubscribeCartItems()
         unsubscribeCartItems = null
@@ -8433,6 +8385,7 @@ const openZamawiarkaMenuFromHome = () => {
       deleteMenuItem,
         backupInputRef,
       triggerFileInput,
+      showBackupOptions,
       wczytajBackup,
 
       isSettingsDirty,
@@ -8715,6 +8668,19 @@ const openZamawiarkaMenuFromHome = () => {
 .zamowienie-active {
   background: #93c5fd;
   border-color: #2563eb;
+}
+
+.item-card-active {
+  background-color: #eff6ff !important;
+  border: 2px solid #2563eb !important;
+}
+.item-card-sub {
+  margin-left: 16px !important;
+  width: calc(100% - 16px) !important;
+  background-color: #f5f3ff !important; /* Pastelowy fiolet */
+  border: 1px dashed #c798f7 !important; /* Delikatnie fioletowa przerywana ramka */
+  font-size: 14px !important;
+  padding: 12px !important;
 }
 
 
