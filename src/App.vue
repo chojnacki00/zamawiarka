@@ -2,11 +2,13 @@
   <!-- =========================
        EKRAN ŁADOWANIA (WIDOCZNY PODCZAS WERYFIKACJI FIREBASE)
   ========================== -->
-  <div v-if="!isAppReady" class="ekran-ladowania">
-    <div class="koleczko-ladowania"></div>
-    <h3 style="color: #374151; font-weight: 700;">Wczytywanie GastroManager...</h3>
+  <div v-if="!isAppReady" class="splash-screen">
+    <div class="splash-spinner"></div>
+    <div class="splash-text-container">
+      <span class="splash-subtitle">Wczytywanie...</span>
+      <h1 class="splash-title">GastroManager</h1>
+    </div>
   </div>
-
   <!-- =========================
        WŁAŚCIWA APLIKACJA (PO WERYFIKACJI)
   ========================== -->
@@ -951,8 +953,6 @@
 
 
 <script>
-
-
 import ZamawiarkaPomocView from './views/ZamawiarkaPomocView.vue'
 import ZamawiarkaUstawieniaView from './views/ZamawiarkaUstawieniaView.vue'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, provide } from 'vue'
@@ -987,14 +987,17 @@ export default {
     const authStore = useAuthStore()
 
     // =========================
+    // STAN APLIKACJI - EKRAN ŁADOWANIA (Flash of Initial State)
+    // =========================
+    const isAppReady = ref(false)
+
+    // =========================
     // wersja aplikacji    
     // =========================
-    
-
-       const appVersion = ref('3.1.0')
+    const appVersion = ref('3.1.1')
 
 
-       // =========================
+    // =========================
     // FEATURE FLAGS (UPRAWNIENIA)
     // =========================
     const aktywneModuly = ref(['zamawiarka', 'rentownosc'])
@@ -1095,13 +1098,7 @@ const saveUserStateToFirestore = async (uid, state) => {
 }
 
 
-        
-
-
-
-    
-
-  const handleLogin = async () => {
+const handleLogin = async () => {
   const email = String(authForm.value.email || '').trim().toLowerCase()
   const password = String(authForm.value.password || '').trim()
 
@@ -1612,9 +1609,9 @@ const wczytajBackup = async (event) => {
 
 
     // =========================
-// SKĄD OTWARTO FORMULARZ TOWARU
-// =========================
-const towarFormSource = ref('towary')
+    // SKĄD OTWARTO FORMULARZ TOWARU
+    // =========================
+    const towarFormSource = ref('towary')
 
 
 
@@ -5104,6 +5101,9 @@ onMounted(() => {
       authStore.currentCompany = null
       
       resetCompanyDataState()
+      
+      isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
+      
       router.push('/login') // Dla pewności przekierowujemy na samym końcu
       return
     }
@@ -5132,6 +5132,8 @@ onMounted(() => {
     subscribeTowary(user.uid)
     subscribeOrders(user.uid)
     subscribeMenuItems(user.uid)
+    
+    isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
   })
 })
 
@@ -5335,6 +5337,7 @@ const openZamawiarkaMenuFromHome = () => {
 
 
     const appContext = {
+      isAppReady, // <-- DODANA ZMIENNA DLA EKRANU ŁADOWANIA
       settingsView,
       appVersion,
       aktywneModuly,

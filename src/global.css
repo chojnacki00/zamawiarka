@@ -646,3 +646,63 @@ button {
   transform: scale(0.96) !important;
   transition: none !important; /* Wyłączamy animację, zmiana ma być natychmiastowa */
 }
+
+/* =========================
+   EKRAN ŁADOWANIA (SPLASH SCREEN)
+========================== */
+.splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #111827; /* Ciemne, eleganckie tło (jak w Twoich górnych belkach) */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 999999; /* Zawsze na samym wierzchu */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Kółko ładowania */
+.splash-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.1); /* Półprzezroczysta biel */
+  border-top: 4px solid #3b82f6; /* Niebieski akcent */
+  border-radius: 50%;
+  animation: splash-spin 1s linear infinite;
+  margin-bottom: 24px;
+}
+
+@keyframes splash-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Kontener na tekst */
+.splash-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px; /* Odstęp między linijkami */
+}
+
+/* Mały napis u góry */
+.splash-subtitle {
+  color: #9ca3af; /* Jasnoszary */
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+/* Duży napis GastroManager */
+.splash-title {
+  color: #ffffff; /* Czysta biel */
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
