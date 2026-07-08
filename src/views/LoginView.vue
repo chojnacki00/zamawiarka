@@ -65,8 +65,11 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { auth } from '../firebase.js'
 import { signInWithEmailAndPassword } from 'firebase/auth'
+
+const router = useRouter()
 
 const authForm = ref({
   email: '',
@@ -96,7 +99,7 @@ const handleLogin = async () => {
 
   try {
     await signInWithEmailAndPassword(auth, email, password)
-    // Po udanym logowaniu Firebase sam zaktualizuje stan, a router nas przeniesie (ustawimy to za chwilę)
+    router.push('/')
   } catch (error) {
     console.error('Firebase login error:', error.message)
     authError.value = 'Nieprawidłowy e-mail lub hasło'
