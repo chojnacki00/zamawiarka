@@ -1,554 +1,723 @@
 <template>
   <!-- =========================
-       ROUTER: WIDOK LOGOWANIA
+       EKRAN ŁADOWANIA (WIDOCZNY PODCZAS WERYFIKACJI FIREBASE)
   ========================== -->
-  <router-view v-if="!isLoggedIn" />
+  <div v-if="!isAppReady" class="ekran-ladowania">
+    <div class="koleczko-ladowania"></div>
+    <h3 style="color: #374151; font-weight: 700;">Wczytywanie GastroManager...</h3>
+  </div>
 
   <!-- =========================
-       APP / KONTENER GŁÓWNY
+       WŁAŚCIWA APLIKACJA (PO WERYFIKACJI)
   ========================== -->
-  <div
-  v-else
-  class="app"
->
+  <template v-else>
+    <!-- =========================
+         ROUTER: WIDOK LOGOWANIA
+    ========================== -->
+    <router-view v-if="!isLoggedIn" />
 
-<div v-if="!isDataLoaded" style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
-    
-    <div class="login-spinner" style="border-top-color: #2563eb; width: 48px; height: 48px; border-width: 4px; margin-bottom: 24px;"></div>
-    
-    <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #111827; text-align: center; letter-spacing: 0.5px;">
-      Pobieranie danych...
-    </h2>
-    <div style="font-size: 15px; color: #6b7280; margin-top: 8px; text-align: center;">
-      Proszę czekać, ładuję dane
-    </div>
-
-  </div>
-  
-
-
-  <div v-else style="height: 100%;">
-    <!-- ROUTER: WIDOKI ZALOGOWANEGO UŻYTKOWNIKA -->
-    <router-view />
-  </div>
-
-<div v-if="currentScreen === 'settings'" class="screen-with-topbar">
-  <div class="zamawiarka-menu-topbar">
-    <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">←</button>
-    <h2 class="zamawiarka-menu-title">USTAWIENIA APLIKACJI</h2>
-  </div>
-
-  <div class="scroll-area" style="padding: 20px;">
-    <button 
-      @click="showBackupOptions = !showBackupOptions" 
-      class="item-card" 
-      :class="{ 'item-card-active': showBackupOptions }"
-      style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+    <!-- =========================
+         APP / KONTENER GŁÓWNY
+    ========================== -->
+    <div
+      v-else
+      class="app"
     >
-      💾 Kopia zapasowa i przywracanie
-    </button>
 
-   <div v-if="showBackupOptions" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">
-      <button 
-        @click="eksportujBackup" 
-        class="item-card item-card-sub" 
-        style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
-      >
-        💾 Utwórz kopię zapasową
-      </button>
-
-      <button 
-        @click="triggerFileInput"
-        class="item-card item-card-sub" 
-        style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
-      >
-        📂 Przywróć dane z pliku
-      </button>
-    </div>
-
-    <input 
-      type="file" 
-      ref="backupInputRef" 
-      style="display: none" 
-      accept=".json" 
-      @change="wczytajBackup" 
-    />
-  </div>
-</div>
-
-
-
-<div v-if="currentScreen === 'receptury' && recepturyView === 'dashboard'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">RENTOWNOŚĆ MENU</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
+      <div v-if="!isDataLoaded" style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
-          <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średni FC Menu</div>
-            <div style="font-size: 24px; font-weight: 800; color: #111827; margin-top: 4px;">{{ dashboardMetrics.avgFc }}%</div>
-          </div>
-          <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średnia Marża</div>
-            <div style="font-size: 24px; font-weight: 800; color: #16a34a; margin-top: 4px;">{{ dashboardMetrics.avgMargin }}%</div>
-          </div>
-          
-          <div v-if="dashboardMetrics.exceededCount > 0" class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fef2f2; border-color: #fca5a5;">
-            <span style="font-size: 24px;">🚨</span>
-            <div style="text-align: left;">
-              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ dashboardMetrics.exceededCount }} pozycje</div>
-              <div style="font-size: 12px; color: #991b1b; font-weight: 700;">przekroczyły próg Food Cost!</div>
-            </div>
-          </div>
-          <div v-else class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #f0fdf4; border-color: #bbf7d0;">
-            <span style="font-size: 24px;">✅</span>
-            <div style="text-align: left;">
-              <div style="font-size: 18px; font-weight: 800; color: #16a34a;">Menu w normie</div>
-              <div style="font-size: 12px; color: #166534; font-weight: 700;">Wszystkie pozycje trzymają FC.</div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardWorstFC.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #dc2626; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🔻</span> Największe odchylenia FC
-          </h3>
-          <div v-for="item in dashboardWorstFC" :key="item.id" class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
-                Cel: {{ item.target }}% | Odchylenie: <span style="color: #dc2626; font-weight: 700;">+{{ item.deviation.toFixed(1) }}%</span>
-              </div>
-            </div>
-            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
-              {{ item.fc.toFixed(1) }}%
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardGoldenShots.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #d97706; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🏆</span> Złote strzały (Polecaj)
-          </h3>
-          <div v-for="item in dashboardGoldenShots" :key="item.id" class="item-card" style="border-left: 4px solid #d97706; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #16a34a; font-weight: 700; margin-top: 2px;">FC w normie: {{ item.fc.toFixed(1) }}%</div>
-            </div>
-            <div style="text-align: right; margin-left: 8px;">
-              <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Zysk</div>
-              <div style="color: #d97706; font-weight: 800; font-size: 15px;">{{ item.zysk.toFixed(2) }} zł</div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardBestFC.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #16a34a; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🛡️</span> Największy bufor (Najniższy FC)
-          </h3>
-          <div v-for="item in dashboardBestFC" :key="item.id" class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
-                Cel: {{ item.target }}% | <span style="color: #16a34a; font-weight: 700;">-{{ item.deviation.toFixed(1) }}%</span> poniżej progu
-              </div>
-            </div>
-            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
-              {{ item.fc.toFixed(1) }}%
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardCategoryHealth.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #3b82f6; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">📊</span> Kondycja kategorii
-          </h3>
-          <div v-for="cat in dashboardCategoryHealth" :key="cat.name" class="item-card" :style="{ borderLeft: cat.isExceeded ? '4px solid #dc2626' : '4px solid #16a34a', padding: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }">
-            <div style="font-weight: 800; font-size: 14px; color: #111827;">{{ cat.name }}</div>
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <div style="font-size: 11px; color: #64748b; font-weight: 600; text-align: right;">Cel:<br>{{ cat.target }}%</div>
-              <div :style="{ background: cat.isExceeded ? '#fee2e2' : '#dcfce7', color: cat.isExceeded ? '#dc2626' : '#16a34a', padding: '4px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '14px', width: '45px', textAlign: 'center' }">
-                {{ cat.avgFc }}%
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+        <div class="login-spinner" style="border-top-color: #2563eb; width: 48px; height: 48px; border-width: 4px; margin-bottom: 24px;"></div>
         
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
-        </button>
-
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">📊</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Analiza</span>
-        </button>
-
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
-        </button>
-
-      </div>
-
-    </div>
-
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'lista'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">MENU</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
-
-        <!-- dodaje danie do menu + lupka wyszukiwarki -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px;">
-          
-          <h3 v-if="!showMenuSearch" style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
-          
-          <div v-if="showMenuSearch" style="display: flex; align-items: center; flex: 1; gap: 10px; margin-right: 12px;">
-            <button @click="showMenuSearch = false; menuSearch = ''" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; padding: 0;">
-              ←
-            </button>
-            <input 
-              v-model="menuSearch" 
-              type="text" 
-              placeholder="Szukaj pozycji menu..." 
-              style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #111827; font-weight: 600; font-size: 15px; outline: none;"
-            />
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-            <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
-              🔍
-            </button>
-            <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
-              +
-            </button>
-          </div>
-        </div>
-
-        <!-- Lista kategorii -->
-        <div v-if="menuSearch" style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px;">
-          <div v-if="dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase())).length === 0" style="text-align: center; color: #6b7280; font-size: 14px; margin-top: 20px;">
-            Brak dań o nazwie "{{ menuSearch }}"
-          </div>
-          
-          <div
-            v-for="item in dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
-            :key="item.id" 
-            @click="openDishDetails(item)"
-            class="item-card" 
-            style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex-shrink: 0;"
-          >
-            <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-              <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                {{ item.name }}
-              </div>
-              <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-              </div>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-              <div 
-                :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
-                :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
-              ></div>
-              <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="!menuSearch" style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
-          <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
-            
-          <button 
-              @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
-              class="item-card" 
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#f1f5f9' }"
-            >
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div 
-                  :style="{ 
-                    width: '10px', 
-                    height: '10px', 
-                    borderRadius: '50%', 
-                    backgroundColor: dynamicMenuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? '#ef4444' : '#22c55e') 
-                  }"
-                  :title="dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? 'Przekroczony Food Cost (z uwzgl. tolerancji)' : 'Wszystko w normie'"
-                ></div>
-                <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
-              </div>
-
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
-                  {{ dynamicMenuItems.filter(item => item.category === cat.name).length }} pozycji
-                </span>
-                <span style="font-size: 16px; color: #2563eb;">
-                  {{ selectedCategory === cat.name ? '▲' : '▼' }}
-                </span>
-              </div>
-            </button>
-
-                        <div v-if="selectedCategory === cat.name" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
-                <div style="display: flex; gap: 16px;">
-                  <div>
-                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
-                    <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
-                      {{ currentCategoryFC }}%
-                    </div>
-                  </div>
-                  <div style="width: 1px; background: #cbd5e1;"></div>
-                  <div>
-                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #1e293b;">
-                      {{ cat.targetFC || fcSettings.target }}%
-                    </div>
-                  </div>
-                </div>
-
-                                <button 
-                  @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
-                  style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
-                >
-                  Sortuj
-                   wg FC
-                  <span style="font-size: 14px; line-height: 1;">
-                    {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
-                  </span>
-                </button>
-              </div>
-
-                            <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-                <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
-                  Brak dań w tej kategorii.
-                </div>
-
-               <div
-                  v-for="item in filteredMenuItems.filter(i => !menuSearch || i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
-                  :key="item.id" 
-                  @click="openDishDetails(item)"
-                  class="item-card" 
-                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
-                >
-                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                      {{ item.name }}
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-                    </div>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-                    <div 
-                      :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
-                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
-                    ></div>
-                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-                    </div>
-                  </div>
-
-
-
-
-
-
-                  
-                  
-
-
-
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="dynamicMenuItems.some(i => !i.category)" style="display:flex; flex-direction:column; gap:8px;">
-            <button 
-              @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
-              class="item-card" 
-              :class="{ 'item-card-active': selectedCategory === 'brak_kategorii' }"
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }"
-            >
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
-                <span style="font-size: 16px; color: #111827;">Bez kategorii</span>
-              </div>
-
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
-                  {{ dynamicMenuItems.filter(item => !item.category).length }} pozycji
-                </span>
-                <span style="font-size: 16px; color: #64748b;">
-                  {{ selectedCategory === 'brak_kategorii' ? '▲' : '▼' }}
-                </span>
-              </div>
-            </button>
-
-            <div v-if="selectedCategory === 'brak_kategorii'" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-                <div
-                  v-for="item in dynamicMenuItems.filter(i => !i.category)" 
-                  :key="item.id" 
-                  @click="openDishDetails(item)"
-                  class="item-card" 
-                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
-                >
-                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                      {{ item.name }}
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-                    </div>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-
-
-        </div>
-
-      </div> 
-
-
-
-      
-
-
-
-
-
-
-
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">📋</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Menu</span>
-        </button>
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
-        </button>
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
-        </button>
-      </div>
-    </div>
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'form'" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; background: #f8fafc; padding-bottom: 100px;">
-      
-      <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <button @click="closeDishForm" style="background: none; border: none; color: #64748b; font-size: 24px; font-weight: 700; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Wróć do listy">
-          ←
-        </button>
-        <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
-          {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
+        <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #111827; text-align: center; letter-spacing: 0.5px;">
+          Pobieranie danych...
         </h2>
-        <button @click="saveDishForm" style="background: transparent; border: none; color: #22c55e; font-size: 28px; font-weight: bold; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Zapisz">
-          ✓
-        </button>
+        <div style="font-size: 15px; color: #6b7280; margin-top: 8px; text-align: center;">
+          Proszę czekać, ładuję dane
+        </div>
+
+      </div>
+      
+      <div v-else style="height: 100%;">
+        <!-- ROUTER: WIDOKI ZALOGOWANEGO UŻYTKOWNIKA -->
+        <router-view />
       </div>
 
-      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
-        
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Nazwa dania w karcie</label>
-          <input v-model="editingDish.name" type="text" placeholder="Wpisz nazwę..." autocomplete="off" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 600; color: #1e293b; box-sizing: border-box; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+      <div v-if="currentScreen === 'settings'" class="screen-with-topbar">
+        <div class="zamawiarka-menu-topbar">
+          <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">←</button>
+          <h2 class="zamawiarka-menu-title">USTAWIENIA APLIKACJI</h2>
         </div>
 
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Kategoria</label>
-          <select v-model="editingDish.category" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fafafa; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%2364748b%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; font-size: 15px; font-weight: 600; color: #1e293b; box-sizing: border-box; appearance: none; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#fafafa'">
-            <option value="" disabled selected>Wybierz kategorię...</option>
-            <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
-          </select>
-        </div>
+        <div class="scroll-area" style="padding: 20px;">
+          <button 
+            @click="showBackupOptions = !showBackupOptions" 
+            class="item-card" 
+            :class="{ 'item-card-active': showBackupOptions }"
+            style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+          >
+            💾 Kopia zapasowa i przywracanie
+          </button>
 
-       <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
-          <div>
-            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
-            <input 
-              v-model.number="editingDish.cena" 
-              type="number" 
-              step="0.01" 
-              @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
-              @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
-              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
-              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
-              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+         <div v-if="showBackupOptions" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">
+            <button 
+              @click="eksportujBackup" 
+              class="item-card item-card-sub" 
+              style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+            >
+              💾 Utwórz kopię zapasową
+            </button>
+
+            <button 
+              @click="triggerFileInput"
+              class="item-card item-card-sub" 
+              style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
+            >
+              📂 Przywróć dane z pliku
+            </button>
           </div>
-          <div>
-            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">VAT (%)</label>
-            <input 
-              v-model.number="editingDish.vat" 
-              type="number" 
-              placeholder="np. 8"
-              @focus="editingDish.vat === 0 ? editingDish.vat = '' : null"
-              @blur="editingDish.vat === '' ? editingDish.vat = 0 : null"
-              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 700; color: #1e293b; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
-              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
-              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
-          </div>
-        </div>
-        
-        <div v-if="suggestedDishPriceBrutto > 0" style="font-size: 12px; color: #64748b; font-weight: 600; margin-top: 8px; text-align: left; padding-left: 2px;">
-          💡 Sugerowana cena brutto: <span style="color: #2563eb; font-weight: 700;">{{ suggestedDishPriceBrutto }},00 zł</span>
+
+          <input 
+            type="file" 
+            ref="backupInputRef" 
+            style="display: none" 
+            accept=".json" 
+            @change="wczytajBackup" 
+          />
         </div>
       </div>
 
-      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">Składniki receptury</h3>
-          <button @click="openIngredientModal()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj składnik">
-            +
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'lista'" class="screen-with-topbar">
+        
+        <div class="zamawiarka-menu-topbar">
+          <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+            ←
+          </button>
+          <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">MENU</h2>
+        </div>
+
+        <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
+
+          <!-- dodaje danie do menu + lupka wyszukiwarki -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px;">
+            
+            <h3 v-if="!showMenuSearch" style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
+            
+            <div v-if="showMenuSearch" style="display: flex; align-items: center; flex: 1; gap: 10px; margin-right: 12px;">
+              <button @click="showMenuSearch = false; menuSearch = ''" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; padding: 0;">
+                ←
+              </button>
+              <input 
+                v-model="menuSearch" 
+                type="text" 
+                placeholder="Szukaj pozycji menu..." 
+                style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #111827; font-weight: 600; font-size: 15px; outline: none;"
+              />
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+              <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
+                🔍
+              </button>
+              <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+                +
+              </button>
+            </div>
+          </div>
+
+          <!-- Lista kategorii -->
+          <div v-if="menuSearch" style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px;">
+            <div v-if="dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase())).length === 0" style="text-align: center; color: #6b7280; font-size: 14px; margin-top: 20px;">
+              Brak dań o nazwie "{{ menuSearch }}"
+            </div>
+            
+            <div
+              v-for="item in dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
+              :key="item.id" 
+              @click="openDishDetails(item)"
+              class="item-card" 
+              style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex-shrink: 0;"
+            >
+              <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                  {{ item.name }}
+                </div>
+                <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                  Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                </div>
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                <div 
+                  :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                  :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
+                ></div>
+                <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                  {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!menuSearch" style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
+            <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
+              
+            <button 
+                @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
+                class="item-card" 
+                :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#f1f5f9' }"
+              >
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div 
+                    :style="{ 
+                      width: '10px', 
+                      height: '10px', 
+                      borderRadius: '50%', 
+                      backgroundColor: dynamicMenuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? '#ef4444' : '#22c55e') 
+                    }"
+                    :title="dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? 'Przekroczony Food Cost (z uwzgl. tolerancji)' : 'Wszystko w normie'"
+                  ></div>
+                  <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                    {{ dynamicMenuItems.filter(item => item.category === cat.name).length }} pozycji
+                  </span>
+                  <span style="font-size: 16px; color: #2563eb;">
+                    {{ selectedCategory === cat.name ? '▲' : '▼' }}
+                  </span>
+                </div>
+              </button>
+
+                          <div v-if="selectedCategory === cat.name" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                
+                              <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                  <div style="display: flex; gap: 16px;">
+                    <div>
+                      <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
+                      <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+                        {{ currentCategoryFC }}%
+                      </div>
+                    </div>
+                    <div style="width: 1px; background: #cbd5e1;"></div>
+                    <div>
+                      <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
+                      <div style="font-size: 16px; font-weight: 800; color: #1e293b;">
+                        {{ cat.targetFC || fcSettings.target }}%
+                      </div>
+                    </div>
+                  </div>
+
+                                  <button 
+                    @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
+                    style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
+                  >
+                    Sortuj
+                     wg FC
+                    <span style="font-size: 14px; line-height: 1;">
+                      {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
+                    </span>
+                  </button>
+                </div>
+
+                              <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                  <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
+                    Brak dań w tej kategorii.
+                  </div>
+
+                 <div
+                    v-for="item in filteredMenuItems.filter(i => !menuSearch || i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
+                    :key="item.id" 
+                    @click="openDishDetails(item)"
+                    class="item-card" 
+                    style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                  >
+                    <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                      <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                        {{ item.name }}
+                      </div>
+                      <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                        Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                      <div 
+                        :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                        :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
+                      ></div>
+                      <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                        {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="dynamicMenuItems.some(i => !i.category)" style="display:flex; flex-direction:column; gap:8px;">
+              <button 
+                @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
+                class="item-card" 
+                :class="{ 'item-card-active': selectedCategory === 'brak_kategorii' }"
+                :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }"
+              >
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
+                  <span style="font-size: 16px; color: #111827;">Bez kategorii</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                    {{ dynamicMenuItems.filter(item => !item.category).length }} pozycji
+                  </span>
+                  <span style="font-size: 16px; color: #64748b;">
+                    {{ selectedCategory === 'brak_kategorii' ? '▲' : '▼' }}
+                  </span>
+                </div>
+              </button>
+
+              <div v-if="selectedCategory === 'brak_kategorii'" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                  <div
+                    v-for="item in dynamicMenuItems.filter(i => !i.category)" 
+                    :key="item.id" 
+                    @click="openDishDetails(item)"
+                    class="item-card" 
+                    style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                  >
+                    <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                      <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                        {{ item.name }}
+                      </div>
+                      <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                        Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                      <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                        {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div> 
+
+        <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+          <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px;">📋</span>
+            <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Menu</span>
+          </button>
+          <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+          </button>
+          <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'form'" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; background: #f8fafc; padding-bottom: 100px;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <button @click="closeDishForm" style="background: none; border: none; color: #64748b; font-size: 24px; font-weight: 700; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Wróć do listy">
+            ←
+          </button>
+          <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
+            {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
+          </h2>
+          <button @click="saveDishForm" style="background: transparent; border: none; color: #22c55e; font-size: 28px; font-weight: bold; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Zapisz">
+            ✓
           </button>
         </div>
 
-        <div v-if="!editingDish.recipe || editingDish.recipe.length === 0" style="text-align: center; padding: 20px; color: #94a3b8; font-weight: 600; border: 1px dashed #cbd5e1; border-radius: 12px; font-size: 14px;">
-          Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
+        <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+          
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Nazwa dania w karcie</label>
+            <input v-model="editingDish.name" type="text" placeholder="Wpisz nazwę..." autocomplete="off" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 600; color: #1e293b; box-sizing: border-box; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Kategoria</label>
+            <select v-model="editingDish.category" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fafafa; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%2364748b%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; font-size: 15px; font-weight: 600; color: #1e293b; box-sizing: border-box; appearance: none; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#fafafa'">
+              <option value="" disabled selected>Wybierz kategorię...</option>
+              <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
+            </select>
+          </div>
+
+         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
+              <input 
+                v-model.number="editingDish.cena" 
+                type="number" 
+                step="0.01" 
+                @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
+                @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
+                style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
+                onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+            </div>
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">VAT (%)</label>
+              <input 
+                v-model.number="editingDish.vat" 
+                type="number" 
+                placeholder="np. 8"
+                @focus="editingDish.vat === 0 ? editingDish.vat = '' : null"
+                @blur="editingDish.vat === '' ? editingDish.vat = 0 : null"
+                style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 700; color: #1e293b; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
+                onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+            </div>
+          </div>
+          
+          <div v-if="suggestedDishPriceBrutto > 0" style="font-size: 12px; color: #64748b; font-weight: 600; margin-top: 8px; text-align: left; padding-left: 2px;">
+            💡 Sugerowana cena brutto: <span style="color: #2563eb; font-weight: 700;">{{ suggestedDishPriceBrutto }},00 zł</span>
+          </div>
         </div>
 
-       <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">Składniki receptury</h3>
+            <button @click="openIngredientModal()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj składnik">
+              +
+            </button>
+          </div>
+
+          <div v-if="!editingDish.recipe || editingDish.recipe.length === 0" style="text-align: center; padding: 20px; color: #94a3b8; font-weight: 600; border: 1px dashed #cbd5e1; border-radius: 12px; font-size: 14px;">
+            Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
+          </div>
+
+         <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+            <div
+              v-for="(ing, index) in editingDish.recipe"
+              :key="ing.id"
+              @click="editRecipeIngredient(ing, index)"
+              class="item-card"
+              style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
+            >
+              <div style="min-width: 0;">
+                <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
+              </div>
+              <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
+                {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+              </div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+              <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Całkowity koszt:</div>
+              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ calculateTotalRecipeCost().toFixed(2) }} <span style="font-size: 13px; color: #64748b;">zł</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showIngredientModal" class="supplier-modal-overlay" style="z-index: 9999; padding-top: 60px;">
+          <div class="supplier-modal-card" style="display: flex; flex-direction: column; max-height: 85vh; padding: 20px;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 class="supplier-modal-title" style="margin: 0; font-size: 18px;">
+                {{ selectedIngredientTowar ? 'PODAJ ILOŚĆ' : 'WYBIERZ SUROWIEC' }}
+              </h3>
+              <button @click="closeIngredientModal" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
+            </div>
+
+            <div v-if="!selectedIngredientTowar" style="display: flex; flex-direction: column; min-height: 0; flex: 1;">
+              <input
+                v-model="ingredientSearch"
+                type="text"
+                placeholder="Szukaj towaru po nazwie..."
+                class="towary-search-input"
+                style="margin-bottom: 12px; flex-shrink: 0;"
+              />
+              
+              <div class="scroll-area" style="padding-bottom: 20px;">
+                <div v-if="filteredIngredientTowary.length === 0" style="text-align: center; color: #6b7280; font-size: 13px; margin-top: 20px;">
+                  Brak wyników wyszukiwania
+                </div>
+                
+                <div
+                  v-for="item in filteredIngredientTowary"
+                  :key="item.id"
+                  @click="selectIngredient(item)"
+                  class="towary-row-fixed"
+                  style="grid-template-columns: 1fr auto; cursor: pointer; margin-bottom: 8px; min-height: unset; padding: 12px;"
+                >
+                  <div style="min-width: 0;">
+                    <div class="towary-col-name" style="font-size: 15px;">{{ item.name }}</div>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ item.supplier || 'Brak hurtowni' }}</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div class="towary-col-price" style="font-size: 15px;">{{ Number(item.netPrice || 0).toFixed(2) }} zł</div>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">za 1 {{ item.unit }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else style="display: flex; flex-direction: column; gap: 16px;">
+              <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ selectedIngredientTowar.name }}</div>
+                <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Cena netto: {{ Number(selectedIngredientTowar.netPrice || 0).toFixed(2) }} zł / {{ selectedIngredientTowar.unit }}</div>
+              </div>
+
+              <div class="supplier-form-group">
+                <label class="supplier-form-label">Zużycie na porcję (w: {{ selectedIngredientTowar.unit }})</label>
+                <input
+                  v-model.number="ingredientQty"
+                  type="number"
+                  step="0.001"
+                  placeholder="0.000"
+                  class="supplier-form-input"
+                />
+              </div>
+
+              <div class="supplier-modal-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+                <button 
+                  v-if="editingRecipeIndex !== null" 
+                  @click="removeIngredientFromRecipe" 
+                  style="width: 48px; flex-shrink: 0; background: #fee2e2; border: none; border-radius: 10px; color: #dc2626; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                >
+                  🗑️
+                </button>
+                
+                <button 
+                  @click="goBackToIngredientList" 
+                  class="supplier-cancel-button" 
+                  style="flex: 1;" 
+                >
+                  {{ editingRecipeIndex !== null ? 'Anuluj' : 'Wróć' }}
+                </button>
+                
+                <button 
+                  @click="saveIngredientToRecipe" 
+                  class="supplier-save-button" 
+                  style="flex: 1;"
+                >
+                  {{ editingRecipeIndex !== null ? 'Zapisz' : 'Dodaj' }}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
+        
+        <div class="zamawiarka-menu-topbar">
+          <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+            ←
+          </button>
+          <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">USTAWIENIA</h2>
+        </div>
+
+        <div class="scroll-area" style="padding: 0 16px;">
+          
+          <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px; text-align: center;">Cele i alarmy</h3>
+          
+          <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
+            <div class="supplier-form-group">
+              <label class="supplier-form-label" style="color: #0284c7;"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
+              <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
+            </div>
+
+            <div class="supplier-form-group" style="margin-bottom: 0;">
+              <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px; color: #0284c7;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
+              <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
+            </div>
+
+            <button v-if="isSettingsDirty" @click="saveSettings" style="margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #28a745; color: white; font-weight: 700; cursor: pointer;">
+              ✅ Zapisz zmiany
+            </button>
+          </div>
+
+              <!--dodaje kategorie dania-->
+          <div style="position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; margin-top: 10px;">
+            <h3 style="font-size: 16px; color: #111827; margin: 0; text-align: center;">Kategorie menu</h3>
+            <button @click="openDishCategoryForm" style="position: absolute; right: 0; background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
+              +
+            </button>
+          </div>
+          
+          <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
+            <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; align-items: center; position: relative;">
+              <div style="flex: 1; text-align: center;">
+                <div style="font-weight: 600;">{{ cat.name }}</div>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
+                  Cel FC: <strong style="color: #111827;">{{ cat.targetFC ? cat.targetFC + '%' : 'wg ogólnych ustawień' }}</strong>
+                </div>
+              </div>
+              <button @click="editDishCategory(cat)" class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px; position: absolute; right: 12px;">✏️</button>
+            </div>
+          </div>
+
+          <div v-if="showDishCategoryForm" class="supplier-modal-overlay">
+          <div class="supplier-modal-card">
+            <h3 class="supplier-modal-title">
+              {{ dishCategoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
+            </h3>
+
+            <div class="supplier-form-group">
+              <label class="supplier-form-label">Nazwa kategorii</label>
+              <input
+                v-model="dishCategoryForm.name"
+                type="text"
+                placeholder="Np. Przystawki, Zupy"
+                class="supplier-form-input"
+              />
+            </div>
+
+            <div class="supplier-form-group">
+              <label class="supplier-form-label">Indywidualny Food Cost (%)</label>
+              <input
+                v-model="dishCategoryForm.targetFC"
+                type="number"
+                placeholder="wg ogólnych ustawień"
+                class="supplier-form-input"
+              />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+                Aktualnie używany cel: 
+                <strong style="color: #111827;">{{ dishCategoryForm.targetFC ? dishCategoryForm.targetFC + '% (własny)' : fcSettings.target + '% (ogólny)' }}</strong>
+              </div>
+            </div>
+
+            <div class="supplier-modal-actions">
+              <button
+                v-if="dishCategoryFormMode === 'edit'"
+                @click="deleteDishCategory"
+                style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
+              >
+                Usuń
+              </button>
+
+              <button @click="closeDishCategoryForm" class="supplier-cancel-button">
+                Anuluj
+              </button>
+
+              <button @click="saveDishCategory" class="supplier-save-button">
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+
+        </div>
+
+        <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+          <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
+          </button>
+          <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+          </button>
+          <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px;">⚙️</span>
+            <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Ustawienia</span>
+          </button>
+        </div>
+      </div>
+
+    <!-- =========================
+       PODGLĄD PDF
+  ========================== -->
+
+    <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
+    <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+      
+      <div style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f9fafb;">
+        <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #111827;">Podgląd zamówienia</h3>
+        <button @click="closePdfViewer" style="background: none; border: none; font-size: 28px; line-height: 1; cursor: pointer; color: #6b7280; padding: 0;">&times;</button>
+      </div>
+      
+      <div style="flex-grow: 1; background: #e5e7eb; position: relative; height: 65vh; width: 100%;">
+        <iframe :src="pdfViewerUrl" style="width: 100%; height: 100%; border: none;" title="Podgląd PDF"></iframe>
+      </div>
+      
+      <div style="padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;">
+        <button @click="closePdfViewer" style="padding: 10px 20px; border-radius: 8px; border: 1px solid #d1d5db; background: #ffffff; color: #374151; font-weight: bold; cursor: pointer;">
+          Zamknij
+        </button>
+        <button @click="sharePdf" style="padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <span style="font-size: 16px;">📤</span> Udostępnij / Zapisz
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+    <!-- =========================
+       MODAL POWIADOMIEŃ iOS
+  ========================== -->
+  <div v-if="showDishDetailsModal" class="supplier-modal-overlay">
+    <div class="supplier-modal-card" style="max-width: 450px;">
+      
+      <div style="position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10; margin: -20px -20px 20px -20px; padding: 20px 20px 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
+            {{ selectedDishDetails?.name }}
+          </h3>
+          <div style="font-size: 13px; color: #6b7280; margin-top: 4px; font-weight: 600;">
+            Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
+          </div>
+        </div>
+        <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
+      </div>
+
+     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
+        
+        <div style="background: #f8fafc; padding: 8px 6px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center;">
+          <div style="margin-bottom: 6px;">
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Cena:</div>
+            <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+          </div>
+          <div>
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Koszt:</div>
+            <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+          </div>
+        </div>
+
+        <div :style="{ background: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fecaca' : '#bbf7d0', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+          <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#991b1b' : '#166534' }">FC Rzecz.</div>
+          <div :style="{ fontSize: '16px', fontWeight: '800', marginTop: '2px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a' }">
+            {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / (selectedDishDetails.cena / (1 + (Number(selectedDishDetails.vat || 0) / 100)))) * 100).toFixed(1) : 0 }}%
+          </div>
+        </div>
+
+        <div :style="{ background: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#f0fdf4' : '#fef2f2', border: '1px solid', borderColor: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#bbf7d0' : '#fecaca', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+          <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#166534' : '#991b1b' }">Zysk</div>
+          <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '2px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#16a34a' : '#dc2626' }">
+            {{ ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
+        
+        <div v-if="!selectedDishDetails?.recipe || selectedDishDetails.recipe.length === 0" style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
+          Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
+        </div>
+
+        <div v-else style="display: flex; flex-direction: column; gap: 8px;">
           <div
-            v-for="(ing, index) in editingDish.recipe"
+            v-for="ing in selectedDishDetails.recipe"
             :key="ing.id"
-            @click="editRecipeIngredient(ing, index)"
-            class="item-card"
-            style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
+            style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
           >
             <div style="min-width: 0;">
               <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
@@ -559,567 +728,220 @@
             </div>
           </div>
           
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
-            <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Całkowity koszt:</div>
-            <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ calculateTotalRecipeCost().toFixed(2) }} <span style="font-size: 13px; color: #64748b;">zł</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+            <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
+            <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
+              {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * getIngredientLivePrice(ing)), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div v-if="showIngredientModal" class="supplier-modal-overlay" style="z-index: 9999; padding-top: 60px;">
-        <div class="supplier-modal-card" style="display: flex; flex-direction: column; max-height: 85vh; padding: 20px;">
-          
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 class="supplier-modal-title" style="margin: 0; font-size: 18px;">
-              {{ selectedIngredientTowar ? 'PODAJ ILOŚĆ' : 'WYBIERZ SUROWIEC' }}
-            </h3>
-            <button @click="closeIngredientModal" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
-          </div>
-
-          <div v-if="!selectedIngredientTowar" style="display: flex; flex-direction: column; min-height: 0; flex: 1;">
-            <input
-              v-model="ingredientSearch"
-              type="text"
-              placeholder="Szukaj towaru po nazwie..."
-              class="towary-search-input"
-              style="margin-bottom: 12px; flex-shrink: 0;"
-            />
-            
-            <div class="scroll-area" style="padding-bottom: 20px;">
-              <div v-if="filteredIngredientTowary.length === 0" style="text-align: center; color: #6b7280; font-size: 13px; margin-top: 20px;">
-                Brak wyników wyszukiwania
-              </div>
-              
-              <div
-                v-for="item in filteredIngredientTowary"
-                :key="item.id"
-                @click="selectIngredient(item)"
-                class="towary-row-fixed"
-                style="grid-template-columns: 1fr auto; cursor: pointer; margin-bottom: 8px; min-height: unset; padding: 12px;"
-              >
-                <div style="min-width: 0;">
-                  <div class="towary-col-name" style="font-size: 15px;">{{ item.name }}</div>
-                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ item.supplier || 'Brak hurtowni' }}</div>
-                </div>
-                <div style="text-align: right;">
-                  <div class="towary-col-price" style="font-size: 15px;">{{ Number(item.netPrice || 0).toFixed(2) }} zł</div>
-                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">za 1 {{ item.unit }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else style="display: flex; flex-direction: column; gap: 16px;">
-            <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ selectedIngredientTowar.name }}</div>
-              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Cena netto: {{ Number(selectedIngredientTowar.netPrice || 0).toFixed(2) }} zł / {{ selectedIngredientTowar.unit }}</div>
-            </div>
-
-            <div class="supplier-form-group">
-              <label class="supplier-form-label">Zużycie na porcję (w: {{ selectedIngredientTowar.unit }})</label>
-              <input
-                v-model.number="ingredientQty"
-                type="number"
-                step="0.001"
-                placeholder="0.000"
-                class="supplier-form-input"
-              />
-            </div>
-
-            <div class="supplier-modal-actions" style="margin-top: 10px; display: flex; gap: 8px;">
-              <button 
-                v-if="editingRecipeIndex !== null" 
-                @click="removeIngredientFromRecipe" 
-                style="width: 48px; flex-shrink: 0; background: #fee2e2; border: none; border-radius: 10px; color: #dc2626; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
-              >
-                🗑️
-              </button>
-              
-              <button 
-                @click="goBackToIngredientList" 
-                class="supplier-cancel-button" 
-                style="flex: 1;" 
-              >
-                {{ editingRecipeIndex !== null ? 'Anuluj' : 'Wróć' }}
-              </button>
-              
-              <button 
-                @click="saveIngredientToRecipe" 
-                class="supplier-save-button" 
-                style="flex: 1;"
-              >
-                {{ editingRecipeIndex !== null ? 'Zapisz' : 'Dodaj' }}
-              </button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-    </div>
-
-
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
-          ←
+      <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+        <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <span>📑</span> Powiel
         </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">USTAWIENIA</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px;">
-        
-        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px; text-align: center;">Cele i alarmy</h3>
-        
-        <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
-          <div class="supplier-form-group">
-            <label class="supplier-form-label" style="color: #0284c7;"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
-            <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
-          </div>
-
-          <div class="supplier-form-group" style="margin-bottom: 0;">
-            <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px; color: #0284c7;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
-            <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
-          </div>
-
-          <button v-if="isSettingsDirty" @click="saveSettings" style="margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #28a745; color: white; font-weight: 700; cursor: pointer;">
-            ✅ Zapisz zmiany
-          </button>
-        </div>
-
-            <!--dodaje kategorie dania-->
-        <div style="position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; margin-top: 10px;">
-          <h3 style="font-size: 16px; color: #111827; margin: 0; text-align: center;">Kategorie menu</h3>
-          <button @click="openDishCategoryForm" style="position: absolute; right: 0; background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
-            +
-          </button>
-        </div>
-        
-        <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
-          <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; align-items: center; position: relative;">
-            <div style="flex: 1; text-align: center;">
-              <div style="font-weight: 600;">{{ cat.name }}</div>
-              <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                Cel FC: <strong style="color: #111827;">{{ cat.targetFC ? cat.targetFC + '%' : 'wg ogólnych ustawień' }}</strong>
-              </div>
-            </div>
-            <button @click="editDishCategory(cat)" class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px; position: absolute; right: 12px;">✏️</button>
-          </div>
-        </div>
-
-
-        <div v-if="showDishCategoryForm" class="supplier-modal-overlay">
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ dishCategoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa kategorii</label>
-            <input
-              v-model="dishCategoryForm.name"
-              type="text"
-              placeholder="Np. Przystawki, Zupy"
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Indywidualny Food Cost (%)</label>
-            <input
-              v-model="dishCategoryForm.targetFC"
-              type="number"
-              placeholder="wg ogólnych ustawień"
-              class="supplier-form-input"
-            />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
-              Aktualnie używany cel: 
-              <strong style="color: #111827;">{{ dishCategoryForm.targetFC ? dishCategoryForm.targetFC + '% (własny)' : fcSettings.target + '% (ogólny)' }}</strong>
-            </div>
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="dishCategoryFormMode === 'edit'"
-              @click="deleteDishCategory"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button @click="closeDishCategoryForm" class="supplier-cancel-button">
-              Anuluj
-            </button>
-
-            <button @click="saveDishCategory" class="supplier-save-button">
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-
-
-
-      </div>
-
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
-        </button>
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
-        </button>
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">⚙️</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Ustawienia</span>
+        <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>🗑️</span> Usuń
         </button>
       </div>
-    </div>
 
-
-
-
-
-    
-
-
-  <!-- =========================
-     PODGLĄD PDF
-========================== -->
-
-
-  <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
-  <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
-    
-    <div style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f9fafb;">
-      <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #111827;">Podgląd zamówienia</h3>
-      <button @click="closePdfViewer" style="background: none; border: none; font-size: 28px; line-height: 1; cursor: pointer; color: #6b7280; padding: 0;">&times;</button>
-    </div>
-    
-    <div style="flex-grow: 1; background: #e5e7eb; position: relative; height: 65vh; width: 100%;">
-      <iframe :src="pdfViewerUrl" style="width: 100%; height: 100%; border: none;" title="Podgląd PDF"></iframe>
-    </div>
-    
-    <div style="padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;">
-      <button @click="closePdfViewer" style="padding: 10px 20px; border-radius: 8px; border: 1px solid #d1d5db; background: #ffffff; color: #374151; font-weight: bold; cursor: pointer;">
-        Zamknij
-      </button>
-      <button @click="sharePdf" style="padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        <span style="font-size: 16px;">📤</span> Udostępnij / Zapisz
-      </button>
-    </div>
-
-  </div>
-</div>
-
-
-
-
-  <!-- =========================
-     MODAL POWIADOMIEŃ iOS
-========================== -->
-<div v-if="showDishDetailsModal" class="supplier-modal-overlay">
-  <div class="supplier-modal-card" style="max-width: 450px;">
-    
-    <div style="position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10; margin: -20px -20px 20px -20px; padding: 20px 20px 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
-          {{ selectedDishDetails?.name }}
-        </h3>
-        <div style="font-size: 13px; color: #6b7280; margin-top: 4px; font-weight: 600;">
-          Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
-        </div>
-      </div>
-      <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
-    </div>
-
-   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
-      
-      <div style="background: #f8fafc; padding: 8px 6px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center;">
-        <div style="margin-bottom: 6px;">
-          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Cena:</div>
-          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
-        </div>
-        <div>
-          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Koszt:</div>
-          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
-        </div>
-      </div>
-
-      <div :style="{ background: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fecaca' : '#bbf7d0', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
-        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#991b1b' : '#166534' }">FC Rzecz.</div>
-        <div :style="{ fontSize: '16px', fontWeight: '800', marginTop: '2px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a' }">
-          {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / (selectedDishDetails.cena / (1 + (Number(selectedDishDetails.vat || 0) / 100)))) * 100).toFixed(1) : 0 }}%
-        </div>
-      </div>
-
-      <div :style="{ background: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#f0fdf4' : '#fef2f2', border: '1px solid', borderColor: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#bbf7d0' : '#fecaca', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
-        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#166534' : '#991b1b' }">Zysk</div>
-        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '2px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#16a34a' : '#dc2626' }">
-          {{ ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span>
-        </div>
-      </div>
-
-    </div>
-
-    <div style="margin-bottom: 24px;">
-      <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
-      
-      <div v-if="!selectedDishDetails?.recipe || selectedDishDetails.recipe.length === 0" style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
-        Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
-      </div>
-
-      <div v-else style="display: flex; flex-direction: column; gap: 8px;">
-        <div
-          v-for="ing in selectedDishDetails.recipe"
-          :key="ing.id"
-          style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
-        >
-          <div style="min-width: 0;">
-            <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
-          </div>
-          <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
-            {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
-          </div>
-        </div>
-        
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
-          <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
-          <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
-            {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * getIngredientLivePrice(ing)), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-      <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-        <span>📑</span> Powiel
-      </button>
-      <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-        <span>🗑️</span> Usuń
-      </button>
-    </div>
-
-    <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-      Edytuj danie / Recepturę
-    </button>
-  </div>
-</div>
-
-
-
-
-<div
-  v-if="appDialog.show"
-  class="app-dialog-overlay"
->
-  <div class="app-dialog-card">
-    <div class="app-dialog-icon">
-      {{ appDialog.icon }}
-    </div>
-
-    <div class="app-dialog-title">
-      {{ appDialog.title }}
-    </div>
-
-    <div class="app-dialog-message">
-      {{ appDialog.message }}
-    </div>
-
-    <div class="app-dialog-actions">
-      <button
-        v-if="appDialog.type === 'confirm'"
-        @click="cancelAppDialog"
-        class="app-dialog-button app-dialog-cancel"
-        type="button"
-      >
-        Anuluj
-      </button>
-
-      <button
-        @click="confirmAppDialog"
-        class="app-dialog-button app-dialog-ok"
-        type="button"
-      >
-        OK
+      <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+        Edytuj danie / Recepturę
       </button>
     </div>
   </div>
-</div>
 
-
-<!-- =========================
-     UKRYTY SZABLON PDF TOWARÓW
-========================== -->
-<div
-  style="
-    position:fixed;
-    left:-99999px;
-    top:0;
-    width:794px;
-    background:#ffffff;
-    padding:32px;
-    box-sizing:border-box;
-    color:#111827;
-    font-family:Arial, sans-serif;
-  "
->
   <div
-    v-if="towaryPdfPreviewItems.length > 0"
-    ref="towaryPdfTemplateRef"
-    style="width:100%; background:#ffffff; color:#111827;"
+    v-if="appDialog.show"
+    class="app-dialog-overlay"
   >
-    <!-- NAGŁÓWEK -->
-    <div style="margin-bottom:22px;">
-      <div style="font-size:28px; font-weight:800; margin-bottom:8px;">
-        Lista towarów
+    <div class="app-dialog-card">
+      <div class="app-dialog-icon">
+        {{ appDialog.icon }}
       </div>
 
-      <div style="font-size:13px; color:#6b7280; line-height:1.5;">
-        <div><strong>Data wygenerowania:</strong> {{ getTodayLabel() }}</div>
-        <div><strong>Liczba pozycji:</strong> {{ towaryPdfPreviewItems.length }}</div>
-        <div><strong>Zakres:</strong> aktywne towary z aktualnie przefiltrowanego widoku</div>
+      <div class="app-dialog-title">
+        {{ appDialog.title }}
+      </div>
+
+      <div class="app-dialog-message">
+        {{ appDialog.message }}
+      </div>
+
+      <div class="app-dialog-actions">
+        <button
+          v-if="appDialog.type === 'confirm'"
+          @click="cancelAppDialog"
+          class="app-dialog-button app-dialog-cancel"
+          type="button"
+        >
+          Anuluj
+        </button>
+
+        <button
+          @click="confirmAppDialog"
+          class="app-dialog-button app-dialog-ok"
+          type="button"
+        >
+          OK
+        </button>
       </div>
     </div>
-
-    <!-- TABELA -->
-    <table
-      style="
-        width:100%;
-        border-collapse:collapse;
-        table-layout:fixed;
-        font-size:12px;
-      "
-    >
-      <thead>
-        <tr style="background:#f3f4f6;">
-          <th
-            v-for="field in selectedTowaryPdfFields"
-            :key="field"
-            :style="getTowaryPdfColumnStyle(field, true)"
-          >
-            {{ getTowaryPdfFieldLabel(field) }}
-          </th>
-        </tr>
-      </thead>
-
-      <tbody>
-        <tr
-  v-for="item in towaryPdfPreviewItems"
-  :key="item.id"
->
-          <td
-            v-for="field in selectedTowaryPdfFields"
-            :key="field"
-            :style="getTowaryPdfColumnStyle(field, false)"
-          >
-            {{ getTowaryPdfFieldValue(item, field) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
   </div>
-</div>
 
-
-
+  <!-- =========================
+       UKRYTY SZABLON PDF TOWARÓW
+  ========================== -->
   <div
-  style="
-    position:fixed;
-    left:-99999px;
-    top:0;
-    width:794px;
-    background:#ffffff;
-    padding:32px;
-    box-sizing:border-box;
-    color:#111827;
-    font-family:Arial, sans-serif;
-  "
->
-  <div
-    v-if="pdfPreviewOrder"
-    ref="pdfTemplateRef"
     style="
-      width:100%;
+      position:fixed;
+      left:-99999px;
+      top:0;
+      width:794px;
       background:#ffffff;
+      padding:32px;
+      box-sizing:border-box;
       color:#111827;
+      font-family:Arial, sans-serif;
     "
   >
-    <div style="margin-bottom:24px;">
-      <div style="font-size:28px; font-weight:700; margin-bottom:10px;">
-        Zamówienie
-      </div>
-
-      <div style="font-size:16px; margin-bottom:6px;">
-        <strong>Hurtownia:</strong> {{ pdfPreviewOrder.supplier || '-' }}
-      </div>
-
-      <div style="font-size:16px;">
-        <strong>Data:</strong> {{ pdfPreviewOrder.date || '-' }} {{ pdfPreviewOrder.time || '' }}
-      </div>
-    </div>
-
-    <table style="width:100%; border-collapse:collapse; font-size:15px; text-align:left;">
-      <thead>
-        <tr>
-          <th style="padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Nazwa</th>
-          <th style="width:90px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Ilość</th>
-          <th style="width:80px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">JM</th>
-          <th style="width:120px; text-align:right; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Wartość</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in pdfPreviewOrder.items" :key="item.id">
-          <td style="padding:10px 0; border-bottom:1px solid #e5e7eb; word-break:break-word;">
-            {{ item.name }}
-          </td>
-          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ item.qty }}
-          </td>
-          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ item.unit || '' }}
-          </td>
-          <td style="text-align:right; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ Number(item.value || 0).toFixed(2) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
     <div
-      style="
-        margin-top:20px;
-        display:flex;
-        justify-content:flex-end;
-        font-size:20px;
-        font-weight:700;
-      "
+      v-if="towaryPdfPreviewItems.length > 0"
+      ref="towaryPdfTemplateRef"
+      style="width:100%; background:#ffffff; color:#111827;"
     >
-      Suma: {{ Number(pdfPreviewOrder.total || 0).toFixed(2) }}
+      <!-- NAGŁÓWEK -->
+      <div style="margin-bottom:22px;">
+        <div style="font-size:28px; font-weight:800; margin-bottom:8px;">
+          Lista towarów
+        </div>
+
+        <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+          <div><strong>Data wygenerowania:</strong> {{ getTodayLabel() }}</div>
+          <div><strong>Liczba pozycji:</strong> {{ towaryPdfPreviewItems.length }}</div>
+          <div><strong>Zakres:</strong> aktywne towary z aktualnie przefiltrowanego widoku</div>
+        </div>
+      </div>
+
+      <!-- TABELA -->
+      <table
+        style="
+          width:100%;
+          border-collapse:collapse;
+          table-layout:fixed;
+          font-size:12px;
+        "
+      >
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th
+              v-for="field in selectedTowaryPdfFields"
+              :key="field"
+              :style="getTowaryPdfColumnStyle(field, true)"
+            >
+              {{ getTowaryPdfFieldLabel(field) }}
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr
+    v-for="item in towaryPdfPreviewItems"
+    :key="item.id"
+  >
+            <td
+              v-for="field in selectedTowaryPdfFields"
+              :key="field"
+              :style="getTowaryPdfColumnStyle(field, false)"
+            >
+              {{ getTowaryPdfFieldValue(item, field) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
-</div>
 
-</div>
+    <div
+    style="
+      position:fixed;
+      left:-99999px;
+      top:0;
+      width:794px;
+      background:#ffffff;
+      padding:32px;
+      box-sizing:border-box;
+      color:#111827;
+      font-family:Arial, sans-serif;
+    "
+  >
+    <div
+      v-if="pdfPreviewOrder"
+      ref="pdfTemplateRef"
+      style="
+        width:100%;
+        background:#ffffff;
+        color:#111827;
+      "
+    >
+      <div style="margin-bottom:24px;">
+        <div style="font-size:28px; font-weight:700; margin-bottom:10px;">
+          Zamówienie
+        </div>
 
+        <div style="font-size:16px; margin-bottom:6px;">
+          <strong>Hurtownia:</strong> {{ pdfPreviewOrder.supplier || '-' }}
+        </div>
 
+        <div style="font-size:16px;">
+          <strong>Data:</strong> {{ pdfPreviewOrder.date || '-' }} {{ pdfPreviewOrder.time || '' }}
+        </div>
+      </div>
 
+      <table style="width:100%; border-collapse:collapse; font-size:15px; text-align:left;">
+        <thead>
+          <tr>
+            <th style="padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Nazwa</th>
+            <th style="width:90px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Ilość</th>
+            <th style="width:80px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">JM</th>
+            <th style="width:120px; text-align:right; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Wartość</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in pdfPreviewOrder.items" :key="item.id">
+            <td style="padding:10px 0; border-bottom:1px solid #e5e7eb; word-break:break-word;">
+              {{ item.name }}
+            </td>
+            <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ item.qty }}
+            </td>
+            <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ item.unit || '' }}
+            </td>
+            <td style="text-align:right; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ Number(item.value || 0).toFixed(2) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
+      <div
+        style="
+          margin-top:20px;
+          display:flex;
+          justify-content:flex-end;
+          font-size:20px;
+          font-weight:700;
+        "
+      >
+        Suma: {{ Number(pdfPreviewOrder.total || 0).toFixed(2) }}
+      </div>
+    </div>
+  </div>
 
-
-
-
+  </div>
+  </template>
 </template>
 
 

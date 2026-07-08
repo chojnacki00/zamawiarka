@@ -18,8 +18,8 @@
   :class="{ 'menu-tiles-animate': animateMenuTiles }"
 >
         <button
-  @click="zamawiarkaView = 'produkty'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('produkty')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-blue">
     <svg
@@ -41,8 +41,8 @@
 </button>
 
         <button
-  @click="zamawiarkaView = 'koszyk'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('koszyk')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-green">
     <svg
@@ -67,8 +67,8 @@
 </button>
 
   <button
-  @click="zamawiarkaView = 'historia'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('historia')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-orange">
     <svg
@@ -98,8 +98,8 @@
 </button>
 
   <button
-  @click="zamawiarkaView = 'towary'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('towary')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-purple">
     <svg
@@ -129,8 +129,8 @@
 
 
  <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('ustawienia')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-gray">
     <svg
@@ -152,8 +152,8 @@
 </button>
 
 <button
-  @click="zamawiarkaView = 'pomoc'"
-  class="ios-menu-tile"
+  @click="zmienWidokZOpuznieniem('pomoc')"
+  class="ios-menu-tile efekt-kliku"
 >
   <div class="ios-menu-icon ios-menu-icon-red">
     <svg
@@ -208,8 +208,8 @@
     <div v-if="!showProductSearch" class="towary-topbar-row">
       <div class="towary-topbar-left">
         <button
-          @click="zamawiarkaView = 'menu'"
-          class="towary-icon-button"
+          @click="zmienWidokZOpuznieniem('menu')"
+          class="towary-icon-button efekt-kliku"
           title="Wróć"
         >
           ←
@@ -224,8 +224,8 @@
       <div style="position:relative;">
 
  <button
-  @click="zamawiarkaView = 'koszyk'"
-  class="towary-icon-button"
+  @click="zmienWidokZOpuznieniem('koszyk')"
+  class="towary-icon-button efekt-kliku"
   title="Koszyk"
 >
   <svg
@@ -650,8 +650,8 @@ selectedWhoOrders !== 'wszystkie'
     <div v-if="!showCartSearch" class="towary-topbar-row">
       <div class="towary-topbar-left">
         <button
-          @click="zamawiarkaView = 'produkty'"
-          class="towary-icon-button"
+          @click="zmienWidokZOpuznieniem('produkty')"
+          class="towary-icon-button efekt-kliku"
           title="Wróć"
         >
           ←
@@ -1165,8 +1165,8 @@ selectedWhoOrders !== 'wszystkie'
     <div class="towary-topbar-row">
       <div class="towary-topbar-left">
         <button
-          @click="zamawiarkaView = 'menu'"
-          class="towary-icon-button"
+          @click="zmienWidokZOpuznieniem('menu')"
+          class="towary-icon-button efekt-kliku"
           title="Wróć"
         >
           ←
@@ -1469,8 +1469,8 @@ selectedWhoOrders !== 'wszystkie'
           <div class="towary-topbar-row">
             <div class="towary-topbar-left">
               <button
-                @click="zamawiarkaView = 'menu'"
-                class="towary-icon-button"
+                @click="zmienWidokZOpuznieniem('menu')"
+                class="towary-icon-button efekt-kliku"
                 title="Wróć"
               >
                 ←
@@ -2551,8 +2551,18 @@ export default {
       }
     })
 
-    // Zwracamy paczkę ORAZ router do HTML-a
-    return { ...appContext, router }
+    // TUTAJ DODANA FUNKCJA OPÓŹNIAJĄCA
+    const zmienWidokZOpuznieniem = (nowyWidok) => {
+      setTimeout(() => {
+        appContext.zamawiarkaView.value = nowyWidok
+      }, 40)
+    }
+
+    // TUTAJ DOPISANA FUNKCJA DO ZWRACANYCH DANYCH
+    return { ...appContext, router, zmienWidokZOpuznieniem }
   }
 }
+
+
+
 </script>

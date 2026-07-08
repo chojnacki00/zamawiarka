@@ -624,3 +624,25 @@ textarea {
 .ios-menu-icon-red {
   background: linear-gradient(135deg, #ef4444, #f87171);
 }
+
+/* Wyłączenie systemowych podświetleń przycisków */
+button:focus {
+  outline: none !important;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* NASZ GLOBALNY EFEKT KLIKNIĘCIA */
+/* Zabezpieczenie przed systemowym opóźnieniem dotyku na telefonach */
+.efekt-kliku {
+  touch-action: manipulation !important;
+}
+
+/* Natychmiastowa reakcja bez żadnego czasu przejścia (zero milisekund) */
+.efekt-kliku:active {
+  background-color: #d1d5db !important;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15) !important;
+  transform: scale(0.96) !important;
+  transition: none !important; /* Wyłączamy animację, zmiana ma być natychmiastowa */
+}

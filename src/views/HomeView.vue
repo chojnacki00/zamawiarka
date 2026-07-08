@@ -26,8 +26,8 @@
         <!-- KAFELEK 1: ZAMAWIARKA -->
         <button
           v-if="aktywneModuly.includes('zamawiarka')"
-          @click="router.push('/zamawiarka')"
-          class="ios-menu-tile"
+          @click="navigateWithEffect('/zamawiarka')"
+          class="ios-menu-tile efekt-kliku"
           style="margin: 0; min-height: 140px; box-sizing: border-box;"
         >
           <div class="ios-menu-icon ios-menu-icon-blue">
@@ -43,8 +43,8 @@
         <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
         <button
           v-if="aktywneModuly.includes('rentownosc')"
-          @click="router.push('/rentownosc')"
-          class="ios-menu-tile"
+          @click="navigateWithEffect('/rentownosc')"
+          class="ios-menu-tile efekt-kliku"
           style="margin: 0; min-height: 140px; box-sizing: border-box;"
         >
           <div class="ios-menu-icon ios-menu-icon-green">
@@ -96,4 +96,10 @@ const logout = () => {
     authStore.logout()
   }
 }
+const navigateWithEffect = (path) => {
+  setTimeout(() => {
+    router.push(path)
+  }, 40)
+}
+
 </script>
