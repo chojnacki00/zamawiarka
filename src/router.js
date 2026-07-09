@@ -21,10 +21,15 @@ const routes = [
     component: ZamawiarkaView
   },
   {
-  path: '/rentownosc',
-  name: 'Rentownosc',
-  component: RentownoscView
-}
+    path: '/rentownosc',
+    name: 'Rentownosc',
+    component: RentownoscView
+  },
+  {
+    path: '/ustawienia',
+    name: 'Ustawienia',
+    component: () => import('./views/UstawieniaView.vue')
+  }
 
 ]
 
