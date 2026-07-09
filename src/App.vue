@@ -952,7 +952,7 @@ export default {
     // =========================
     // wersja aplikacji    
     // =========================
-    const appVersion = ref('3.1.2')
+    const appVersion = ref('3.1.3')
 
 
     // =========================
@@ -1481,14 +1481,9 @@ const eksportujBackup = async () => {
   }
 };
 
-const backupInputRef = ref(null);
-const showBackupOptions = ref(false)
 
-const triggerFileInput = () => {
-  if (backupInputRef.value) {
-    backupInputRef.value.click();
-  }
-};
+
+
 
 // --- FUNKCJA WCZYTYWANIA BACKUPU ---
 const wczytajBackup = async (event) => {
@@ -5580,10 +5575,7 @@ const openZamawiarkaMenuFromHome = () => {
       deleteDishCategory,
       duplicateMenuItem,
       deleteMenuItem,
-        backupInputRef,
-      triggerFileInput,
-      showBackupOptions,
-      wczytajBackup,
+      
 
       isSettingsDirty,
       markSettingsDirty,
