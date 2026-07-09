@@ -404,7 +404,7 @@
     <!-- =========================
        LISTA PRODUKTÓW
   ========================== -->
-  <div class="towary-list-wrap scroll-area">
+  <div class="towary-list-wrap scroll-area" ref="produktyListRef">
     <div v-if="filteredProducts.length === 0" class="empty-state">
       <div class="empty-title">Brak produktów</div>
       <div class="empty-subtitle">Zmień wyszukiwanie lub filtry</div>
@@ -898,7 +898,7 @@ selectedWhoOrders !== 'wszystkie'
   Koszyk jest pusty
 </div>
 
-<div v-else class="scroll-area">
+<div v-else class="scroll-area" ref="koszykListRef">
   <!-- CHMURKI FILTRÓW KOSZYKA -->
   <div
     v-if="

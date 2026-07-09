@@ -994,7 +994,7 @@ export default {
     // =========================
     // wersja aplikacji    
     // =========================
-    const appVersion = ref('3.1.1')
+    const appVersion = ref('3.1.2')
 
 
     // =========================
@@ -2680,9 +2680,7 @@ const deleteCartItemFromQtyModal = async () => {
 
 
 
-// =========================
-// KOSZYK - EDYCJA TOWARU Z MODALA ILOŚCI
-// =========================
+
 // =========================
 // KOSZYK / ZRÓB ZAMÓWIENIE - EDYCJA TOWARU Z MODALA ILOŚCI
 // =========================
@@ -2693,14 +2691,24 @@ const editTowarFromQtyModal = () => {
 
   if (product.isCustom) return
 
-  towarFormSource.value =
-    zamawiarkaView.value === 'koszyk' ? 'koszyk' : 'produkty'
+  // ZAPAMIĘTYWANIE SCROLLA PRZED PRZEJŚCIEM DO EDYCJI
+  if (zamawiarkaView.value === 'koszyk') {
+    towarFormSource.value = 'koszyk'
+    if (koszykListRef.value) {
+      savedKoszykScroll.value = koszykListRef.value.scrollTop
+    }
+  } else {
+    towarFormSource.value = 'produkty'
+    if (produktyListRef.value) {
+      savedProduktyScroll.value = produktyListRef.value.scrollTop
+    }
+  }
 
   const fullTowar = towary.value.find(item => item.id === product.id)
 
-closeQtyModal()
-zamawiarkaView.value = 'towary'
-openTowarEdit(fullTowar || product)
+  closeQtyModal()
+  zamawiarkaView.value = 'towary'
+  openTowarEdit(fullTowar || product)
 }
 
 
@@ -3620,6 +3628,10 @@ if (!confirmed) return
     // Zmienne do zapamiętywania scrolla
     const towaryListRef = ref(null)
     const savedTowaryScroll = ref(0)
+    const produktyListRef = ref(null)
+    const savedProduktyScroll = ref(0)
+    const koszykListRef = ref(null)
+    const savedKoszykScroll = ref(0)
 
     const towarySearch = ref('')
     const towarySelectionMode = ref(false)
@@ -3809,9 +3821,11 @@ const closeTowarForm = async () => {
   editedTowarId.value = null
   resetTowarForm()
 
-  if (towarFormSource.value === 'koszyk') {
+  const source = towarFormSource.value // zapamiętujemy przed resetem
+
+  if (source === 'koszyk') {
     zamawiarkaView.value = 'koszyk'
-  } else if (towarFormSource.value === 'produkty') {
+  } else if (source === 'produkty') {
     zamawiarkaView.value = 'produkty'
   } else {
     zamawiarkaView.value = 'towary'
@@ -3819,9 +3833,13 @@ const closeTowarForm = async () => {
 
   towarFormSource.value = 'towary'
 
-  // PRZYWRACAMY SCROLL PO WYRENDEROWANIU LISTY
+  // PRZYWRACAMY SCROLL PO WYRENDEROWANIU WŁAŚCIWEJ LISTY
   await nextTick()
-  if (towaryListRef.value) {
+  if (source === 'koszyk' && koszykListRef.value) {
+    koszykListRef.value.scrollTop = savedKoszykScroll.value
+  } else if (source === 'produkty' && produktyListRef.value) {
+    produktyListRef.value.scrollTop = savedProduktyScroll.value
+  } else if (source === 'towary' && towaryListRef.value) {
     towaryListRef.value.scrollTop = savedTowaryScroll.value
   }
 }
@@ -5557,6 +5575,8 @@ const openZamawiarkaMenuFromHome = () => {
       getTowaryPdfColumnStyle,
 
       towaryListRef,
+      produktyListRef,
+      koszykListRef,
 
       isDataLoaded,
 
