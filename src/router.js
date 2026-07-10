@@ -42,6 +42,18 @@ const routes = [
     name: 'Zespol',
     component: () => import('./views/UstawieniaZespoluView.vue')
   }
+  ,
+  {
+    path: '/logowanie',
+    name: 'LogowaniePIN',
+    component: () => import('./views/PinLoginView.vue')
+  }
+  ,
+  {
+    path: '/terminal',
+    name: 'Terminal',
+    component: () => import('./views/TerminalView.vue')
+  }
 
 ]
 
