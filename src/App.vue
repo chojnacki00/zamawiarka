@@ -5075,7 +5075,16 @@ onMounted(() => {
       
       isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
       
-      router.push('/login') // Dla pewności przekierowujemy na samym końcu
+      // === POPRAWKA: WSPÓŁPRACA STRAŻNIKÓW ===
+      // Sprawdzamy, gdzie anonimowy użytkownik próbuje wejść
+      const currentPath = router.currentRoute.value.path
+      
+      // Jeśli NIE próbuje wejść do strefy pracownika, wyrzucamy go na logowanie Szefa
+      if (currentPath !== '/logowanie' && currentPath !== '/terminal') {
+        router.push('/login') 
+      }
+      // === KONIEC POPRAWKI ===
+
       return
     }
 

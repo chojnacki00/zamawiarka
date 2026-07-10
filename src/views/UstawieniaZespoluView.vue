@@ -19,7 +19,7 @@
             ➕ Dodaj pracownika
           </button>
 
-          <!-- Pasek Wyszukiwania z przyciskiem X -->
+          <!-- Pasek Wyszukiwania -->
           <div style="position: relative; width: 100%;">
             <div style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none;">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -66,38 +66,48 @@
               v-for="pracownik in filteredAndSortedEmployees" 
               :key="pracownik.id"
               class="item-card"
-              :style="{ opacity: pracownik.aktywny === false ? 0.6 : 1 }"
-              style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 15px; transition: opacity 0.2s;"
+              :style="{ opacity: pracownik.aktywny === false ? 0.6 : 1, filter: pracownik.aktywny === false ? 'grayscale(1)' : 'none' }"
+              style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; transition: all 0.2s;"
             >
               <div style="flex: 1; min-width: 0;">
-                <div translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <!-- IMIĘ I NAZWISKO -->
+                <div translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                   {{ pracownik.nazwisko }} {{ pracownik.imie }}
                 </div>
-                <div style="font-size: 12px; color: #6b7280; display: flex; gap: 8px; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                
+                <!-- JEDEN, SZTYWNY WIERSZ Z ETYKIETAMI -->
+                <div style="display: flex; gap: 6px; align-items: center; white-space: nowrap; overflow: hidden;">
                   
                   <!-- Odznaka Aktywny/Zablokowany -->
-                  <span v-if="pracownik.aktywny !== false" style="background: #d1fae5; color: #059669; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px;">
+                  <span v-if="pracownik.aktywny !== false" style="background: #d1fae5; color: #059669; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
                     Aktywny
                   </span>
-                  <span v-else style="background: #fee2e2; color: #dc2626; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px;">
-                    Zablokowany
+                  <span v-else style="background: #f3f4f6; color: #9ca3af; text-decoration: line-through; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
+                    Aktywny
                   </span>
 
-                  <span translate="no" class="notranslate" style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-weight: 600; color: #4b5563;">
+                  <!-- Stanowisko Główne (przycięte do max 110px) -->
+                  <span translate="no" class="notranslate" style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; color: #4b5563; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; display: inline-block;">
                     {{ getRoleName(pracownik.roleId) }}
+                  </span>
+
+                  <!-- Odznaka Dodatkowych Stanowisk -->
+                  <span v-if="pracownik.additionalRoles && pracownik.additionalRoles.length > 0" translate="no" class="notranslate" style="background: #f3e8ff; color: #7e22ce; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
+                    +{{ pracownik.additionalRoles.length }}
                   </span>
                 </div>
               </div>
               
-              <div style="display: flex; gap: 10px; flex-shrink: 0;">
+              <!-- PRZYCISKI AKCJI -->
+              <div style="display: flex; gap: 8px; flex-shrink: 0;">
                 <button @click="openForm(pracownik)" style="background: white; border: 1px solid #d1d5db; border-radius: 8px; color: #374151; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center;">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                   </svg>
-                </button>
+                  </button>
 
-                <button @click="confirmDelete(pracownik)" style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center;">
+                  <button @click="confirmDelete(pracownik)" style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center;">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -114,11 +124,10 @@
       <!-- === WIDOK 2: FORMULARZ DODAWANIA/EDYCJI === -->
       <div v-else style="padding: 20px;">
         
-        <!-- === PRZEŁĄCZNIK AKTYWNOŚCI KONTA === -->
         <div style="margin-bottom: 25px; padding: 15px; background: #f9fafb; border-radius: 10px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
           <div>
             <div style="font-weight: 600; color: #111827; font-size: 14px; margin-bottom: 4px;">Konto aktywne</div>
-            <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">Odznacz, aby zablokować pracownikowi dostęp do systemu.</div>
+            <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">Odznacz, aby zablokować pracownikowi dostęp.</div>
           </div>
           <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0;">
             <input type="checkbox" v-model="form.aktywny" style="opacity: 0; width: 0; height: 0; position: absolute;">
@@ -140,19 +149,60 @@
         </div>
 
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">Stanowisko</label>
-          <select v-model="form.roleId" translate="no" class="notranslate form-input" style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px center; background-size: 18px; padding-right: 45px;">
-            <option value="" disabled class="placeholder-option">Wybierz z listy...</option>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">
+            Główne stanowisko (Uprawnienia)
+          </label>
+          <select 
+            v-model="form.roleId"
+            translate="no"
+            class="notranslate form-input"
+            style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px center; background-size: 18px; padding-right: 45px;"
+          >
+            <option value="" disabled class="placeholder-option">Wybierz główne...</option>
             <option v-for="rola in rolesStore.roles" :key="rola.id" :value="rola.id" style="color: #111827;">{{ rola.nazwa }}</option>
           </select>
+        </div>
+
+        <div v-if="form.roleId && rolesStore.roles.length > 1" style="margin-bottom: 25px; padding: 15px; background: white; border: 1px solid #e5e7eb; border-radius: 10px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 10px;">
+            Dodatkowe kompetencje (Do grafiku)
+          </label>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <label 
+              v-for="rola in availableAdditionalRoles" 
+              :key="rola.id"
+              style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s;"
+              :style="{ 
+                borderColor: form.additionalRoles.includes(rola.id) ? '#0ea5e9' : '#e5e7eb', 
+                background: form.additionalRoles.includes(rola.id) ? '#e0f2fe' : '#f9fafb', 
+                color: form.additionalRoles.includes(rola.id) ? '#0369a1' : '#4b5563' 
+              }"
+            >
+              <input 
+                type="checkbox" 
+                :value="rola.id" 
+                v-model="form.additionalRoles" 
+                style="width: 16px; height: 16px; accent-color: #0ea5e9; cursor: pointer; margin: 0;"
+              >
+              <span translate="no" class="notranslate">{{ rola.nazwa }}</span>
+            </label>
+            <div v-if="availableAdditionalRoles.length === 0" style="font-size: 13px; color: #9ca3af;">
+              Brak innych stanowisk do wyboru.
+            </div>
+          </div>
         </div>
 
         <div style="margin-bottom: 20px;">
           <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">PIN do logowania</label>
           <div style="display: flex; gap: 8px; width: 100%;">
-            <input v-model="form.pin" type="text" placeholder="4 cyfry" maxlength="4" class="form-input" style="flex: 1; min-width: 0; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 18px; font-weight: 600; letter-spacing: 2px; text-align: center; box-sizing: border-box; outline: none;" />
-            <button @click="generateRandomPin" style="white-space: nowrap; flex-shrink: 0; padding: 0 15px; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; border-radius: 10px; font-weight: 600; cursor: pointer;">
-              🎲 Losuj
+            <input v-model="form.pin" type="text" placeholder="PIN" maxlength="4" class="form-input" style="flex: 1; min-width: 0; padding: 12px 10px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 18px; font-weight: 600; text-align: center; box-sizing: border-box; outline: none;" />
+            
+            <button @click="generateRandomPin" style="padding: 0 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 10px; font-weight: 600; cursor: pointer;">
+              🎲
+            </button>
+
+            <button @click="generatePairingCode(form)" style="padding: 0 15px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 10px; font-weight: 600; cursor: pointer;">
+              Paruj
             </button>
           </div>
         </div>
@@ -185,7 +235,7 @@
 
     </div>
 
-    <!-- === MODAL POTWIERDZENIA USUNIĘCIA === -->
+   <!-- === MODAL POTWIERDZENIA USUNIĘCIA === -->
     <div v-if="showDeleteModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
       <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
         <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
@@ -199,18 +249,38 @@
         </div>
       </div>
     </div>
+
+    <!-- === MODAL PAROWANIA === -->
+    <div v-if="showPairingModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
+      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
+        <div style="width: 56px; height: 56px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12" y2="18"></line></svg>
+        </div>
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Kod parowania</h3>
+        <p style="color: #6b7280; font-size: 15px; margin-bottom: 5px;">Przekaż pracownikowi:</p>
+        <div style="font-size: 32px; font-weight: 800; color: #0284c7; margin: 15px 0; letter-spacing: 4px;">{{ generatedCode }}</div>
+        <p style="color: #6b7280; font-size: 13px; margin-bottom: 25px;">(dla: <strong>{{ empNameForPairing }}</strong>)<br>Kod jest ważny przez 3 minuty.</p>
+        
+        <button @click="showPairingModal = false" style="width: 100%; padding: 14px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">OK, zamknij</button>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeesStore } from '../stores/employeesStore.js'
 import { useRolesStore } from '../stores/rolesStore.js'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase.js'
+import { useAuthStore } from '../stores/authStore.js'
 
 const router = useRouter()
 const employeesStore = useEmployeesStore()
 const rolesStore = useRolesStore()
+const authStore = useAuthStore()
 
 const scrollAreaRef = ref(null)
 let savedScrollPosition = 0
@@ -226,11 +296,11 @@ const isSaving = ref(false)
 const searchQuery = ref('') 
 const searchPlaceholder = ref('Szukaj pracownika...')
 
-// Dodane domyślne ustawienie `aktywny: true`
 const form = ref({
   imie: '',
   nazwisko: '',
   roleId: '',
+  additionalRoles: [],
   pin: '',
   stawka: '',
   telefon: '',
@@ -243,6 +313,16 @@ const isFormValid = computed(() => {
          form.value.nazwisko.trim().length > 0 && 
          form.value.roleId !== '' && 
          form.value.pin.trim().length >= 4
+})
+
+const availableAdditionalRoles = computed(() => {
+  return rolesStore.roles.filter(r => r.id !== form.value.roleId)
+})
+
+watch(() => form.value.roleId, (newMainRole) => {
+  if (form.value.additionalRoles.includes(newMainRole)) {
+    form.value.additionalRoles = form.value.additionalRoles.filter(id => id !== newMainRole)
+  }
 })
 
 const filteredAndSortedEmployees = computed(() => {
@@ -284,16 +364,16 @@ const openForm = (emp = null) => {
       imie: emp.imie || '',
       nazwisko: emp.nazwisko || '',
       roleId: emp.roleId || '',
+      additionalRoles: emp.additionalRoles || [],
       pin: emp.pin || '',
       stawka: emp.stawka || '',
       telefon: emp.telefon || '',
       email: emp.email || '',
-      // Jeśli stary pracownik nie miał tego pola w bazie, przyjmujemy, że jest aktywny
       aktywny: emp.aktywny !== false 
     }
   } else {
     editingEmpId.value = null
-    form.value = { imie: '', nazwisko: '', roleId: '', pin: '', stawka: '', telefon: '', email: '', aktywny: true }
+    form.value = { imie: '', nazwisko: '', roleId: '', additionalRoles: [], pin: '', stawka: '', telefon: '', email: '', aktywny: true }
     generateRandomPin()
   }
   isFormOpen.value = true
@@ -314,6 +394,37 @@ const generateRandomPin = () => {
   const min = 1000
   const max = 9999
   form.value.pin = Math.floor(Math.random() * (max - min + 1) + min).toString()
+}
+
+
+
+const generatePairingCode = async () => {
+  if (!editingEmpId.value) {
+    alert("Najpierw zapisz pracownika, aby móc sparować urządzenie!");
+    return;
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  try {
+    await setDoc(doc(db, 'pairing_codes', code), {
+      companyUid: authStore.currentCompany.uid,
+      employeeId: editingEmpId.value,
+      employeeName: form.value.imie,
+      createdAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + 3 * 60 * 1000) 
+    });
+    
+    // === TUTAJ JEST ZMIANA ===
+    // Zamiast alert(), podstawiamy dane i pokazujemy modal
+    generatedCode.value = code;
+    empNameForPairing.value = form.value.imie;
+    showPairingModal.value = true;
+
+  } catch (e) {
+    console.error("Błąd parowania:", e);
+    alert('Wystąpił błąd podczas generowania kodu.');
+  }
 }
 
 const getRoleName = (roleId) => {
@@ -351,6 +462,9 @@ const saveEmployee = async () => {
 }
 
 const showDeleteModal = ref(false)
+const showPairingModal = ref(false)
+const generatedCode = ref('')
+const empNameForPairing = ref('')
 const empToDelete = ref(null)
 
 const confirmDelete = (emp) => {

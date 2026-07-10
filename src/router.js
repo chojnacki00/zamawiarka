@@ -29,37 +29,54 @@ const routes = [
     path: '/ustawienia',
     name: 'Ustawienia',
     component: () => import('./views/UstawieniaView.vue')
-  }
-  ,
+  },
   {
     path: '/stanowiska',
     name: 'Stanowiska',
     component: () => import('./views/UstawieniaStanowiskView.vue')
-  }
-  ,
+  },
   {
     path: '/zespol',
     name: 'Zespol',
     component: () => import('./views/UstawieniaZespoluView.vue')
-  }
-  ,
+  },
   {
     path: '/logowanie',
     name: 'LogowaniePIN',
     component: () => import('./views/PinLoginView.vue')
-  }
-  ,
+  },
   {
     path: '/terminal',
     name: 'Terminal',
     component: () => import('./views/TerminalView.vue')
   }
-
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes
 })
+
+// === STRAŻNIK TRAS ===
+router.beforeEach((to, from, next) => {
+  // Sprawdzamy "twardy dowód" sesji pracownika w pamięci
+  const hasEmployeeSession = !!localStorage.getItem('gm_emp_id')
+
+  // ZASADA 1: Zalogowany Pracownik (Kelner) próbuje uciec z Terminala
+  if (hasEmployeeSession && to.path !== '/terminal') {
+    console.log('Strażnik: Pracowniku, wracaj na swój terminal!')
+    return next('/terminal')
+  }
+
+  // ZASADA 2: Ktoś bez podanego PIN-u próbuje wejść fizycznie na /terminal
+  if (!hasEmployeeSession && to.path === '/terminal') {
+    console.log('Strażnik: Brak PIN-u. Przekierowuję do logowania.')
+    return next('/logowanie')
+  }
+
+  // Wpuszczamy całą resztę przepływu dalej
+  next()
+})
+// === KONIEC STRAŻNIKA ===
 
 export default router
