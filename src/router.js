@@ -36,6 +36,12 @@ const routes = [
     name: 'Stanowiska',
     component: () => import('./views/UstawieniaStanowiskView.vue')
   }
+  ,
+  {
+    path: '/zespol',
+    name: 'Zespol',
+    component: () => import('./views/UstawieniaZespoluView.vue')
+  }
 
 ]
 

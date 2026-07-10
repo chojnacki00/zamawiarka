@@ -16,6 +16,15 @@
         👥 Zarządzanie Stanowiskami
       </button>
 
+      <!-- Przycisk Zespół -->
+      <button 
+        @click="router.push('/zespol')" 
+        class="item-card" 
+        style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+      >
+        👨‍🍳 Zespół i Pracownicy
+      </button>
+
       <button 
         @click="showBackupOptions = !showBackupOptions" 
         class="item-card" 
