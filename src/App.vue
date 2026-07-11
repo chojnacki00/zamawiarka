@@ -5077,7 +5077,7 @@ onMounted(() => {
       
       // === POPRAWKA: WSPÓŁPRACA STRAŻNIKÓW ===
       // Sprawdzamy, gdzie anonimowy użytkownik próbuje wejść
-      const currentPath = router.currentRoute.value.path
+      const currentPath = window.location.pathname
       
       // Jeśli NIE próbuje wejść do strefy pracownika, wyrzucamy go na logowanie Szefa
       if (currentPath !== '/logowanie' && currentPath !== '/terminal') {

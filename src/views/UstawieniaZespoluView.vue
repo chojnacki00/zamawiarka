@@ -273,7 +273,7 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeesStore } from '../stores/employeesStore.js'
 import { useRolesStore } from '../stores/rolesStore.js'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthStore } from '../stores/authStore.js'
 
@@ -398,12 +398,36 @@ const generateRandomPin = () => {
 
 
 
+// Funkcja czyszcząca bazę ze starych kodów tej restauracji
+const cleanupExpiredCodes = async () => {
+  try {
+    const codesRef = collection(db, 'pairing_codes');
+    const q = query(
+      codesRef,
+      where('companyUid', '==', authStore.currentCompany.uid),
+      where('expiresAt', '<', new Date()) // Szuka kodów, których data wygaśnięcia już minęła
+    );
+    
+    const snapshot = await getDocs(q);
+    snapshot.forEach(async (docSnap) => {
+      await deleteDoc(docSnap.ref); // Kasuje wygasły kod
+    });
+  } catch (e) {
+    console.error("Błąd podczas sprzątania starych kodów:", e);
+  }
+}
+
+// Zaktualizowana funkcja generująca
 const generatePairingCode = async () => {
   if (!editingEmpId.value) {
     alert("Najpierw zapisz pracownika, aby móc sparować urządzenie!");
     return;
   }
 
+  // 1. Najpierw sprzątamy stare śmieci!
+  await cleanupExpiredCodes();
+
+  // 2. Generujemy nowy kod
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   
   try {
@@ -415,8 +439,6 @@ const generatePairingCode = async () => {
       expiresAt: new Date(Date.now() + 3 * 60 * 1000) 
     });
     
-    // === TUTAJ JEST ZMIANA ===
-    // Zamiast alert(), podstawiamy dane i pokazujemy modal
     generatedCode.value = code;
     empNameForPairing.value = form.value.imie;
     showPairingModal.value = true;

@@ -16,28 +16,34 @@
         <p style="margin: 5px 0 0 0; color: #6b7280; font-size: 14px;">Panel Pracownika</p>
       </div>
 
-      <!-- === ETAP 1: KONFIGURACJA === -->
+      <!-- === ETAP 1: KOD PAROWANIA === -->
       <div v-if="!savedRestId" style="animation: fadeIn 0.3s ease;">
-        <h2 style="font-size: 18px; color: #111827; margin-bottom: 20px;">Konfiguracja urządzenia</h2>
-        <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px; line-height: 1.5;">
-          Podaj <strong>ID Restauracji</strong>, aby powiązać to urządzenie z Twoim lokalem.
+        <h2 style="font-size: 18px; color: #111827; margin-bottom: 15px;">Parowanie urządzenia</h2>
+        <p style="font-size: 13px; color: #6b7280; margin-bottom: 25px; line-height: 1.5;">
+          Wpisz <strong>6-cyfrowy kod</strong> wygenerowany przez Managera, aby bezpiecznie połączyć to urządzenie z Twoim lokalem.
         </p>
         
-        <!-- POPRAWA KONTRASTU W POLU INPUT -->
         <input 
-          v-model="restIdInput" 
+          v-model="pairingCodeInput" 
           type="text" 
-          placeholder="Wklej ID Restauracji..." 
-          style="width: 100%; padding: 15px; border: 2px solid #d1d5db; background-color: #f9fafb; color: #0284c7; border-radius: 12px; font-size: 16px; box-sizing: border-box; outline: none; margin-bottom: 20px; text-align: center; font-weight: 700;"
+          inputmode="numeric"
+          maxlength="6"
+          placeholder="np. 123456" 
+          style="width: 100%; padding: 15px; border: 2px solid #d1d5db; background-color: #f9fafb; color: #0284c7; border-radius: 12px; font-size: 28px; letter-spacing: 6px; box-sizing: border-box; outline: none; margin-bottom: 15px; text-align: center; font-weight: 800;"
         />
+
+        <div v-if="setupError" style="color: #ef4444; font-size: 14px; font-weight: 600; margin-bottom: 15px; min-height: 40px; animation: shake 0.4s ease;">
+          {{ setupError }}
+        </div>
+        <div v-else style="margin-bottom: 15px; min-height: 40px;"></div>
         
         <button 
-          @click="saveRestaurantId"
-          :disabled="!restIdInput.trim()"
-          :style="{ opacity: !restIdInput.trim() ? 0.5 : 1 }"
+          @click="pairDevice"
+          :disabled="pairingCodeInput.length !== 6 || isLoading"
+          :style="{ opacity: (pairingCodeInput.length !== 6 || isLoading) ? 0.5 : 1 }"
           style="width: 100%; padding: 15px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 16px; border-radius: 12px; cursor: pointer; transition: 0.2s;"
         >
-          Zapisz urządzenie
+          {{ isLoading ? 'Sprawdzanie...' : 'Połącz urządzenie' }}
         </button>
       </div>
 
@@ -62,13 +68,8 @@
           {{ errorMessage }}
         </div>
         <div v-else style="margin-bottom: 20px; min-height: 20px;"></div>
-
-        <!-- Jeśli zablokowane - ukryj klawiaturę numeryczną -->
-        <div v-if="isLocked" style="padding: 20px; background: #fef2f2; border-radius: 12px; color: #ef4444; font-weight: 600; margin-bottom: 20px;">
-          Urządzenie tymczasowo zablokowane.
-        </div>
         
-        <div v-else style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; max-width: 280px; margin: 0 auto;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; max-width: 280px; margin: 0 auto;">
           <button v-for="num in [1, 2, 3, 4, 5, 6, 7, 8, 9]" :key="num" @click="pressKey(num)" class="numpad-btn">{{ num }}</button>
           <button @click="clearPin" class="numpad-btn" style="background: #fef2f2; color: #ef4444; font-size: 18px;">C</button>
           <button @click="pressKey(0)" class="numpad-btn">0</button>
@@ -79,7 +80,7 @@
 
         <div style="margin-top: 40px; border-top: 1px solid #f3f4f6; padding-top: 20px;">
           <button @click="resetDevice" style="background: none; border: none; color: #9ca3af; font-size: 12px; cursor: pointer; text-decoration: underline;">
-            Zmień ID Restauracji
+            Odłącz urządzenie (wymaga nowego kodu)
           </button>
         </div>
       </div>
@@ -89,55 +90,67 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { db } from '../firebase' 
+import { doc, getDoc, deleteDoc } from 'firebase/firestore'
 
 const router = useRouter()
 const authStore = useEmployeeAuthStore()
 
 const savedRestId = ref(localStorage.getItem('gm_saved_rest_id') || '')
-const restIdInput = ref('')
+const pairingCodeInput = ref('')
+const setupError = ref('')
 const pinCode = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
 
-// BLOKADA ANTY-ZGADYWANIA
+// Prosty licznik błędów - resetuje się po wpisaniu poprawnego kodu
 const failedAttempts = ref(parseInt(localStorage.getItem('gm_failed_attempts') || '0'))
-const lockoutTimestamp = ref(parseInt(localStorage.getItem('gm_lockout_time') || '0'))
-const isLocked = ref(false)
-let timerInterval = null
 
-// Sprawdzanie czy czas blokady minął
-const checkLockoutStatus = () => {
-  const now = Date.now()
-  if (lockoutTimestamp.value > now) {
-    isLocked.value = true
-    const minutesLeft = Math.ceil((lockoutTimestamp.value - now) / 60000)
-    errorMessage.value = `Zbyt wiele błędnych prób. Spróbuj za ${minutesLeft} min.`
-  } else {
-    isLocked.value = false
-    if (errorMessage.value.includes('Zbyt wiele błędnych prób')) {
-      errorMessage.value = ''
+const pairDevice = async () => {
+  const code = pairingCodeInput.value.trim()
+  setupError.value = ''
+
+  if (code.length !== 6) {
+    setupError.value = 'Kod musi mieć dokładnie 6 cyfr.'
+    return
+  }
+
+  isLoading.value = true
+
+  try {
+    const docRef = doc(db, 'pairing_codes', code)
+    const docSnap = await getDoc(docRef)
+
+    if (docSnap.exists()) {
+      const data = docSnap.data()
+
+      const expDate = data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt)
+      if (expDate < new Date()) {
+        setupError.value = 'Ten kod wygasł. Poproś o nowy.'
+        await deleteDoc(docRef) 
+        return
+      }
+
+      savedRestId.value = data.companyUid
+      localStorage.setItem('gm_saved_rest_id', savedRestId.value)
+
+      // Wyczyszczenie błędów po poprawnym parowaniu
       failedAttempts.value = 0
       localStorage.removeItem('gm_failed_attempts')
+
+      await deleteDoc(docRef)
+
+    } else {
+      setupError.value = 'Nieprawidłowy kod parowania.'
     }
-  }
-}
-
-onMounted(() => {
-  checkLockoutStatus()
-  timerInterval = setInterval(checkLockoutStatus, 10000) // Odświeżaj status co 10 sekund
-})
-
-onUnmounted(() => {
-  clearInterval(timerInterval)
-})
-
-const saveRestaurantId = () => {
-  if (restIdInput.value.trim()) {
-    savedRestId.value = restIdInput.value.trim()
-    localStorage.setItem('gm_saved_rest_id', savedRestId.value)
+  } catch (e) {
+    console.error("Błąd połączenia z bazą:", e)
+    setupError.value = 'Wystąpił błąd podczas sprawdzania kodu.'
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -146,22 +159,23 @@ const resetDevice = () => {
   savedRestId.value = ''
   pinCode.value = ''
   errorMessage.value = ''
+  pairingCodeInput.value = ''
 }
 
 const pressKey = (num) => {
-  if (isLoading.value || pinCode.value.length >= 4 || isLocked.value) return
+  if (isLoading.value || pinCode.value.length >= 4) return
   errorMessage.value = '' 
   pinCode.value += num.toString()
 }
 
 const clearPin = () => {
   pinCode.value = ''
-  if (!isLocked.value) errorMessage.value = ''
+  errorMessage.value = ''
 }
 
 const backspacePin = () => {
   pinCode.value = pinCode.value.slice(0, -1)
-  if (!isLocked.value) errorMessage.value = ''
+  errorMessage.value = ''
 }
 
 watch(pinCode, async (newPin) => {
@@ -170,23 +184,21 @@ watch(pinCode, async (newPin) => {
     try {
       await authStore.login(savedRestId.value, newPin)
       
-      // Sukces - czyścimy błędy i logujemy
+      // Sukces - resetujemy błędy
       failedAttempts.value = 0
       localStorage.removeItem('gm_failed_attempts')
       router.push('/terminal')
       
     } catch (error) {
-      // Rejestrujemy błąd
       failedAttempts.value += 1
       localStorage.setItem('gm_failed_attempts', failedAttempts.value.toString())
       
       if (failedAttempts.value >= 3) {
-        // Blokada na 5 minut (5 * 60 * 1000 ms)
-        lockoutTimestamp.value = Date.now() + 300000 
-        localStorage.setItem('gm_lockout_time', lockoutTimestamp.value.toString())
-        checkLockoutStatus()
+        // TWARDY RESET - ODŁĄCZAMY URZĄDZENIE
+        resetDevice()
+        setupError.value = 'Zbyt wiele błędnych prób logowania. Ze względów bezpieczeństwa urządzenie zostało odłączone. Poproś o nowy kod parowania.'
       } else {
-        errorMessage.value = error.message
+        errorMessage.value = `Błędny PIN. Pozostałe próby: ${3 - failedAttempts.value}`
       }
       pinCode.value = '' 
     } finally {
