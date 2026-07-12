@@ -24,8 +24,22 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
         const empSnap = await getDoc(empRef)
 
         if (empSnap.exists() && empSnap.data().aktywny !== false) {
-          // Wszystko gra - przywracamy sesję w tle
-          currentEmployee.value = { id: empSnap.id, ...empSnap.data() }
+          const empData = empSnap.data()
+          let uprawnienia = {}
+
+          // Pobieramy uprawnienia stanowiska, jeśli pracownik ma je przypisane
+          if (empData.roleId) {
+            const stanowiskoRef = doc(db, 'users', savedRestId, 'stanowiska', empData.roleId)
+            const stanowiskoSnap = await getDoc(stanowiskoRef)
+            
+            if (stanowiskoSnap.exists()) {
+              // Zakładam, że w dokumencie stanowiska flagi są bezpośrednio, lub w obiekcie 'uprawnienia'
+              uprawnienia = stanowiskoSnap.data().uprawnienia || stanowiskoSnap.data()
+            }
+          }
+
+          // Wszystko gra - przywracamy sesję w tle (z uprawnieniami)
+          currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
           restaurantId.value = savedRestId
         } else {
           // Zwolniony, zablokowany lub usunięty - wyrzucamy z aplikacji
@@ -58,8 +72,19 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
         throw new Error('Twoje konto zostało zablokowane przez Managera.')
       }
 
-      // Sukces! Logujemy pracownika i zapisujemy "ciasteczko" na telefonie
-      currentEmployee.value = { id: empDoc.id, ...empData }
+      // Pobieramy uprawnienia ze stanowiska
+      let uprawnienia = {}
+      if (empData.roleId) {
+        const stanowiskoRef = doc(db, 'users', restId, 'stanowiska', empData.roleId)
+        const stanowiskoSnap = await getDoc(stanowiskoRef)
+        
+        if (stanowiskoSnap.exists()) {
+          uprawnienia = stanowiskoSnap.data().uprawnienia || stanowiskoSnap.data()
+        }
+      }
+
+      // Sukces! Logujemy pracownika z jego uprawnieniami i zapisujemy "ciasteczko"
+      currentEmployee.value = { id: empDoc.id, ...empData, uprawnienia }
       restaurantId.value = restId
 
       localStorage.setItem('gm_emp_id', empDoc.id)

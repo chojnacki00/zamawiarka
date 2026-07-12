@@ -934,6 +934,7 @@ import {
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/authStore.js'
+import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 
 export default {
   components: {
@@ -943,6 +944,7 @@ export default {
   setup() {
     const router = useRouter()
     const authStore = useAuthStore()
+    const employeeAuthStore = useEmployeeAuthStore()
 
     // =========================
     // STAN APLIKACJI - EKRAN ŁADOWANIA (Flash of Initial State)
@@ -5073,17 +5075,19 @@ onMounted(() => {
       
       resetCompanyDataState()
       
-      isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
-      
-      // === POPRAWKA: WSPÓŁPRACA STRAŻNIKÓW ===
-      // Sprawdzamy, gdzie anonimowy użytkownik próbuje wejść
+      // === POPRAWKA: WSPÓŁPRACA STRAŻNIKÓW I SESJA PRACOWNIKA ===
       const currentPath = window.location.pathname
       
-      // Jeśli NIE próbuje wejść do strefy pracownika, wyrzucamy go na logowanie Szefa
-      if (currentPath !== '/logowanie' && currentPath !== '/terminal') {
+      if (currentPath === '/logowanie' || currentPath.startsWith('/terminal')) {
+        // Czekamy na pobranie danych pracownika (w tym uprawnień) ZANIM zdejmiemy ekran ładowania
+        await employeeAuthStore.initSession()
+      } else {
+        // Jeśli NIE próbuje wejść do strefy pracownika, wyrzucamy go na logowanie Szefa
         router.push('/login') 
       }
       // === KONIEC POPRAWKI ===
+
+      isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA DOPIERO PO POBRANIU DANYCH!
 
       return
     }
