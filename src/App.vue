@@ -5063,6 +5063,31 @@ if (!confirmed) return
 // =========================
 let unsubscribeAuth = null
 
+
+// === OBSERWATOR LOGOWANIA PRACOWNIKA (Pobiera dane od razu po wpisaniu PIN) ===
+watch(() => employeeAuthStore.currentEmployee, async (newEmployee) => {
+  // Jeśli pojawił się pracownik i nikt główny z Firebase nie jest zalogowany
+  if (newEmployee && !authStore.currentUser && !authStore.user) {
+    const companyUid = localStorage.getItem('gm_saved_rest_id') || employeeAuthStore.companyId
+    
+    if (companyUid) {
+      isLoggedIn.value = true
+      
+      // Natychmiastowe pobieranie danych po poprawnym PIN-ie - TYLKO ODCZYT
+      await loadCompanyDataWithFallback()
+      if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
+      if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
+      if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
+      if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
+      if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+    }
+  }
+})
+// ==============================================================================
+
+
+
+
 onMounted(() => {
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
