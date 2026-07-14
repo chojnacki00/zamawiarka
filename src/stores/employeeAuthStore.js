@@ -52,20 +52,30 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     isInitialized.value = true
   }
 
-  // 2. Logowanie z ekranu PIN (wymaga Kodu Restauracji i numeru PIN)
+  // 2. Logowanie z ekranu PIN (Wymaga sparowanego urządzenia)
   const login = async (restId, pinCode) => {
     try {
-      const employeesRef = collection(db, 'users', restId, 'employees')
-      // Szukamy pracownika, który ma taki właśnie PIN
-      const q = query(employeesRef, where('pin', '==', String(pinCode)))
-      const querySnapshot = await getDocs(q)
+      // 1. Pobieramy ID przypisanego pracownika (zapiszemy je podczas parowania)
+      const pairedEmpId = localStorage.getItem('gm_saved_emp_id')
 
-      if (querySnapshot.empty) {
-        throw new Error('Nieprawidłowy PIN lub Kod Restauracji.')
+      if (!pairedEmpId) {
+        throw new Error('Urządzenie nie jest poprawnie sparowane z pracownikiem.')
       }
 
-      const empDoc = querySnapshot.docs[0]
-      const empData = empDoc.data()
+      // 2. Uderzamy prosto w dokument TEGO konkretnego pracownika (np. Lecha)
+      const empRef = doc(db, 'users', restId, 'employees', pairedEmpId)
+      const empSnap = await getDoc(empRef)
+
+      if (!empSnap.exists()) {
+        throw new Error('Konto pracownika nie istnieje.')
+      }
+
+      const empData = empSnap.data()
+
+      // 3. Sprawdzamy czy podany PIN zgadza się z PIN-em naszego przypisanego pracownika
+      if (String(empData.pin) !== String(pinCode)) {
+        throw new Error('Nieprawidłowy PIN dla tego urządzenia.')
+      }
 
       // Kill Switch (Blokada)
       if (empData.aktywny === false) {
@@ -83,16 +93,16 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
         }
       }
 
-      // Sukces! Logujemy pracownika z jego uprawnieniami i zapisujemy "ciasteczko"
-      currentEmployee.value = { id: empDoc.id, ...empData, uprawnienia }
+      // Sukces! Logujemy pracownika z jego uprawnieniami
+      currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
       restaurantId.value = restId
 
-      localStorage.setItem('gm_emp_id', empDoc.id)
+      localStorage.setItem('gm_emp_id', empSnap.id)
       localStorage.setItem('gm_rest_id', restId)
 
       return true
     } catch (error) {
-      throw error // Przekazujemy błąd wyżej, żeby wyświetlić go na czerwono w formularzu
+      throw error // Przekazujemy błąd wyżej
     }
   }
 

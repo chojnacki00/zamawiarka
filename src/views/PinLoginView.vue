@@ -136,8 +136,19 @@ const pairDevice = async () => {
         return
       }
 
+      // 1. Zapisujemy ID Restauracji
       savedRestId.value = data.companyUid
       localStorage.setItem('gm_saved_rest_id', savedRestId.value)
+
+      // === NOWOŚĆ: Zapisujemy ID przypisanego pracownika ===
+      // Szukamy pola, pod którym podczas generowania kodu zapisałeś ID pracownika
+      const pairedEmpId = data.empId || data.employeeId || data.id
+      if (pairedEmpId) {
+        localStorage.setItem('gm_saved_emp_id', pairedEmpId)
+      } else {
+        console.warn("Uwaga: W dokumencie kodu parowania brakuje przypisanego ID pracownika!")
+      }
+      // =====================================================
 
       // Wyczyszczenie błędów po poprawnym parowaniu
       failedAttempts.value = 0
@@ -158,29 +169,30 @@ const pairDevice = async () => {
 
 const resetDevice = () => {
   localStorage.removeItem('gm_saved_rest_id')
+  localStorage.removeItem('gm_saved_emp_id') // NOWOŚĆ: Czyścimy ID pracownika przy resecie
   savedRestId.value = ''
   pinCode.value = ''
   errorMessage.value = ''
   pairingCodeInput.value = ''
 }
 
-const pressKey = (num) => {
+  const pressKey = (num) => {
   if (isLoading.value || pinCode.value.length >= 4) return
   errorMessage.value = '' 
   pinCode.value += num.toString()
-}
+  }
 
-const clearPin = () => {
+  const clearPin = () => {
   pinCode.value = ''
   errorMessage.value = ''
-}
+  }
 
-const backspacePin = () => {
+  const backspacePin = () => {
   pinCode.value = pinCode.value.slice(0, -1)
   errorMessage.value = ''
-}
+  }
 
-watch(pinCode, async (newPin) => {
+  watch(pinCode, async (newPin) => {
   if (newPin.length === 4) {
     isLoading.value = true
     try {
