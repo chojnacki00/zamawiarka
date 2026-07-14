@@ -5104,9 +5104,26 @@ onMounted(() => {
       // 1. Zawsze próbujemy odtworzyć sesję pracownika, niezależnie od tego, na jakiej jest ścieżce
       await employeeAuthStore.initSession()
 
-      // 2. Jeśli po sprawdzeniu okazało się, że NIE ma sesji pracownika, a nie jesteśmy na stronie logowania PIN
-      if (!employeeAuthStore.currentEmployee && currentPath !== '/logowanie') {
-        router.push('/login') // Dopiero wtedy wyrzucamy na logowanie Managera
+      // 2. Sprawdzamy czy mamy zalogowanego PRACOWNIKA
+      if (employeeAuthStore.currentEmployee) {
+        // Używamy naszego odkrytego klucza: gm_saved_rest_id
+        const companyUid = localStorage.getItem('gm_saved_rest_id') || employeeAuthStore.companyId
+        
+        if (companyUid) {
+          isLoggedIn.value = true
+          
+          // Pobieramy dane używając ID z parowania!
+          await loadCompanyDataWithFallback() 
+          if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
+          if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
+          if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
+          if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
+          if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+        }
+      } 
+      // 3. Jeśli nie ma pracownika i nie jesteśmy na ekranie logowania PIN, wyrzucamy na login
+      else if (currentPath !== '/logowanie') {
+        router.push('/login') 
       }
       // === KONIEC POPRAWKI ===
 
