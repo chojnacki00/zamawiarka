@@ -14,12 +14,12 @@
   ========================== -->
   <template v-else>
     <!-- =========================
-         ROUTER: WIDOK LOGOWANIA
+         ROUTER: WIDOK LOGOWANIA (Tylko gdy nikt nie jest zalogowany)
     ========================== -->
-    <router-view v-if="!isLoggedIn" />
+    <router-view v-if="!isLoggedIn && !employeeAuthStore?.currentEmployee" />
 
     <!-- =========================
-         APP / KONTENER GŁÓWNY
+         APP / KONTENER GŁÓWNY (Dla Managera LUB Pracownika)
     ========================== -->
     <div
       v-else
@@ -1090,6 +1090,15 @@ const handleLogin = async () => {
 }
 
 const handleLogout = async () => {
+  // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
+  const employeeAuthStore = useEmployeeAuthStore()
+  if (employeeAuthStore.currentEmployee || localStorage.getItem('gm_emp_id')) {
+    employeeAuthStore.logout() // Czyści sesję kelnera z pamięci
+    router.push('/logowanie')  // Cofa do widoku klawiatury PIN
+    return // PRZERYWAMY FUNKCJĘ TUTAJ - nie zabijamy głównego połączenia Firebase!
+  }
+
+  // === SCENARIUSZ 2: WYLOGOWUJE SIĘ MANAGER (Twój nienaruszony kod) ===
   // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
   if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null; }
   if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null; }
@@ -1380,12 +1389,25 @@ const scheduleSave = () => {
 
 
 
+// Obserwujemy logowanie pracownika
+    watch(() => employeeAuthStore.currentEmployee, (pracownik) => {
+      // Jeśli pracownik jest zalogowany, a dane jeszcze "kręcą kółkiem" - ładujemy je!
+      if (pracownik && !isDataLoaded.value) {
+        console.log('Wykryto logowanie pracownika, uruchamiam ładowanie danych...')
+        loadCompanyDataWithFallback()
+      }
+    }, { immediate: true })
+
+
+
+
+
 const loadCompanyDataWithFallback = async () => {
   isHydrating.value = true
   isDataLoaded.value = false
 
   try {
-    const uid = auth.currentUser?.uid
+    const uid = auth.currentUser?.uid || localStorage.getItem('gm_saved_rest_id')
 
     if (!uid) {
       resetCompanyDataState()
@@ -1397,11 +1419,12 @@ const loadCompanyDataWithFallback = async () => {
     resetCompanyDataState()
     applyAppState(cloudState)
 
-    isDataLoaded.value = true
   } catch (error) {
     console.error('Błąd ładowania z Firestore:', error)
-    resetCompanyDataState()
+    // Nie resetujemy tu stanu całkowicie, żeby nie wyczyścić tego, co może się udać pobrać
   } finally {
+    // ZAWSZE WYŁĄCZA KÓŁKO ŁADOWANIA, NAWET PO BŁĘDZIE FIREBASE
+    isDataLoaded.value = true 
     isHydrating.value = false
   }
 }
@@ -5075,15 +5098,15 @@ onMounted(() => {
       
       resetCompanyDataState()
       
-      // === POPRAWKA: WSPÓŁPRACA STRAŻNIKÓW I SESJA PRACOWNIKA ===
+      // === NOWA WSPÓŁPRACA STRAŻNIKÓW (WOLNOŚĆ DLA PRACOWNIKA) ===
       const currentPath = window.location.pathname
       
-      if (currentPath === '/logowanie' || currentPath.startsWith('/terminal')) {
-        // Czekamy na pobranie danych pracownika (w tym uprawnień) ZANIM zdejmiemy ekran ładowania
-        await employeeAuthStore.initSession()
-      } else {
-        // Jeśli NIE próbuje wejść do strefy pracownika, wyrzucamy go na logowanie Szefa
-        router.push('/login') 
+      // 1. Zawsze próbujemy odtworzyć sesję pracownika, niezależnie od tego, na jakiej jest ścieżce
+      await employeeAuthStore.initSession()
+
+      // 2. Jeśli po sprawdzeniu okazało się, że NIE ma sesji pracownika, a nie jesteśmy na stronie logowania PIN
+      if (!employeeAuthStore.currentEmployee && currentPath !== '/logowanie') {
+        router.push('/login') // Dopiero wtedy wyrzucamy na logowanie Managera
       }
       // === KONIEC POPRAWKI ===
 
@@ -5545,6 +5568,7 @@ const openZamawiarkaMenuFromHome = () => {
       koszykListRef,
 
       isDataLoaded,
+      employeeAuthStore,
 
       fieldFilledClass,
 

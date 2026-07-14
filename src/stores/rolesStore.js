@@ -29,7 +29,7 @@ export const useRolesStore = defineStore('roles', () => {
     
     isLoading.value = true
     try {
-      const rolesRef = collection(db, 'users', uid, 'roles')
+      const rolesRef = collection(db, 'users', uid, 'stanowiska')
       const snapshot = await getDocs(rolesRef)
       roles.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     } catch (error) {
@@ -43,7 +43,7 @@ export const useRolesStore = defineStore('roles', () => {
     const uid = await getUid()
     if (!uid) return null
     try {
-      const docRef = await addDoc(collection(db, 'users', uid, 'roles'), roleData)
+      const docRef = await addDoc(collection(db, 'users', uid, 'stanowiska'), roleData)
       const newRole = { id: docRef.id, ...roleData }
       roles.value.push(newRole)
       return newRole
@@ -54,7 +54,7 @@ export const useRolesStore = defineStore('roles', () => {
     const uid = await getUid()
     if (!uid) return
     try {
-      await updateDoc(doc(db, 'users', uid, 'roles', roleId), updatedData)
+      await updateDoc(doc(db, 'users', uid, 'stanowiska', roleId), updatedData)
       const index = roles.value.findIndex(r => r.id === roleId)
       if (index !== -1) roles.value[index] = { id: roleId, ...updatedData }
     } catch (error) { throw error }
@@ -64,7 +64,7 @@ export const useRolesStore = defineStore('roles', () => {
     const uid = await getUid()
     if (!uid) return
     try {
-      await deleteDoc(doc(db, 'users', uid, 'roles', roleId))
+      await deleteDoc(doc(db, 'users', uid, 'stanowiska', roleId))
       roles.value = roles.value.filter(r => r.id !== roleId)
     } catch (error) { throw error }
   }

@@ -28,7 +28,9 @@
           type="text" 
           inputmode="numeric"
           maxlength="6"
-          placeholder="np. 123456" 
+          placeholder="np.123456"
+          translate="no" 
+          class="notranslate" 
           style="width: 100%; padding: 15px; border: 2px solid #d1d5db; background-color: #f9fafb; color: #0284c7; border-radius: 12px; font-size: 28px; letter-spacing: 6px; box-sizing: border-box; outline: none; margin-bottom: 15px; text-align: center; font-weight: 800;"
         />
 
@@ -187,7 +189,7 @@ watch(pinCode, async (newPin) => {
       // Sukces - resetujemy błędy
       failedAttempts.value = 0
       localStorage.removeItem('gm_failed_attempts')
-      router.push('/terminal')
+      router.push('/')
       
     } catch (error) {
       failedAttempts.value += 1

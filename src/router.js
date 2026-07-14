@@ -59,22 +59,21 @@ const router = createRouter({
 
 // === STRAŻNIK TRAS ===
 router.beforeEach((to, from, next) => {
-  // Sprawdzamy "twardy dowód" sesji pracownika w pamięci
   const hasEmployeeSession = !!localStorage.getItem('gm_emp_id')
 
-  // ZASADA 1: Zalogowany Pracownik (Kelner) próbuje uciec z Terminala
-  if (hasEmployeeSession && to.path !== '/terminal') {
-    console.log('Strażnik: Pracowniku, wracaj na swój terminal!')
-    return next('/terminal')
+  // ZASADA 1: Zalogowany Pracownik chce wejść na logowanie -> odsyłamy na stronę główną
+  if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login')) {
+    return next('/') 
   }
 
-  // ZASADA 2: Ktoś bez podanego PIN-u próbuje wejść fizycznie na /terminal
-  if (!hasEmployeeSession && to.path === '/terminal') {
-    console.log('Strażnik: Brak PIN-u. Przekierowuję do logowania.')
-    return next('/logowanie')
+  // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami!
+  const isManagerRoute = ['/ustawienia', '/stanowiska', '/zespol'].includes(to.path)
+  if (hasEmployeeSession && isManagerRoute) {
+    console.log('Strażnik: Pracownik nie ma dostępu do ustawień Managera!')
+    return next('/') // Wyrzucamy go bezpiecznie na stronę główną
   }
 
-  // Wpuszczamy całą resztę przepływu dalej
+  // Wpuszczamy całą resztę przepływu dalej (w tym Pracownika na /zamawiarka itp.)
   next()
 })
 // === KONIEC STRAŻNIKA ===

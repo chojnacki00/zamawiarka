@@ -220,7 +220,8 @@ const openForm = (role = null) => {
     newRolePermissions.value = {}
     PERMISSIONS_DICTIONARY.forEach(modul => {
       modul.permissions.forEach(perm => {
-        newRolePermissions.value[perm.key] = role.permissions[perm.key] || false
+        // Bezpieczne pobieranie z klucza 'uprawnienia' z uwzględnieniem opcjonalnego chaining'u (?.)
+        newRolePermissions.value[perm.key] = role.uprawnienia?.[perm.key] || false
       })
     })
   } else {
@@ -253,7 +254,7 @@ const saveRole = async () => {
   try {
     const roleData = {
       nazwa: newRoleName.value,
-      permissions: { ...newRolePermissions.value }
+      uprawnienia: { ...newRolePermissions.value }
     }
 
     if (editingRoleId.value) {

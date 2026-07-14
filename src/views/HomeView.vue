@@ -12,10 +12,27 @@
       <h1 class="home-title-ios">GastroManager</h1>
       <div class="home-version-ios">wersja {{ appVersion }}</div>
 
-      <div v-if="currentCompany" class="home-account-ios">
-        <span class="home-account-icon">👤</span>
-        <span>Konto:</span>
-        <strong translate="no" class="notranslate">{{ currentCompany.companyName }}</strong>
+      <!-- POLE Z NAZWĄ KONTA -->
+      <div class="home-account-ios" style="display: flex; align-items: center; justify-content: flex-start; text-align: left; width: 100%; box-sizing: border-box; padding: 12px 15px; margin-bottom: 10px; overflow: hidden;">
+        
+        <!-- IKONA (PRZYSPAWANA DO LEWEJ) -->
+        <span class="home-account-icon" style="font-size: 32px; margin-right: 12px; flex-shrink: 0;">👤</span>
+        
+        <!-- KONTENER NA TEKSTY (ZAJMUJE CAŁĄ RESZTĘ SZEROKOŚCI) -->
+        <div style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; line-height: 1.3;">
+          
+          <!-- LINIJKA 1: Konto: <nazwa> -->
+          <div style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <span>Konto: </span>
+            <strong translate="no" class="notranslate">{{ displayRestaurantName }}</strong>
+          </div>
+          
+          <!-- LINIJKA 2: Kto jest zalogowany -->
+          <strong style="font-size: 15px; color: #333; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            {{ displayUserName }}
+          </strong>
+          
+        </div>
       </div>
     </div>
 
@@ -79,27 +96,50 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore.js'
+import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const employeeAuthStore = useEmployeeAuthStore()
 
-// Zmienne potrzebne do wyświetlenia menu (docelowo wyciągniemy je wyżej, na razie zostają tu)
 const appVersion = ref('3.1.0')
 const aktywneModuly = ref(['zamawiarka', 'rentownosc'])
 
-// 1. Pobieramy dane zalogowanej firmy PROSTO Z PINII! Brak propsów!
 const currentCompany = computed(() => authStore.currentCompany)
 
-// 2. Wylogowanie odpala funkcję, którą wstrzyknęliśmy do Pinii z App.vue
+// 1. ZMIENNA DLA NAZWY RESTAURACJI (Pierwsza linijka)
+const displayRestaurantName = computed(() => {
+  // Pobiera nazwę dokładnie tak, jak robił to Twój oryginalny kod w homeview11.txt
+  if (currentCompany.value && currentCompany.value.companyName) {
+    return currentCompany.value.companyName
+  }
+  return ''
+})
+
+// 2. ZMIENNA DLA ROLI/IMIENIA (Druga linijka)
+const displayUserName = computed(() => {
+  const isEmployee = employeeAuthStore.currentEmployee
+  
+  if (!isEmployee) {
+    return 'Panel Administratora'
+  } else {
+    let pelnaNazwa = ''
+    if (isEmployee.imie) pelnaNazwa += isEmployee.imie
+    if (isEmployee.nazwisko) pelnaNazwa += ' ' + isEmployee.nazwisko
+    if (!pelnaNazwa.trim() && isEmployee.name) pelnaNazwa = isEmployee.name
+    return pelnaNazwa.trim() || 'Pracownik'
+  }
+})
+
 const logout = () => {
   if (authStore.logout) {
     authStore.logout()
   }
 }
+
 const navigateWithEffect = (path) => {
   setTimeout(() => {
     router.push(path)
   }, 40)
 }
-
 </script>
