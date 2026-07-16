@@ -2413,14 +2413,19 @@ const selectedTowaryPdfFields = ref([
 
 
 
-    // =========================
-    // FUNKCJE KOSZYKA
-    // =========================
-    const addToCart = async (productId) => {
-  const user = auth.currentUser
-  if (!user) return
+// =========================
+// FUNKCJE KOSZYKA
+// =========================
+const addToCart = async (productId) => {
+  // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
 
-  const ref = getUserCartItemDocRef(user.uid, productId)
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
+
+  const ref = getUserCartItemDocRef(uid, productId)
 
   await setDoc(
     ref,
@@ -2430,15 +2435,21 @@ const selectedTowaryPdfFields = ref([
 }
 
   const removeFromCart = async (productId) => {
-  const user = auth.currentUser
-  if (!user) return
+  // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
 
-  if (Number(cart.value[productId] || 0) <= 1) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
   }
 
-  const ref = getUserCartItemDocRef(user.uid, productId)
+  // Jeśli ilość wynosi 1 (lub mniej), kliknięcie minusa usunie towar z koszyka
+  if (Number(cart.value[productId] || 0) <= 1) {
+    await deleteDoc(getUserCartItemDocRef(uid, productId))
+    return
+  }
+
+  const ref = getUserCartItemDocRef(uid, productId)
 
   await setDoc(
     ref,
@@ -2449,24 +2460,28 @@ const selectedTowaryPdfFields = ref([
 
   const clearCart = async () => {
   const confirmed = await showConfirm(
-  'Czy na pewno chcesz wyczyścić koszyk?',
-  'Potwierdź akcję',
-  '🗑️'
-)
-if (!confirmed) return
+    'Czy na pewno chcesz wyczyścić koszyk?',
+    'Potwierdź akcję',
+    '🗑️'
+  )
+  if (!confirmed) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const batch = writeBatch(db)
 
   Object.keys(cart.value).forEach((productId) => {
-    batch.delete(getUserCartItemDocRef(user.uid, productId))
+    batch.delete(getUserCartItemDocRef(uid, productId)) // używamy nowego uid
   })
 
   customCartItems.value.forEach((item) => {
-  batch.delete(getUserCartItemDocRef(user.uid, item.id))
-})
+    batch.delete(getUserCartItemDocRef(uid, item.id)) // używamy nowego uid
+  })
 
   await batch.commit()
 
@@ -2506,18 +2521,21 @@ const closeCustomCartItemModal = () => {
   showCustomCartItemModal.value = false
 
   customCartItemForm.value = {
-  name: '',
-  unit: '',
-  qty: '',
-  supplier: '',
-  price: ''
+    name: '',
+    unit: '',
+    qty: '',
+    supplier: '',
+    price: ''
+  }
 }
-}
-
 
 const saveCustomCartItem = async () => {
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Nowy strażnik ID
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const name = String(customCartItemForm.value.name || '').trim()
   const unit = String(customCartItemForm.value.unit || '').trim()
@@ -2526,9 +2544,9 @@ const saveCustomCartItem = async () => {
   const price = Number(customCartItemForm.value.price)
 
   if (!name) {
-  await showAlert('Wpisz nazwę', 'Brak nazwy', '✏️')
-  return
-}
+    await showAlert('Wpisz nazwę', 'Brak nazwy', '✏️')
+    return
+  }
 
   if (!unit) {
     await showAlert('Wybierz jednostkę miary', 'Brak danych', '⚠️')
@@ -2543,7 +2561,7 @@ const saveCustomCartItem = async () => {
   const customId = customCartItemForm.value.id || `custom-${Date.now()}`
 
   await setDoc(
-    getUserCartItemDocRef(user.uid, customId),
+    getUserCartItemDocRef(uid, customId), // POPRAWKA: uid
     {
       isCustom: true,
       name,
@@ -2558,16 +2576,14 @@ const saveCustomCartItem = async () => {
   closeCustomCartItemModal()
 }
 
+// =========================
+// MODAL_ILOŚĆ_ZAMÓWIENIA
+// =========================
+const showQtyModal = ref(false)
+const selectedProductForQty = ref(null)
+const tempQty = ref('')
 
-
-    // =========================
-    // MODAL_ILOŚĆ_ZAMÓWIENIA
-    // =========================
-    const showQtyModal = ref(false)
-    const selectedProductForQty = ref(null)
-    const tempQty = ref('')
-
-   const qtyInput = ref(null)
+const qtyInput = ref(null)
 
 const openQtyModal = async (product) => {
   selectedProductForQty.value = product
@@ -2584,54 +2600,58 @@ const openQtyModal = async (product) => {
   qtyInput.value?.focus()
 }
 
-    const closeQtyModal = () => {
-      showQtyModal.value = false
-      selectedProductForQty.value = null
-      tempQty.value = ''
-    }
+const closeQtyModal = () => {
+  showQtyModal.value = false
+  selectedProductForQty.value = null
+  tempQty.value = ''
+}
 
-    const saveQtyModal = async () => {
+const saveQtyModal = async () => {
   if (!selectedProductForQty.value) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Nowy strażnik ID
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const product = selectedProductForQty.value
   const productId = product.id
   const qty = Number(tempQty.value)
 
   if (product.isCustom) {
-  if (!tempQty.value || qty <= 0) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
-    closeQtyModal()
-    return
-  }
+    if (!tempQty.value || qty <= 0) {
+      await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
+      closeQtyModal()
+      return
+    }
 
     const itemToUpdate = customCartItems.value.find(item => item.id === productId)
 
     if (itemToUpdate) {
-  await setDoc(
-    getUserCartItemDocRef(user.uid, productId),
-    {
-      qty,
-      netPrice: itemToUpdate.netPrice || 0
-    },
-    { merge: true }
-  )
-}
+      await setDoc(
+        getUserCartItemDocRef(uid, productId), // POPRAWKA: uid
+        {
+          qty,
+          netPrice: itemToUpdate.netPrice || 0
+        },
+        { merge: true }
+      )
+    }
 
-closeQtyModal()
-return
+    closeQtyModal()
+    return
   }
 
   if (!tempQty.value || qty <= 0) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+    await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
     closeQtyModal()
     return
   }
 
   await setDoc(
-    getUserCartItemDocRef(user.uid, productId),
+    getUserCartItemDocRef(uid, productId), // POPRAWKA: uid
     { qty },
     { merge: true }
   )
@@ -2646,18 +2666,19 @@ return
 const deleteCartItemFromQtyModal = async () => {
   if (!selectedProductForQty.value) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Nowy strażnik ID
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const productId = selectedProductForQty.value.id
 
-  await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+  await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
 
   closeQtyModal()
 }
-
-
-
 
 // =========================
 // KOSZYK / ZRÓB ZAMÓWIENIE - EDYCJA TOWARU Z MODALA ILOŚCI
@@ -4564,8 +4585,12 @@ const saveCurrentOrderToRegister = async () => {
     return null
   }
 
-  const user = auth.currentUser
-  if (!user) return null
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd zapisu zamówienia: Brak ID restauracji/managera!")
+    return null
+  }
 
   const now = new Date()
 
@@ -4618,8 +4643,8 @@ const saveCurrentOrderToRegister = async () => {
   }
 
   try {
-    // 1. TWARDY ZAPIS: Aplikacja musi poczekać, aż baza w chmurze potwierdzi zapis.
-    const docRef = getUserOrderDocRef(user.uid, orderRecord.id)
+    // POPRAWKA: Używamy nowego uid
+    const docRef = getUserOrderDocRef(uid, orderRecord.id)
     await setDoc(docRef, orderRecord)
     
     // Zwracamy obiekt dla mechanizmu PDF. Nasłuch onSnapshot sam zaktualizuje widok historii.
@@ -4643,11 +4668,16 @@ const deleteOrderFromRegister = async (orderId) => {
 
   if (!confirmed) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd usuwania zamówienia: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
-    const docRef = getUserOrderDocRef(user.uid, orderId)
+    // POPRAWKA: Używamy nowego uid
+    const docRef = getUserOrderDocRef(uid, orderId)
     await deleteDoc(docRef)
 
     if (expandedOrderId.value === orderId) {
@@ -4658,8 +4688,6 @@ const deleteOrderFromRegister = async (orderId) => {
     await showAlert('Nie udało się usunąć zamówienia.', 'Błąd', '❌')
   }
 }
-
-
 
 // =========================
 // GENEROWANIE ZAMÓWIENIA (FLOW POD PDF)
@@ -4674,8 +4702,8 @@ const handleGenerateOrder = async () => {
   'Wygenerować PDF i zapisać zamówienie?',
   'Zapis zamówienia',
   '📄'
-)
-if (!confirmed) return
+  )
+    if (!confirmed) return
 
   const order = await saveCurrentOrderToRegister()
 
@@ -4687,7 +4715,6 @@ if (!confirmed) return
     await showAlert('Nie udało się wygenerować PDF', 'Błąd', '❌')
     return
   }
-
 
   zamawiarkaView.value = 'historia'
 }
@@ -5044,8 +5071,8 @@ const generatePdfFromRegister = async (order) => {
   'Wygenerować PDF tego zamówienia?',
   'Generowanie PDF',
   '📄'
-)
-if (!confirmed) return
+  )
+   if (!confirmed) return
 
   const pdfResult = await generateOrderPdf(order)
 
@@ -5064,22 +5091,37 @@ if (!confirmed) return
 let unsubscribeAuth = null
 
 
-// === OBSERWATOR LOGOWANIA PRACOWNIKA (Pobiera dane od razu po wpisaniu PIN) ===
+// === OBSERWATOR LOGOWANIA PRACOWNIKA (Pobiera dane wg uprawnień) ===
 watch(() => employeeAuthStore.currentEmployee, async (newEmployee) => {
-  // Jeśli pojawił się pracownik i nikt główny z Firebase nie jest zalogowany
   if (newEmployee && !authStore.currentUser && !authStore.user) {
     const companyUid = localStorage.getItem('gm_saved_rest_id') || employeeAuthStore.companyId
     
     if (companyUid) {
       isLoggedIn.value = true
       
-      // Natychmiastowe pobieranie danych po poprawnym PIN-ie - TYLKO ODCZYT
+      // 1. Podstawowe dane pobieramy zawsze (żeby aplikacja w ogóle działała)
       await loadCompanyDataWithFallback()
-      if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
       if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
-      if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
-      if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
-      if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+
+      // Wyciągamy uprawnienia pracownika (jeśli ich nie ma, to traktujemy jako pusty obiekt)
+      const uprawnienia = newEmployee.uprawnienia || {}
+
+      // 2. Moduł: ZAMAWIARKA (Towary, Koszyk, Zamówienia PDF)
+      // Pobieramy tylko, jeśli pracownik ma podgląd zamawiarki LUB może edytować towary
+      if (uprawnienia.can_view_zamawiarka || uprawnienia.can_edit_products) {
+        if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
+        if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
+        if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
+      }
+
+      // 3. Moduł: RENTOWNOŚĆ / FOOD COST
+      // Pobieramy menu tylko, jeśli pracownik ma podgląd rentowności LUB może edytować menu
+      if (uprawnienia.can_view_foodcost || uprawnienia.can_edit_menu) {
+        if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+      }
+      
+      // Moduły "Zarządzanie Aplikacją" nie wymagają ciągłego pobierania w App.vue, 
+      // więc nie musimy tu dla nich nic subskrybować.
     }
   }
 })

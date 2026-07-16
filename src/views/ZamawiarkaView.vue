@@ -467,8 +467,11 @@
   <div
     style="display:flex; align-items:center; justify-content:flex-end; gap:8px;"
   >
+              <!-- przyciski + i - w zrób zamówienie -->
     <button
       @click.stop="removeFromCart(product.id)"
+      :disabled="!hasPerm('can_create_orders')"
+      :style="{ opacity: hasPerm('can_create_orders') ? 1 : 0.2 }"
       class="towary-icon-button"
       style="width:32px; height:32px; font-size:18px;"
     >
@@ -481,6 +484,8 @@
 
     <button
       @click.stop="addToCart(product.id)"
+      :disabled="!hasPerm('can_create_orders')"
+      :style="{ opacity: hasPerm('can_create_orders') ? 1 : 0.2 }"
       class="towary-icon-button"
       style="width:32px; height:32px; font-size:18px;"
     >
@@ -2533,6 +2538,10 @@ import { useRouter } from 'vue-router'
 import ZamawiarkaPomocView from './ZamawiarkaPomocView.vue'
 import ZamawiarkaUstawieniaView from './ZamawiarkaUstawieniaView.vue'
 
+// --- KROK 1: DODAJEMY IMPORTY SKLEPÓW ---
+import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { useAuthStore } from '../stores/authStore.js' 
+
 export default {
   components: {
     ZamawiarkaPomocView,
@@ -2543,7 +2552,31 @@ export default {
     const appContext = inject('appContext')
     // Odpalamy Router
     const router = useRouter()
+
+    // --- KROK 2: INICJALIZUJEMY SKLEPY W SETUP ---
+    const employeeStore = useEmployeeAuthStore()
+    const authStore = useAuthStore()
+
     
+    // --- KROK 3: NASZA FUNKCJA SPRAWDZAJĄCA UPRAWNIENIA ---
+    const hasPerm = (permissionKey) => {
+      if (authStore.isLoggedIn) {
+        return true
+      }
+      
+      const pracownik = employeeStore.currentEmployee
+      
+      // Sprawdzamy łagodniej: puszczamy jeśli to logiczne true LUB tekstowe "true"
+      if (pracownik && pracownik.uprawnienia) {
+        const uprawnienie = pracownik.uprawnienia[permissionKey]
+        if (uprawnienie === true || uprawnienie === 'true') {
+          return true
+        }
+      }
+      
+      return false
+    }
+
     // Wymuszamy widok
     onMounted(() => {
       if (appContext.currentScreen) {
@@ -2558,11 +2591,8 @@ export default {
       }, 40)
     }
 
-    // TUTAJ DOPISANA FUNKCJA DO ZWRACANYCH DANYCH
-    return { ...appContext, router, zmienWidokZOpuznieniem }
+    // --- KROK 4: ZWRACAMY hasPerm DO SZABLONU (ŻEBY HTML JĄ WIDZIAŁ) ---
+    return { ...appContext, router, zmienWidokZOpuznieniem, hasPerm, authStore }
   }
 }
-
-
-
 </script>

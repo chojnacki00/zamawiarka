@@ -114,12 +114,26 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     localStorage.removeItem('gm_rest_id')
   }
 
+
+  // 4. Sprawdzanie konkretnego uprawnienia
+  const hasPermission = (permissionKey) => {
+    // Jeśli nie ma zalogowanego pracownika, to nie ma uprawnień
+    if (!currentEmployee.value || !currentEmployee.value.uprawnienia) {
+      return false
+    }
+    // Sprawdzamy czy dany klucz w obiekcie uprawnień jest ustawiony na true
+    return currentEmployee.value.uprawnienia[permissionKey] === true
+  }
+
+
+
   return {
     currentEmployee,
     restaurantId,
     isInitialized,
     initSession,
     login,
-    logout
+    logout,
+    hasPermission
   }
 })
