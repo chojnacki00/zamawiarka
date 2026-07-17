@@ -1,7 +1,8 @@
 <template>
   <div class="home-screen-ios">
     <div class="home-header-ios">
-      <button 
+      <button
+        v-if="canSeeSettings" 
         @click="router.push('/ustawienia')"
         style="position: absolute; top: 97px; right: -1px; background: none; border: none; font-size: 35px; cursor: pointer; padding: 10px;"
         aria-label="Ustawienia"
@@ -130,6 +131,22 @@ const displayUserName = computed(() => {
     return pelnaNazwa.trim() || 'Pracownik'
   }
 })
+
+
+
+// 3. ZMIENNA DECYDUJĄCA CZY POKAZAĆ USTAWIENIA
+const canSeeSettings = computed(() => {
+  // Jeśli NIE MA pracownika (czyli zalogowany jest główny Szef), to pokazujemy zawsze
+  if (!employeeAuthStore.currentEmployee) return true
+
+  // Używamy prawdziwych kluczy z Twojej bazy Firebase
+  const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
+  const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
+
+  return mozeKonta || mozeStanowiska
+})
+
+
 
 const logout = () => {
   if (authStore.logout) {

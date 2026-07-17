@@ -35,12 +35,24 @@ router.beforeEach((to, from, next) => {
     return next('/') 
   }
 
-  // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami!
-  const isManagerRoute = ['/ustawienia', '/stanowiska', '/zespol'].includes(to.path)
-  if (hasEmployeeSession && isManagerRoute) {
-    console.log('Strażnik: Pracownik nie ma dostępu do ustawień Managera!')
+  // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami bez uprawnień!
+const isManagerRoute = ['/ustawienia', '/stanowiska', '/zespol'].includes(to.path)
+
+if (hasEmployeeSession && isManagerRoute) {
+  // Odpytujemy nasz system o uprawnienia pracownika
+  // WAŻNE: To musi być wywołane wewnątrz strażnika, żeby Pinia działała poprawnie
+  const employeeAuthStore = useEmployeeAuthStore()
+  
+  const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
+  const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
+
+  // Jeśli pracownik nie ma ŻADNEGO z tych uprawnień -> blokujemy i wyrzucamy na główną
+  if (!mozeKonta && !mozeStanowiska) {
+    console.log('Strażnik: Pracownik nie ma odpowiednich uprawnień do Ustawień!')
     return next('/') 
   }
+  // W przeciwnym razie - brama otwarta, wpuszczamy!
+}
 
   // === NOWOŚĆ: ZASADA 3 - Blokada konkretnych modułów na podstawie uprawnień ===
   if (hasEmployeeSession) {

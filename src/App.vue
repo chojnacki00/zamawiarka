@@ -1172,7 +1172,8 @@ const applyAppState = (state) => {
 
 
 const saveAllAppStateToCloud = async () => {
-  const uid = auth.currentUser?.uid
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
 
   if (!uid) return
 
@@ -1954,28 +1955,33 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveDishForm = async () => { 
-      if (!editingDish.value.name || editingDish.value.name.trim() === '') {
-        await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
-        return 
-      }
+  if (!editingDish.value.name || editingDish.value.name.trim() === '') {
+    await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
+    return 
+  }
 
-      if (!editingDish.value.category || editingDish.value.category === '') {
-        await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
-        return 
-      }
-      
-      const user = auth.currentUser
-      if (!user) return
+  if (!editingDish.value.category || editingDish.value.category === '') {
+    await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
+    return 
+  }
+  
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd zapisu dania: Brak ID restauracji/managera!")
+    return
+  }
 
-      try {
-        const docRef = getUserMenuItemDocRef(user.uid, editingDish.value.id)
-        await setDoc(docRef, editingDish.value) // Twardy zapis do Firebase
-        closeDishForm()
-      } catch (error) {
-        console.error("Błąd przy zapisie dania:", error)
-        await showAlert('Wystąpił błąd przy zapisie dania do bazy.', 'Błąd', '❌')
-      }
-    }
+  try {
+    // POPRAWKA: Używamy nowego uid zamiast user.uid
+    const docRef = getUserMenuItemDocRef(uid, editingDish.value.id)
+    await setDoc(docRef, editingDish.value) // Twardy zapis do Firebase
+    closeDishForm()
+  } catch (error) {
+    console.error("Błąd przy zapisie dania:", error)
+    await showAlert('Wystąpił błąd przy zapisie dania do bazy.', 'Błąd', '❌')
+  }
+}
 
 
 
@@ -3859,7 +3865,10 @@ const closeTowarForm = async () => {
       }
     }
 
-    const removeSelectedTowary = async () => {
+// =========================
+// TOWARY - USUWANIE GRUPOWE
+// =========================
+const removeSelectedTowary = async () => {
   const confirmed = await showConfirm(
     'Czy na pewno chcesz usunąć zaznaczone towary?',
     'Usuń towary',
@@ -3867,15 +3876,19 @@ const closeTowarForm = async () => {
   )
   if (!confirmed) return
 
-  const uid = auth.currentUser?.uid
-  if (!uid) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd usuwania grupowego: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
     // 1. Przygotowujemy paczkę (batch) z poleceniami usunięcia w chmurze
     const batch = writeBatch(db)
 
     selectedTowaryIds.value.forEach(id => {
-      const docRef = getUserTowarDocRef(uid, String(id))
+      const docRef = getUserTowarDocRef(uid, String(id)) // POPRAWKA: używamy nowego uid
       batch.delete(docRef)
     })
 
@@ -3892,6 +3905,7 @@ const closeTowarForm = async () => {
     // scheduleSave() zostało stąd całkowicie usunięte
   } catch (error) {
     console.error('Błąd podczas grupowego usuwania towarów:', error)
+    await showAlert('Nie udało się usunąć zaznaczonych towarów.', 'Błąd', '❌')
   }
 }
 
@@ -4038,93 +4052,93 @@ const closeTowarForm = async () => {
 
 
       const saveTowar = async () => {
-             // =========================
-             // PROSTA WALIDACJA
-              // =========================
-              if (!towarForm.value.name.trim()) return
+  // =========================
+  // PROSTA WALIDACJA
+  // =========================
+  if (!towarForm.value.name.trim()) return
 
-const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
-const vatNormalized = normalizeVat(towarForm.value.vat)
+  const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
+  const vatNormalized = normalizeVat(towarForm.value.vat)
 
-if (netPriceNormalized === null) {
-  await showAlert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku', 'Błąd danych', '⚠️')
-  return
-}
+  if (netPriceNormalized === null) {
+    await showAlert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku', 'Błąd danych', '⚠️')
+    return
+  }
 
-if (vatNormalized === null) {
-  await showAlert('Stawka VAT musi być liczbą całkowitą', 'Błąd danych', '⚠️')
-  return
-}
+  if (vatNormalized === null) {
+    await showAlert('Stawka VAT musi być liczbą całkowitą', 'Błąd danych', '⚠️')
+    return
+  }
 
-// =========================
-// PORZĄDKOWANIE DANYCH Z FORMULARZA
-// =========================
-const preparedTowar = {
-               id:
-               towarFormMode.value === 'edit' && editedTowarId.value !== null
-               ? editedTowarId.value
-                : Date.now(),
+  // =========================
+  // PORZĄDKOWANIE DANYCH Z FORMULARZA
+  // =========================
+  const preparedTowar = {
+    id:
+      towarFormMode.value === 'edit' && editedTowarId.value !== null
+        ? editedTowarId.value
+        : Date.now(),
+    name: towarForm.value.name.trim(),
+    unit: towarForm.value.unit.trim(),
+    supplier: towarForm.value.supplier.trim(),
+    netPrice: netPriceNormalized,
+    vat: vatNormalized,
+    warehouse: towarForm.value.warehouse.trim(),
+    orderTimings: Array.isArray(towarForm.value.orderTimings)
+      ? [...towarForm.value.orderTimings]
+      : [],
+    whoOrders: Array.isArray(towarForm.value.whoOrders)
+      ? [...towarForm.value.whoOrders]
+      : [],
+    categories: Array.isArray(towarForm.value.categories)
+      ? [...towarForm.value.categories]
+      : [],
+    displayOrder: String(towarForm.value.displayOrder ?? '').trim(),
+    maxQtyByOrderTiming:
+      towarForm.value.maxQtyByOrderTiming &&
+      typeof towarForm.value.maxQtyByOrderTiming === 'object'
+        ? { ...towarForm.value.maxQtyByOrderTiming }
+        : {},
+    active: !!towarForm.value.active,
+    note: towarForm.value.note.trim()
+  }
 
-        name: towarForm.value.name.trim(),
-        unit: towarForm.value.unit.trim(),
-        supplier: towarForm.value.supplier.trim(),
-        netPrice: netPriceNormalized,
-         vat: vatNormalized,
+  // =========================
+  // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
+  // =========================
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
 
-        warehouse: towarForm.value.warehouse.trim(),
-
-          orderTimings: Array.isArray(towarForm.value.orderTimings)
-          ? [...towarForm.value.orderTimings]
-          : [],
-
-          whoOrders: Array.isArray(towarForm.value.whoOrders)
-          ? [...towarForm.value.whoOrders]
-          : [],
-
-          categories: Array.isArray(towarForm.value.categories)
-          ? [...towarForm.value.categories]
-          : [],
-        displayOrder: String(towarForm.value.displayOrder ?? '').trim(),
-          maxQtyByOrderTiming:
-          towarForm.value.maxQtyByOrderTiming &&
-          typeof towarForm.value.maxQtyByOrderTiming === 'object'
-            ? { ...towarForm.value.maxQtyByOrderTiming }
-            : {},
-        active: !!towarForm.value.active,
-        note: towarForm.value.note.trim()
-      }
-
-      // =========================
-      // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
-      // =========================
-      const user = auth.currentUser
-      if (user) {
-        try {
-          await setDoc(getUserTowarDocRef(user.uid, preparedTowar.id), preparedTowar)
-        } catch (error) {
-          console.error("Błąd przy zapisie towaru:", error)
-          await showAlert('Nie udało się zapisać towaru', 'Błąd', '❌')
-          return
-        }
-      }
-
-      // Aktualizacja lokalnego stanu (żeby widok się odświeżył)
-      const index = towary.value.findIndex(item => item.id === preparedTowar.id)
-      if (index !== -1) {
-        towary.value[index] = preparedTowar
-      } else {
-        towary.value.push(preparedTowar)
-      }
-
-      // =========================
-      // ZAMKNIĘCIE FORMULARZA I ZAPIS
-      // =========================
-      closeTowarForm()
-      scheduleSave()
+  if (uid) {
+    try {
+      await setDoc(getUserTowarDocRef(uid, preparedTowar.id), preparedTowar)
+    } catch (error) {
+      console.error("Błąd przy zapisie towaru:", error)
+      await showAlert('Nie udało się zapisać towaru', 'Błąd', '❌')
+      return
     }
+  } else {
+    console.warn("Błąd zapisu: Brak ID restauracji/managera!")
+    return
+  }
+
+  // Aktualizacja lokalnego stanu (żeby widok się odświeżył)
+  const index = towary.value.findIndex(item => item.id === preparedTowar.id)
+  if (index !== -1) {
+    towary.value[index] = preparedTowar
+  } else {
+    towary.value.push(preparedTowar)
+  }
+
+  // =========================
+  // ZAMKNIĘCIE FORMULARZA I ZAPIS
+  // =========================
+  closeTowarForm()
+  scheduleSave()
+}
 
 
-    // =========================
+// =========================
 // TOWARY - USUWANIE
 // =========================
 const deleteTowar = async () => {
@@ -4137,8 +4151,12 @@ const deleteTowar = async () => {
   )
   if (!confirmed) return
 
-  const uid = auth.currentUser?.uid
-  if (!uid) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  if (!uid) {
+    console.warn("Błąd usuwania: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
     // 1. Usuwamy dokument bezpośrednio z nowej kolekcji w chmurze
@@ -4152,6 +4170,7 @@ const deleteTowar = async () => {
     // Odcięto scheduleSave() – nie jest już tutaj potrzebne!
   } catch (error) {
     console.error('Błąd podczas usuwania towaru:', error)
+    await showAlert('Nie udało się usunąć towaru', 'Błąd', '❌')
   }
 }
 
@@ -4162,12 +4181,12 @@ const deleteTowar = async () => {
 
 
     const normalizeName = (value) => {
-  return String(value || '').trim().toLowerCase()
-}
+     return String(value || '').trim().toLowerCase()
+    }
 
-const cleanName = (value) => {
-  return String(value || '').trim()
-}
+  const cleanName = (value) => {
+    return String(value || '').trim()
+  }
 
 
 

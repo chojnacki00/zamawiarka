@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
+import { useEmployeeAuthStore } from './employeeAuthStore.js'
 
 export const useEmployeesStore = defineStore('employees', () => {
   const employees = ref([])
@@ -10,6 +11,14 @@ export const useEmployeesStore = defineStore('employees', () => {
 
   const getUid = () => {
     return new Promise((resolve) => {
+      // 1. Najpierw sprawdzamy, czy działa sesja pracownika (PIN)
+      const employeeAuthStore = useEmployeeAuthStore()
+      if (employeeAuthStore.restaurantId) {
+        resolve(employeeAuthStore.restaurantId)
+        return
+      }
+
+      // 2. Jeśli to nie pracownik, odpalamy starą logikę dla Szefa
       const auth = getAuth()
       if (auth.currentUser) {
         resolve(auth.currentUser.uid)

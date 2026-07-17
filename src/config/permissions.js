@@ -6,7 +6,7 @@ export const PERMISSIONS_DICTIONARY = [
     permissions: [
       { key: 'can_view_zamawiarka', label: 'Dostęp do Zamawiarki (podgląd towarów)' },
       { key: 'can_create_orders', label: 'Składanie zamówień (koszyk i PDF)' },
-      { key: 'can_edit_products', label: 'Zarządzanie bazą towarów i hurtowniami' }
+      { key: 'can_edit_products', label: 'Zarządzanie bazą towarów i ustawieniami' }
     ]
   },
   {

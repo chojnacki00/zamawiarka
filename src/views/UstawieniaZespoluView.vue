@@ -276,11 +276,13 @@ import { useRolesStore } from '../stores/rolesStore.js'
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthStore } from '../stores/authStore.js'
+import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 
 const router = useRouter()
 const employeesStore = useEmployeesStore()
 const rolesStore = useRolesStore()
 const authStore = useAuthStore()
+const employeeAuthStore = useEmployeeAuthStore()
 
 const scrollAreaRef = ref(null)
 let savedScrollPosition = 0
@@ -401,10 +403,14 @@ const generateRandomPin = () => {
 // Funkcja czyszcząca bazę ze starych kodów tej restauracji
 const cleanupExpiredCodes = async () => {
   try {
+    // MAGIA: Pobieramy ID Szefa LUB ID Restauracji z sesji Managera
+    const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
+    if (!uid) return;
+
     const codesRef = collection(db, 'pairing_codes');
     const q = query(
       codesRef,
-      where('companyUid', '==', authStore.currentCompany.uid),
+      where('companyUid', '==', uid),
       where('expiresAt', '<', new Date()) // Szuka kodów, których data wygaśnięcia już minęła
     );
     
@@ -424,6 +430,13 @@ const generatePairingCode = async () => {
     return;
   }
 
+  // MAGIA: Pobieramy ID Szefa LUB ID Restauracji z sesji Managera
+  const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
+  if (!uid) {
+    alert("Błąd: Nie udało się zidentyfikować konta restauracji.");
+    return;
+  }
+
   // 1. Najpierw sprzątamy stare śmieci!
   await cleanupExpiredCodes();
 
@@ -432,7 +445,7 @@ const generatePairingCode = async () => {
   
   try {
     await setDoc(doc(db, 'pairing_codes', code), {
-      companyUid: authStore.currentCompany.uid,
+      companyUid: uid,
       employeeId: editingEmpId.value,
       employeeName: form.value.imie,
       createdAt: serverTimestamp(),
