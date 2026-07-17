@@ -159,7 +159,7 @@
             style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px center; background-size: 18px; padding-right: 45px;"
           >
             <option value="" disabled class="placeholder-option">Wybierz główne...</option>
-            <option v-for="rola in rolesStore.roles" :key="rola.id" :value="rola.id" style="color: #111827;">{{ rola.nazwa }}</option>
+            <option v-for="rola in dostepneStanowiska" :key="rola.id" :value="rola.id" style="color: #111827;">{{ rola.nazwa }}</option>
           </select>
         </div>
 
@@ -317,8 +317,41 @@ const isFormValid = computed(() => {
          form.value.pin.trim().length >= 4
 })
 
+
+
+// --- PANCERNE ZABEZPIECZENIE: Dynamiczne filtrowanie stanowisk ---
+const dostepneStanowiska = computed(() => {
+  // 1. Główny Szef widzi wszystko
+  if (!employeeAuthStore.currentEmployee) {
+    return rolesStore.roles
+  }
+
+  // 2. Pracownik widzi tylko to, do czego sam ma prawo
+  return rolesStore.roles.filter(rola => {
+    const uprawnienia = rola.uprawnienia || {}
+    
+    // PĘTLA: Sprawdzamy KAŻDY klucz uprawnień przypisany do tej roli
+    for (const klucz in uprawnienia) {
+      // Jeśli sprawdzana rola daje do czegoś dostęp (jest true)...
+      if (uprawnienia[klucz] === true) {
+        // ...a nasz Manager tego SAMEGO uprawnienia NIE POSIADA
+        if (!employeeAuthStore.hasPermission(klucz)) {
+          console.warn(`[Strażnik] Ukrywam rolę "${rola.nazwa}". Manager nie posiada klucza: ${klucz}`)
+          return false // Od razu wyrzucamy rolę z listy!
+        }
+      }
+    }
+
+    return true // Pokazujemy rolę tylko, jeśli Manager "zdał test" wszystkich jej uprawnień
+  })
+})
+
+
+
+
 const availableAdditionalRoles = computed(() => {
-  return rolesStore.roles.filter(r => r.id !== form.value.roleId)
+  // Używamy bezpiecznej listy 'dostepneStanowiska', a nie całej bazy!
+  return dostepneStanowiska.value.filter(r => r.id !== form.value.roleId)
 })
 
 watch(() => form.value.roleId, (newMainRole) => {
