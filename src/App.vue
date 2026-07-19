@@ -78,8 +78,8 @@
               <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
                 🔍
               </button>
-              <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
-                +
+              <button v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')" @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+              +
               </button>
             </div>
           </div>
@@ -276,9 +276,9 @@
             <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
             <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
           </button>
-          <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
-            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
+          <button v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')" @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+           <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
+           <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
           </button>
         </div>
       </div>
@@ -697,18 +697,34 @@
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-        <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-          <span>📑</span> Powiel
-        </button>
-        <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-          <span>🗑️</span> Usuń
-        </button>
-      </div>
+      <template v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')">
+  <template v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')">
+  <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+    <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <span>📑</span> Powiel
+    </button>
+    <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <span>🗑️</span> Usuń
+    </button>
+  </div>
 
-      <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-        Edytuj danie / Recepturę
-      </button>
+  <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+    Edytuj danie / Recepturę
+  </button>
+</template>
+
+<template v-else>
+  <button @click="closeDishDetails" style="width: 100%; padding: 16px; border: 1px solid #d1d5db; border-radius: 12px; background: #f3f4f6; color: #374151; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    Zamknij
+  </button>
+</template>
+</template>
+
+<template v-else>
+  <button @click="closeDishDetails" style="width: 100%; padding: 16px; border: 1px solid #d1d5db; border-radius: 12px; background: #f3f4f6; color: #374151; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    Zamknij
+  </button>
+</template>
     </div>
   </div>
 
@@ -1817,14 +1833,15 @@ const wczytajBackup = async (event) => {
 
           // MAGIA: Jeśli nazwa się zmieniła, aktualizujemy też wszystkie dania!
           if (oldName !== name) {
-            const user = auth.currentUser
-            if (user) {
+            // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+            const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+            if (uid) {
               const batch = writeBatch(db) // Paczka aktualizacji dla Firestore
               
               menuItems.value.forEach(dish => {
                 if (dish.category === oldName) {
                   dish.category = name // Zmiana lokalna na ekranie
-                  const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+                  const docRef = getUserMenuItemDocRef(uid, dish.id) // POPRAWKA: używamy uid zamiast user.uid
                   batch.update(docRef, { category: name }) // Zmiana w chmurze
                 }
               })
@@ -1860,14 +1877,15 @@ const wczytajBackup = async (event) => {
 
       // MAGIA: Wyrzucamy usuniętą kategorię ze wszystkich dań (robią się "Brak")
       if (categoryNameToDelete) {
-        const user = auth.currentUser
-        if (user) {
+        // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+        const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+        if (uid) {
           const batch = writeBatch(db)
           
           menuItems.value.forEach(dish => {
             if (dish.category === categoryNameToDelete) {
               dish.category = '' // Czyścimy kategorię lokalnie
-              const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+              const docRef = getUserMenuItemDocRef(uid, dish.id) // POPRAWKA: używamy uid zamiast user.uid
               batch.update(docRef, { category: '' }) // Czyścimy w chmurze
             }
           })
@@ -1895,11 +1913,12 @@ const deleteMenuItem = async (id) => {
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę pozycję z menu?', 'Usuń danie', '🗑️')
       if (!confirmed) return
       
-      const user = auth.currentUser
-      if (!user) return
+      // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+      const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+      if (!uid) return
 
       try {
-        const docRef = getUserMenuItemDocRef(user.uid, id)
+        const docRef = getUserMenuItemDocRef(uid, id) // POPRAWKA: używamy uid zamiast user.uid
         await deleteDoc(docRef) // Usuwamy twardo z bazy
         
         // Nasłuch sam usunie danie z ekranu!

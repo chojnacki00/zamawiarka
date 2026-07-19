@@ -60,7 +60,7 @@
 
         <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
         <button
-          v-if="aktywneModuly.includes('rentownosc')"
+          v-if="aktywneModuly.includes('rentownosc') && (!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_view_foodcost'))"
           @click="navigateWithEffect('/rentownosc')"
           class="ios-menu-tile efekt-kliku"
           style="margin: 0; min-height: 140px; box-sizing: border-box;"
