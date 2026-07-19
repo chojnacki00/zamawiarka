@@ -948,7 +948,7 @@ import {
 } from 'firebase/firestore'
 
 import { useRegisterSW } from 'virtual:pwa-register/vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/authStore.js'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 
@@ -959,6 +959,7 @@ export default {
   },
   setup() {
     const router = useRouter()
+    const route = useRoute()
     const authStore = useAuthStore()
     const employeeAuthStore = useEmployeeAuthStore()
 
@@ -1109,9 +1110,22 @@ const handleLogout = async () => {
   // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
   const employeeAuthStore = useEmployeeAuthStore()
   if (employeeAuthStore.currentEmployee || localStorage.getItem('gm_emp_id')) {
-    employeeAuthStore.logout() // Czyści sesję kelnera z pamięci
-    router.push('/logowanie')  // Cofa do widoku klawiatury PIN
-    return // PRZERYWAMY FUNKCJĘ TUTAJ - nie zabijamy głównego połączenia Firebase!
+    
+    // 1. Zdejmujemy dostęp w sklepie
+    employeeAuthStore.logout() 
+    
+    // 2. TWARDY RESET - Niszczymy wszystkie pobrane dane!
+    isDataLoaded.value = false
+    resetCompanyDataState() 
+
+    // 3. Wymuszamy ukrycie interfejsu (żeby Vue zniszczyło komponenty)
+    if (!auth.currentUser) {
+      isLoggedIn.value = false 
+    }
+    
+    // 4. Nadpisujemy historię, żeby przycisk Wstecz nie miał do czego wracać
+    router.replace('/logowanie')  
+    return // PRZERYWAMY
   }
 
   // === SCENARIUSZ 2: WYLOGOWUJE SIĘ MANAGER (Twój nienaruszony kod) ===
@@ -1141,6 +1155,36 @@ const handleLogout = async () => {
 
 // Udostępniamy funkcję wylogowania globalnie
 authStore.logout = handleLogout
+
+
+// =========================
+// SYSTEM 1: AUTO-WYLOGOWANIE PO BEZCZYNNOŚCI (10 MINUT)
+// =========================
+let inactivityTimer = null
+const INACTIVITY_LIMIT = 1 * 60 * 1000 // 10 minut (w milisekundach) czas wylogowania po bezczynności
+
+const resetInactivityTimer = () => {
+  clearTimeout(inactivityTimer)
+  
+  // Włączamy stoper TYLKO wtedy, gdy zalogowany jest PRACOWNIK (przez PIN)
+  if (employeeAuthStore.currentEmployee) {
+    inactivityTimer = setTimeout(() => {
+      console.log('Brak aktywności. Wylogowywanie pracownika...')
+      handleLogout() // handleLogout domyślnie wyczyści tylko sesję kelnera
+    }, INACTIVITY_LIMIT)
+  }
+}
+
+// Obserwujemy zmiany w logowaniu, żeby włączyć/wyłączyć stoper ORAZ reagować na Kill Switch
+watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
+  resetInactivityTimer()
+
+  // Jeśli był pracownik (oldEmployee), a nagle zniknął (bo zabił go Kill Switch)
+  if (oldEmployee && !newEmployee) {
+    console.log('Wykryto aktywację Kill Switcha. Czyszczę całą aplikację...')
+    handleLogout() // Odpalamy pełne czyszczenie z kroku 2!
+  }
+})
 
     
 
@@ -1377,9 +1421,8 @@ const scheduleSave = () => {
 
 
 
-  const resetCompanyDataState = () => {
+const resetCompanyDataState = () => {
   suppliers.value = []
-
   towary.value = []
   warehouses.value = []
   orderTimings.value = []
@@ -1387,6 +1430,10 @@ const scheduleSave = () => {
   categories.value = []
   whoOrders.value = []
   ordersRegister.value = []
+
+  // DODANE: Resetowanie danych menu i receptur
+  menuItems.value = []
+  dishCategories.value = []
 
   cart.value = {}
   customCartItems.value = []
@@ -1402,6 +1449,10 @@ const scheduleSave = () => {
   tempSelectedCartCategories.value = []
 
   expandedOrderId.value = null
+
+  // DODANE: Resetowanie stanu interfejsu
+  selectedCategory.value = null
+  menuSearch.value = ''
 }
 
 
@@ -1616,6 +1667,31 @@ const wczytajBackup = async (event) => {
     // EKRAN GŁÓWNY APLIKACJI
     // =========================
     const currentScreen = ref('home')
+
+
+    // =========================
+    // STRAŻNIK ŚCIEŻEK (ROUTE GUARD) - Blokada przycisku Wstecz
+    // =========================
+    watch(() => [route.path, isLoggedIn.value, employeeAuthStore.currentEmployee, isAppReady.value], () => {
+      // 1. KLUCZOWE: Jeśli Firebase jeszcze sprawdza sesję (aplikacja ładuje dane), 
+      // NIE WYKONUJEMY ŻADNYCH RUCHÓW. Czekamy.
+      if (!isAppReady.value) return
+      
+      // 2. Sprawdzamy, czy ktokolwiek jest zalogowany
+      const isUserLogged = isLoggedIn.value || employeeAuthStore.currentEmployee
+      
+      // 3. Sprawdzamy, czy jesteśmy na stronie logowania
+      const isLoginPage = route.path === '/logowanie' || route.path === '/login'
+
+      // 4. Jeśli użytkownik NIE jest zalogowany, i NIE jest na stronie logowania:
+      if (!isUserLogged && !isLoginPage) {
+        console.log('Strażnik zablokował dostęp. Przekierowanie do logowania.')
+        router.replace('/logowanie')
+      }
+    }, { immediate: true })
+
+
+
 
     // =========================
     // AKTYWNA ZAKŁADKA W ZAMAWIARCE
@@ -5169,6 +5245,14 @@ watch(() => employeeAuthStore.currentEmployee, async (newEmployee) => {
 
 
 onMounted(() => {
+
+  // Nasłuchiwacze aktywności dla auto-wylogowania
+  window.addEventListener('mousemove', resetInactivityTimer)
+  window.addEventListener('keydown', resetInactivityTimer)
+  window.addEventListener('touchstart', resetInactivityTimer)
+  window.addEventListener('click', resetInactivityTimer)
+
+
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
       if (unsubscribeCartItems) {
@@ -5267,6 +5351,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Czyszczenie nasłuchiwaczy aktywności
+  window.removeEventListener('mousemove', resetInactivityTimer)
+  window.removeEventListener('keydown', resetInactivityTimer)
+  window.removeEventListener('touchstart', resetInactivityTimer)
+  window.removeEventListener('click', resetInactivityTimer)
+  clearTimeout(inactivityTimer)
+
+
   if (unsubscribeAuth) {
     unsubscribeAuth()
   }

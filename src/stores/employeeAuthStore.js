@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../firebase.js'
 
 export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
@@ -11,6 +11,31 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
   const restaurantId = ref(null)
   
   const isInitialized = ref(false)
+
+
+  let unsubscribeEmployee = null // Zmienna trzymająca nasz nasłuch (radio)
+
+  // GŁÓWNY STRAŻNIK - KILL SWITCH
+  const startEmployeeListener = (restId, empId) => {
+    // Jeśli już czegoś nasłuchujemy, rozłączamy to
+    if (unsubscribeEmployee) {
+      unsubscribeEmployee()
+    }
+
+    const empRef = doc(db, 'users', restId, 'employees', empId)
+    
+    // Zaczynamy nasłuchiwać na żywo!
+    unsubscribeEmployee = onSnapshot(empRef, (docSnap) => {
+      // ZASADA: Brak dokumentu (usunięto) LUB aktywny === false (zablokowano)
+      if (!docSnap.exists() || docSnap.data().aktywny === false) {
+        console.warn('⚡ KILL SWITCH AKTYWOWANY: Brak dostępu!')
+        logout()
+         
+      }
+    })
+  }
+
+
 
   // 1. Inicjalizacja sesji z pamięci telefonu (odpalana przy starcie aplikacji)
   const initSession = async () => {
@@ -41,6 +66,9 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
           // Wszystko gra - przywracamy sesję w tle (z uprawnieniami)
           currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
           restaurantId.value = savedRestId
+          // Uruchamiamy nasłuch na zmiany w dokumencie pracownika (Kill Switch)
+          startEmployeeListener(savedRestId, savedEmpId)
+
         } else {
           // Zwolniony, zablokowany lub usunięty - wyrzucamy z aplikacji
           logout()
@@ -99,6 +127,8 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
 
       localStorage.setItem('gm_emp_id', empSnap.id)
       localStorage.setItem('gm_rest_id', restId)
+      // Uruchamiamy nasłuch na zmiany w dokumencie pracownika (Kill Switch)
+      startEmployeeListener(restId, empSnap.id)
 
       return true
     } catch (error) {
@@ -108,6 +138,10 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
 
   // 3. Wylogowywanie (Czyszczenie pamięci telefonu)
   const logout = () => {
+    if (unsubscribeEmployee) {
+      unsubscribeEmployee() // Rozłączamy nasłuch z bazą
+      unsubscribeEmployee = null
+    }
     currentEmployee.value = null
     restaurantId.value = null
     localStorage.removeItem('gm_emp_id')
