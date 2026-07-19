@@ -17,7 +17,8 @@
   class="zamawiarka-menu-grid-ios"
   :class="{ 'menu-tiles-animate': animateMenuTiles }"
 >
-        <button
+  <button
+  v-if="hasPerm('can_create_orders')"
   @click="zmienWidokZOpuznieniem('produkty')"
   class="ios-menu-tile efekt-kliku"
 >
@@ -129,6 +130,7 @@
 
 
  <button
+  v-if="hasPerm('can_edit_products')"
   @click="zmienWidokZOpuznieniem('ustawienia')"
   class="ios-menu-tile efekt-kliku"
 >
@@ -655,18 +657,19 @@ selectedWhoOrders !== 'wszystkie'
     <div v-if="!showCartSearch" class="towary-topbar-row">
       <div class="towary-topbar-left">
         <button
-          @click="zmienWidokZOpuznieniem('produkty')"
-          class="towary-icon-button efekt-kliku"
-          title="Wróć"
-        >
-          ←
-        </button>
+  @click="hasPerm('can_create_orders') ? zmienWidokZOpuznieniem('produkty') : zmienWidokZOpuznieniem('menu')"
+  class="towary-icon-button efekt-kliku"
+  title="Wróć"
+>
+  ←
+</button>
 
         <h2 class="towary-title">KOSZYK</h2>
       </div>
 
       <div class="towary-topbar-right">
       <button
+          v-if="hasPerm('can_create_orders')"
           @click="handleGenerateOrder"
           class="towary-icon-button"
           title="Generuj PDF"
@@ -712,6 +715,7 @@ selectedWhoOrders !== 'wszystkie'
         </button>
 
         <button
+          v-if="hasPerm('can_create_orders')"
           @click="clearCart()"
           class="towary-icon-button"
           title="Wyczyść koszyk"
@@ -758,6 +762,7 @@ selectedWhoOrders !== 'wszystkie'
         />
 
         <button
+          v-if="hasPerm('can_create_orders')"
           @click="clearCart()"
           class="towary-icon-button"
           title="Wyczyść koszyk"
@@ -954,12 +959,12 @@ selectedWhoOrders !== 'wszystkie'
   </div>
 
   <div
-    v-for="item in filteredCartItems"
-    :key="item.id"
-    class="towary-row-fixed zamowienie-active"
-    style="grid-template-columns: 4fr 1fr 1.4fr auto;"
-    @click="openQtyModal(item)"
-  >
+  v-for="item in filteredCartItems"
+  :key="item.id"
+  class="towary-row-fixed zamowienie-active"
+  style="grid-template-columns: 4fr 1fr 1.4fr auto;"
+  @click="hasPerm('can_create_orders') ? openQtyModal(item) : null"
+>
     <div style="min-width:0; overflow:hidden;">
       <div class="towary-col-name">
         {{ item.name }}
@@ -1125,6 +1130,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
 <button
+  v-if="hasPerm('can_create_orders')"
   @click="openCustomCartItemModal"
   class="fab-add-button"
   aria-label="Dodaj pozycję"
@@ -1237,6 +1243,7 @@ selectedWhoOrders !== 'wszystkie'
   </div>
 
   <button
+  v-if="hasPerm('can_create_orders')"
   @click.stop="generatePdfFromRegister(order)"
   title="Generuj PDF"
   class="towary-icon-button"
@@ -1266,11 +1273,12 @@ selectedWhoOrders !== 'wszystkie'
 </button>
 
   <button
-    @click.stop="deleteOrderFromRegister(order.id)"
-    title="Usuń zamówienie"
-    class="towary-icon-button"
-    style="width:34px; height:34px; border-color:#fecaca;"
-  >
+  v-if="hasPerm('can_edit_products')"
+  @click.stop="deleteOrderFromRegister(order.id)"
+  title="Usuń zamówienie"
+  class="towary-icon-button"
+  style="width:34px; height:34px; border-color:#fecaca;"
+>
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6l-1 14H6L5 6" />
@@ -1423,16 +1431,16 @@ selectedWhoOrders !== 'wszystkie'
         </button>
 
         <!-- EDYTUJ TOWAR -->
-        <button
-  v-if="selectedProductForQty"
+<button
+  v-if="selectedProductForQty && hasPerm('can_edit_products')"
   @click="selectedProductForQty?.isCustom ? openCustomCartItemModal(selectedProductForQty) : editTowarFromQtyModal()"
-          class="towary-icon-button"
-          type="button"
-          title="Edytuj towar"
-          style="width:40px; height:40px;"
-        >
-          ✏️
-        </button>
+  class="towary-icon-button"
+  type="button"
+  title="Edytuj towar"
+  style="width:40px; height:40px;"
+>
+  ✏️
+</button>
       </div>
 
       <!-- PRAWA STRONA -->
@@ -1488,6 +1496,7 @@ selectedWhoOrders !== 'wszystkie'
 
 
   <button
+  v-if="hasPerm('can_edit_products')"
   @click="openTowaryPdfModal"
   class="towary-icon-button"
   title="Generuj PDF"
@@ -1497,12 +1506,12 @@ selectedWhoOrders !== 'wszystkie'
 
 
 
-              <button
-  v-if="selectedTowaryIds.length > 0"
-  @click="removeSelectedTowary()"
-  class="towary-icon-button danger"
-  title="Usuń zaznaczone"
->
+  <button
+   v-if="selectedTowaryIds.length > 0 && hasPerm('can_edit_products')"
+   @click="removeSelectedTowary()"
+   class="towary-icon-button danger"
+   title="Usuń zaznaczone"
+  >
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="3 6 5 6 21 6"></polyline>
     <path d="M19 6l-1 14H6L5 6"></path>
@@ -1512,16 +1521,14 @@ selectedWhoOrders !== 'wszystkie'
   </svg>
 </button>
 
-              <button
-                @click="toggleTowarySelectionMode()"
-                :class="[
-                  'towary-icon-button',
-                  towarySelectionMode ? 'active' : ''
-                ]"
-                title="Tryb zaznaczania"
-              >
-                ☑️
-              </button>
+  <button
+   v-if="hasPerm('can_edit_products')"
+   @click="toggleTowarySelectionMode()"
+   :class="['towary-icon-button', towarySelectionMode ? 'active' : '']"
+   title="Tryb zaznaczania"
+   >
+   ☑️
+  </button>
 
 <button
   @click="showTowaryFiltersModal = true"
@@ -1674,19 +1681,12 @@ selectedWhoOrders !== 'wszystkie'
           </div>
 
 <div
-          v-for="item in filteredTowary"
-          :key="item.id"
-          :class="[
-  'towary-row-fixed',
-  !item.active ? 'towary-inactive' : ''
-]"
-          :style="{
-            gridTemplateColumns: towarySelectionMode
-              ? '28px 3fr 1fr 2fr 1.2fr'
-              : '3fr 1fr 2fr 1.2fr'
-          }"
-          @click="handleTowarRowClick(item)"
-        >
+  v-for="item in filteredTowary"
+  :key="item.id"
+  :class="['towary-row-fixed', !item.active ? 'towary-inactive' : '']"
+  :style="{ gridTemplateColumns: towarySelectionMode ? '28px 3fr 1fr 2fr 1.2fr' : '3fr 1fr 2fr 1.2fr', cursor: hasPerm('can_edit_products') ? 'pointer' : 'default' }"
+  @click="hasPerm('can_edit_products') ? handleTowarRowClick(item) : null"
+>
           <div
             v-if="towarySelectionMode"
             class="towary-col-checkbox"
@@ -1930,6 +1930,7 @@ selectedWhoOrders !== 'wszystkie'
 
 <!-- FAB + -->
 <button
+  v-if="hasPerm('can_edit_products')"
   @click="openTowarAdd()"
   class="fab-add-button"
   aria-label="Dodaj towar"
@@ -1992,7 +1993,7 @@ selectedWhoOrders !== 'wszystkie'
     </label>
 
     <button
-      v-if="towarFormMode === 'edit'"
+      v-if="towarFormMode === 'edit' && hasPerm('can_edit_products')"
       @click="deleteTowar()"
       class="towary-icon-button"
       title="Usuń towar"
@@ -2223,11 +2224,12 @@ selectedWhoOrders !== 'wszystkie'
             </button>
 
             <button
-              @click="saveTowar()"
-              class="supplier-save-button"
-              type="button"
-            >
-              Zapisz
+             v-if="hasPerm('can_edit_products')"
+             @click="saveTowar()"
+             class="supplier-save-button"
+             type="button"
+             >
+             Zapisz
             </button>
           </div>
         </div>
