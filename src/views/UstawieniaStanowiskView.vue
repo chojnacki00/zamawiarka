@@ -100,11 +100,13 @@
           <div 
             v-for="uprawnienie in modul.permissions" 
             :key="uprawnienie.key"
-            @click="togglePermission(uprawnienie.key)"
+            @click="!isPermissionDisabled(uprawnienie.key) && togglePermission(uprawnienie.key)"
             class="item-card"
             :style="{
               border: newRolePermissions[uprawnienie.key] ? '1px solid #10b981' : '1px solid transparent',
-              backgroundColor: newRolePermissions[uprawnienie.key] ? '#ecfdf5' : 'white'
+              backgroundColor: newRolePermissions[uprawnienie.key] ? '#ecfdf5' : 'white',
+              opacity: isPermissionDisabled(uprawnienie.key) ? '0.4' : '1',
+              pointerEvents: isPermissionDisabled(uprawnienie.key) ? 'none' : 'auto'
             }"
             style="padding: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s;"
           >
@@ -242,8 +244,40 @@ const cancelForm = () => {
   editingRoleId.value = null
 }
 
+const isPermissionDisabled = (permKey) => {
+  // Blokady dla Zamawiarki
+  if (permKey === 'can_create_orders' || permKey === 'can_edit_products') {
+    return !newRolePermissions.value['can_view_zamawiarka']
+  }
+  // Blokady dla Rentowności
+  if (permKey === 'can_edit_menu') {
+    return !newRolePermissions.value['can_view_foodcost']
+  }
+  return false
+}
+
 const togglePermission = (key) => {
+  // Zabezpieczenie przed kliknięciem w zablokowany element
+  if (isPermissionDisabled(key)) return;
+
+  // Główna zmiana wartości
   newRolePermissions.value[key] = !newRolePermissions.value[key]
+
+  // Kaskada 1: Odznaczenie "Dostępu do Zamawiarki" wyłącza jej opcje
+  if (key === 'can_view_zamawiarka' && !newRolePermissions.value[key]) {
+    newRolePermissions.value['can_create_orders'] = false
+    newRolePermissions.value['can_edit_products'] = false
+  }
+  
+  // Kaskada 2: Włączenie "Zarządzania bazą" włącza też "Składanie zamówień"
+  if (key === 'can_edit_products' && newRolePermissions.value[key]) {
+    newRolePermissions.value['can_create_orders'] = true
+  }
+
+  // Kaskada 3: Odznaczenie "Dostępu do Rentowności" wyłącza jej edycję
+  if (key === 'can_view_foodcost' && !newRolePermissions.value[key]) {
+    newRolePermissions.value['can_edit_menu'] = false
+  }
 }
 
 // Zapis lub aktualizacja w Firebase
