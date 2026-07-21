@@ -67,7 +67,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
-import { useEmployeeAuthStore } from '../stores/employeeAuthStore'
+import { useEmployeeAuthStore } from '../../stores/employeeAuthStore'
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()

@@ -17,7 +17,7 @@ const routes = [
   { path: '/zespol', name: 'Zespol', component: () => import('./views/UstawieniaZespoluView.vue') },
   { path: '/logowanie', name: 'LogowaniePIN', component: () => import('./views/PinLoginView.vue') },
   { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
-  { path: '/grafik', name: 'GrafikHome', component: () => import('./views/GrafikHomeView.vue') }
+  { path: '/grafik', name: 'GrafikHome', component: () => import('./views/grafik/GrafikHomeView.vue') }
 ]
 
 const router = createRouter({
