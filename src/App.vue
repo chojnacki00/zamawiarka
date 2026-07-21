@@ -1161,7 +1161,7 @@ authStore.logout = handleLogout
 // SYSTEM 1: AUTO-WYLOGOWANIE PO BEZCZYNNOŚCI (10 MINUT)
 // =========================
 let inactivityTimer = null
-const INACTIVITY_LIMIT = 1 * 60 * 1000 // 10 minut (w milisekundach) czas wylogowania po bezczynności
+const INACTIVITY_LIMIT = 10 * 60 * 1000 // 10 minut (w milisekundach) czas wylogowania po bezczynności
 
 const resetInactivityTimer = () => {
   clearTimeout(inactivityTimer)

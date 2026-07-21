@@ -3,49 +3,49 @@
     <div class="zamawiarka-menu-topbar">
       <!-- Przycisk powrotu do głównych ustawień -->
       <button @click="handleBack" class="zamawiarka-menu-back">←</button>
-      <h2 class="zamawiarka-menu-title">STANOWISKA</h2>
+      <h2 class="zamawiarka-menu-title">PROFILE UPRAWNIEŃ</h2>
     </div>
 
     <div class="scroll-area" style="padding: 20px;">
       
-      <!-- === WIDOK 1: LISTA STANOWISK === -->
+      <!-- === WIDOK 1: LISTA PROFILI === -->
       <div v-if="!isFormOpen">
         <button 
           @click="openForm()" 
           class="item-card" 
           style="width: 100%; text-align: center; margin-bottom: 25px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; display: block;"
         >
-          ➕ Dodaj nowe stanowisko
+          ➕ Dodaj nowy profil
         </button>
 
-        <h3 style="font-size: 13px; color: #6b7280; margin-bottom: 10px; text-transform: uppercase; font-weight: 600;">Zapisane stanowiska</h3>
+        <h3 style="font-size: 13px; color: #6b7280; margin-bottom: 10px; text-transform: uppercase; font-weight: 600;">Zapisane profile</h3>
         
         <!-- Stan ładowania z bazy -->
-        <div v-if="rolesStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-          ⏳ Pobieranie stanowisk...
+        <div v-if="profilesStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
+          ⏳ Pobieranie profili...
         </div>
 
-        <!-- Brak stanowisk w bazie -->
-        <div v-else-if="rolesStore.roles.length === 0" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-          Brak skonfigurowanych stanowisk.
+        <!-- Brak profili w bazie -->
+        <div v-else-if="profilesStore.profiles.length === 0" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
+          Brak skonfigurowanych profili.
         </div>
 
-        <!-- Lista stanowisk pobrana z bazy -->
+        <!-- Lista profili pobrana z bazy -->
         <div v-else>
           <div 
-            v-for="stanowisko in rolesStore.roles" 
-            :key="stanowisko.id"
+            v-for="profil in profilesStore.profiles" 
+            :key="profil.id"
             class="item-card"
             style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"
           >
             <span translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px;">
-              {{ stanowisko.nazwa }}
+              {{ profil.nazwa }}
             </span>
             
             <div style="display: flex; gap: 10px;">
               <!-- Ikonka Edytuj -->
               <button 
-                @click="openForm(stanowisko)" 
+                @click="openForm(profil)" 
                 style="background: white; border: 1px solid #d1d5db; border-radius: 8px; color: #374151; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -56,7 +56,7 @@
 
               <!-- Ikonka Usuń -->
               <button 
-                @click="confirmDelete(stanowisko)" 
+                @click="confirmDelete(profil)" 
                 style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -75,10 +75,10 @@
       <div v-else>
         <div style="margin-bottom: 25px;">
           <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
-            Nazwa stanowiska (np. Kelner)
+            Nazwa profilu (np. Kelner)
           </label>
           <input 
-            v-model="newRoleName" 
+            v-model="newProfileName" 
             type="text" 
             placeholder="Wpisz nazwę..." 
             translate="no"
@@ -103,8 +103,8 @@
             @click="!isPermissionDisabled(uprawnienie.key) && togglePermission(uprawnienie.key)"
             class="item-card"
             :style="{
-              border: newRolePermissions[uprawnienie.key] ? '1px solid #10b981' : '1px solid transparent',
-              backgroundColor: newRolePermissions[uprawnienie.key] ? '#ecfdf5' : 'white',
+              border: newProfilePermissions[uprawnienie.key] ? '1px solid #10b981' : '1px solid transparent',
+              backgroundColor: newProfilePermissions[uprawnienie.key] ? '#ecfdf5' : 'white',
               opacity: isPermissionDisabled(uprawnienie.key) ? '0.4' : '1',
               pointerEvents: isPermissionDisabled(uprawnienie.key) ? 'none' : 'auto'
             }"
@@ -116,11 +116,11 @@
             
             <div 
               style="min-width: 46px; height: 26px; border-radius: 13px; position: relative; transition: background-color 0.3s;"
-              :style="{ backgroundColor: newRolePermissions[uprawnienie.key] ? '#10b981' : '#e5e7eb' }"
+              :style="{ backgroundColor: newProfilePermissions[uprawnienie.key] ? '#10b981' : '#e5e7eb' }"
             >
               <div 
                 style="width: 22px; height: 22px; background: white; border-radius: 50%; position: absolute; top: 2px; transition: transform 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
-                :style="{ transform: newRolePermissions[uprawnienie.key] ? 'translateX(22px)' : 'translateX(2px)' }"
+                :style="{ transform: newProfilePermissions[uprawnienie.key] ? 'translateX(22px)' : 'translateX(2px)' }"
               ></div>
             </div>
           </div>
@@ -135,10 +135,10 @@
             Anuluj
           </button>
           <button 
-            @click="saveRole"
+            @click="saveProfile"
             style="flex: 1; padding: 15px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; transition: opacity 0.2s;"
-            :disabled="!newRoleName.trim() || isSaving"
-            :style="{ opacity: (!newRoleName.trim() || isSaving) ? 0.5 : 1 }"
+            :disabled="!newProfileName.trim() || isSaving"
+            :style="{ opacity: (!newProfileName.trim() || isSaving) ? 0.5 : 1 }"
           >
             {{ isSaving ? 'Zapisywanie...' : 'Zapisz' }}
           </button>
@@ -160,10 +160,10 @@
           </svg>
         </div>
 
-        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń stanowisko</h3>
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń profil</h3>
         <p style="color: #6b7280; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">
           Czy na pewno chcesz usunąć: <br>
-          <strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ roleToDelete?.nazwa }}</strong>?
+          <strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ profileToDelete?.nazwa }}</strong>?
         </p>
         
         <div style="display: flex; gap: 12px;">
@@ -183,17 +183,15 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { PERMISSIONS_DICTIONARY } from '../config/permissions.js'
-import { useRolesStore } from '../stores/rolesStore.js'
+import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
 
 const router = useRouter()
-const rolesStore = useRolesStore()
+const profilesStore = usePermissionProfilesStore()
 
 // Pobranie danych z Firebase przy otwarciu tego widoku
 onMounted(() => {
-  rolesStore.fetchRoles()
+  profilesStore.fetchProfiles()
 })
-
-
 
 // Obsługa przycisku "Wstecz" na górnym pasku
 const handleBack = () => {
@@ -204,35 +202,32 @@ const handleBack = () => {
   }
 }
 
-
-
 const isFormOpen = ref(false)
-const editingRoleId = ref(null) 
-const newRoleName = ref('')
-const newRolePermissions = ref({})
+const editingProfileId = ref(null) 
+const newProfileName = ref('')
+const newProfilePermissions = ref({})
 const isSaving = ref(false) // Zabezpieczenie przed podwójnym kliknięciem
 
 const showDeleteModal = ref(false)
-const roleToDelete = ref(null)
+const profileToDelete = ref(null)
 
-const openForm = (role = null) => {
-  if (role) {
-    editingRoleId.value = role.id
-    newRoleName.value = role.nazwa
-    newRolePermissions.value = {}
+const openForm = (profile = null) => {
+  if (profile) {
+    editingProfileId.value = profile.id
+    newProfileName.value = profile.nazwa
+    newProfilePermissions.value = {}
     PERMISSIONS_DICTIONARY.forEach(modul => {
       modul.permissions.forEach(perm => {
-        // Bezpieczne pobieranie z klucza 'uprawnienia' z uwzględnieniem opcjonalnego chaining'u (?.)
-        newRolePermissions.value[perm.key] = role.uprawnienia?.[perm.key] || false
+        newProfilePermissions.value[perm.key] = profile.uprawnienia?.[perm.key] || false
       })
     })
   } else {
-    editingRoleId.value = null
-    newRoleName.value = ''
-    newRolePermissions.value = {}
+    editingProfileId.value = null
+    newProfileName.value = ''
+    newProfilePermissions.value = {}
     PERMISSIONS_DICTIONARY.forEach(modul => {
       modul.permissions.forEach(perm => {
-        newRolePermissions.value[perm.key] = false
+        newProfilePermissions.value[perm.key] = false
       })
     })
   }
@@ -241,17 +236,17 @@ const openForm = (role = null) => {
 
 const cancelForm = () => {
   isFormOpen.value = false
-  editingRoleId.value = null
+  editingProfileId.value = null
 }
 
 const isPermissionDisabled = (permKey) => {
   // Blokady dla Zamawiarki
   if (permKey === 'can_create_orders' || permKey === 'can_edit_products') {
-    return !newRolePermissions.value['can_view_zamawiarka']
+    return !newProfilePermissions.value['can_view_zamawiarka']
   }
   // Blokady dla Rentowności
   if (permKey === 'can_edit_menu') {
-    return !newRolePermissions.value['can_view_foodcost']
+    return !newProfilePermissions.value['can_view_foodcost']
   }
   return false
 }
@@ -261,44 +256,44 @@ const togglePermission = (key) => {
   if (isPermissionDisabled(key)) return;
 
   // Główna zmiana wartości
-  newRolePermissions.value[key] = !newRolePermissions.value[key]
+  newProfilePermissions.value[key] = !newProfilePermissions.value[key]
 
   // Kaskada 1: Odznaczenie "Dostępu do Zamawiarki" wyłącza jej opcje
-  if (key === 'can_view_zamawiarka' && !newRolePermissions.value[key]) {
-    newRolePermissions.value['can_create_orders'] = false
-    newRolePermissions.value['can_edit_products'] = false
+  if (key === 'can_view_zamawiarka' && !newProfilePermissions.value[key]) {
+    newProfilePermissions.value['can_create_orders'] = false
+    newProfilePermissions.value['can_edit_products'] = false
   }
   
   // Kaskada 2: Włączenie "Zarządzania bazą" włącza też "Składanie zamówień"
-  if (key === 'can_edit_products' && newRolePermissions.value[key]) {
-    newRolePermissions.value['can_create_orders'] = true
+  if (key === 'can_edit_products' && newProfilePermissions.value[key]) {
+    newProfilePermissions.value['can_create_orders'] = true
   }
 
   // Kaskada 3: Odznaczenie "Dostępu do Rentowności" wyłącza jej edycję
-  if (key === 'can_view_foodcost' && !newRolePermissions.value[key]) {
-    newRolePermissions.value['can_edit_menu'] = false
+  if (key === 'can_view_foodcost' && !newProfilePermissions.value[key]) {
+    newProfilePermissions.value['can_edit_menu'] = false
   }
 }
 
 // Zapis lub aktualizacja w Firebase
-const saveRole = async () => {
-  if (!newRoleName.value.trim() || isSaving.value) return
+const saveProfile = async () => {
+  if (!newProfileName.value.trim() || isSaving.value) return
 
   isSaving.value = true
   try {
-    const roleData = {
-      nazwa: newRoleName.value,
-      uprawnienia: { ...newRolePermissions.value }
+    const profileData = {
+      nazwa: newProfileName.value,
+      uprawnienia: { ...newProfilePermissions.value }
     }
 
-    if (editingRoleId.value) {
-      await rolesStore.updateRole(editingRoleId.value, roleData)
+    if (editingProfileId.value) {
+      await profilesStore.updateProfile(editingProfileId.value, profileData)
     } else {
-      await rolesStore.addRole(roleData)
+      await profilesStore.addProfile(profileData)
     }
     
     isFormOpen.value = false
-    editingRoleId.value = null
+    editingProfileId.value = null
   } catch (error) {
     alert('Wystąpił błąd podczas zapisu do bazy.')
   } finally {
@@ -306,19 +301,19 @@ const saveRole = async () => {
   }
 }
 
-const confirmDelete = (role) => {
-  roleToDelete.value = role
+const confirmDelete = (profile) => {
+  profileToDelete.value = profile
   showDeleteModal.value = true
 }
 
 // Usunięcie z Firebase
 const executeDelete = async () => {
-  if (roleToDelete.value && !isSaving.value) {
+  if (profileToDelete.value && !isSaving.value) {
     isSaving.value = true
     try {
-      await rolesStore.deleteRole(roleToDelete.value.id)
+      await profilesStore.deleteProfile(profileToDelete.value.id)
       showDeleteModal.value = false
-      roleToDelete.value = null
+      profileToDelete.value = null
     } catch (error) {
       alert('Wystąpił błąd podczas usuwania.')
     } finally {

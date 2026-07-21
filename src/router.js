@@ -12,10 +12,12 @@ const routes = [
   { path: '/zamawiarka', name: 'Zamawiarka', component: ZamawiarkaView },
   { path: '/rentownosc', name: 'Rentownosc', component: RentownoscView },
   { path: '/ustawienia', name: 'Ustawienia', component: () => import('./views/UstawieniaView.vue') },
-  { path: '/stanowiska', name: 'Stanowiska', component: () => import('./views/UstawieniaStanowiskView.vue') },
+  { path: '/profile-uprawnien', name: 'ProfileUprawnien', component: () => import('./views/UstawieniaProfiliView.vue') },
+  { path: '/stanowiska-grafik', name: 'StanowiskaGrafikowe', component: () => import('./views/StanowiskaGrafikoweView.vue') },
   { path: '/zespol', name: 'Zespol', component: () => import('./views/UstawieniaZespoluView.vue') },
   { path: '/logowanie', name: 'LogowaniePIN', component: () => import('./views/PinLoginView.vue') },
-  { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') }
+  { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
+  { path: '/grafik', name: 'GrafikHome', component: () => import('./views/GrafikHomeView.vue') }
 ]
 
 const router = createRouter({
@@ -36,23 +38,23 @@ router.beforeEach((to, from, next) => {
   }
 
   // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami bez uprawnień!
-const isManagerRoute = ['/ustawienia', '/stanowiska', '/zespol'].includes(to.path)
+  const isManagerRoute = ['/ustawienia', '/profile-uprawnien', '/stanowiska-grafik', '/zespol'].includes(to.path)
 
-if (hasEmployeeSession && isManagerRoute) {
-  // Odpytujemy nasz system o uprawnienia pracownika
-  // WAŻNE: To musi być wywołane wewnątrz strażnika, żeby Pinia działała poprawnie
-  const employeeAuthStore = useEmployeeAuthStore()
-  
-  const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
-  const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
+  if (hasEmployeeSession && isManagerRoute) {
+    // Odpytujemy nasz system o uprawnienia pracownika
+    // WAŻNE: To musi być wywołane wewnątrz strażnika, żeby Pinia działała poprawnie
+    const employeeAuthStore = useEmployeeAuthStore()
+    
+    const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
+    const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
 
-  // Jeśli pracownik nie ma ŻADNEGO z tych uprawnień -> blokujemy i wyrzucamy na główną
-  if (!mozeKonta && !mozeStanowiska) {
-    console.log('Strażnik: Pracownik nie ma odpowiednich uprawnień do Ustawień!')
-    return next('/') 
+    // Jeśli pracownik nie ma ŻADNEGO z tych uprawnień -> blokujemy i wyrzucamy na główną
+    if (!mozeKonta && !mozeStanowiska) {
+      console.log('Strażnik: Pracownik nie ma odpowiednich uprawnień do Ustawień!')
+      return next('/') 
+    }
+    // W przeciwnym razie - brama otwarta, wpuszczamy!
   }
-  // W przeciwnym razie - brama otwarta, wpuszczamy!
-}
 
   // === NOWOŚĆ: ZASADA 3 - Blokada konkretnych modułów na podstawie uprawnień ===
   if (hasEmployeeSession) {

@@ -75,6 +75,26 @@
           <div class="ios-menu-title" style="font-size: 15px;">Rentowność Menu</div>
         </button>
 
+
+        <!-- KAFELEK 3: GRAFIK PRACOWNICZY -->
+        <button
+          v-if="aktywneModuly.includes('grafik') && (!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_view_schedule'))"
+          @click="navigateWithEffect('/grafik')"
+          class="ios-menu-tile efekt-kliku"
+          style="margin: 0; min-height: 140px; box-sizing: border-box;"
+        >
+          <!-- Ikona kalendarza na pomarańczowym tle dla odróżnienia -->
+          <div class="ios-menu-icon" style="background-color: #f39c12; color: white; display: flex; align-items: center; justify-content: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+          <div class="ios-menu-title" style="font-size: 15px;">Grafik</div>
+        </button>
+
       </div>
 
       <!-- WYLOGUJ -->
@@ -104,7 +124,7 @@ const authStore = useAuthStore()
 const employeeAuthStore = useEmployeeAuthStore()
 
 const appVersion = ref('3.1.0')
-const aktywneModuly = ref(['zamawiarka', 'rentownosc'])
+const aktywneModuly = ref(['zamawiarka', 'rentownosc', 'grafik'])
 
 const currentCompany = computed(() => authStore.currentCompany)
 

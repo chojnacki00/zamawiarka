@@ -53,7 +53,7 @@
         <!-- PRZEWIJANA LISTA -->
         <div style="padding: 10px 20px 20px 20px;">
           
-          <div v-if="employeesStore.isLoading || rolesStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
+          <div v-if="employeesStore.isLoading || profilesStore.isLoading || positionsStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
             ⏳ Wczytywanie danych...
           </div>
 
@@ -86,15 +86,16 @@
                     Aktywny
                   </span>
 
-                  <!-- Stanowisko Główne (przycięte do max 110px) -->
+                  <!-- Profil Uprawnień -->
                   <span translate="no" class="notranslate" style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; color: #4b5563; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; display: inline-block;">
-                    {{ getRoleName(pracownik.roleId) }}
+                    {{ getProfileName(pracownik.permissionProfileId || pracownik.roleId) }}
                   </span>
 
-                  <!-- Odznaka Dodatkowych Stanowisk -->
-                  <span v-if="pracownik.additionalRoles && pracownik.additionalRoles.length > 0" translate="no" class="notranslate" style="background: #f3e8ff; color: #7e22ce; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
-                    +{{ pracownik.additionalRoles.length }}
+                  <!-- Odznaka informująca o przypisanych stanowiskach do grafiku -->
+                  <span v-if="pracownik.kompetencje && Object.keys(pracownik.kompetencje).length > 0" translate="no" class="notranslate" style="background: #f3e8ff; color: #7e22ce; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
+                    +{{ Object.keys(pracownik.kompetencje).length }}
                   </span>
+
                 </div>
               </div>
               
@@ -148,47 +149,107 @@
           </div>
         </div>
 
-        <div style="margin-bottom: 20px;">
+        <!-- PROFIL UPRAWNIEŃ -->
+        <div style="margin-bottom: 25px;">
           <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">
-            Główne stanowisko (Uprawnienia)
+            Profil uprawnień (Dostęp do aplikacji)
           </label>
           <select 
-            v-model="form.roleId"
+            v-model="form.permissionProfileId"
             translate="no"
             class="notranslate form-input"
             style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px center; background-size: 18px; padding-right: 45px;"
           >
-            <option value="" disabled class="placeholder-option">Wybierz główne...</option>
-            <option v-for="rola in dostepneStanowiska" :key="rola.id" :value="rola.id" style="color: #111827;">{{ rola.nazwa }}</option>
+            <option value="" disabled class="placeholder-option">Wybierz profil...</option>
+            <option v-for="profil in dostepneProfile" :key="profil.id" :value="profil.id" style="color: #111827;">{{ profil.nazwa }}</option>
           </select>
         </div>
 
-        <div v-if="form.roleId && rolesStore.roles.length > 1" style="margin-bottom: 25px; padding: 15px; background: white; border: 1px solid #e5e7eb; border-radius: 10px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 10px;">
-            Dodatkowe kompetencje (Do grafiku)
-          </label>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            <label 
-              v-for="rola in availableAdditionalRoles" 
-              :key="rola.id"
-              style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s;"
-              :style="{ 
-                borderColor: form.additionalRoles.includes(rola.id) ? '#0ea5e9' : '#e5e7eb', 
-                background: form.additionalRoles.includes(rola.id) ? '#e0f2fe' : '#f9fafb', 
-                color: form.additionalRoles.includes(rola.id) ? '#0369a1' : '#4b5563' 
-              }"
+        <!-- STANOWISKA GRAFIKOWE (KOMPETENCJE) -->
+        <div style="margin-bottom: 30px; background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 15px;">
+          <h3 style="font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
+            Kompetencje i priorytet (Grafik)
+          </h3>
+          <p style="font-size: 12px; color: #9ca3af; margin-bottom: 15px; line-height: 1.4;">
+            Wybierz stanowiska i ustaw priorytet dla generatora grafiku.
+          </p>
+
+          <div v-if="positionsStore.positions.length === 0" style="font-size: 13px; color: #9ca3af; text-align: center; padding: 10px;">
+            Najpierw dodaj stanowiska grafikowe w Ustawieniach.
+          </div>
+
+          <div v-else>
+            <!-- Przycisk rozwijający listę wyboru kompetencji -->
+            <button 
+              @click="showCompetencyList = !showCompetencyList"
+              style="width: 100%; padding: 10px; border: 1px dashed #0ea5e9; background: #e0f2fe; color: #0369a1; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 15px;"
             >
-              <input 
-                type="checkbox" 
-                :value="rola.id" 
-                v-model="form.additionalRoles" 
-                style="width: 16px; height: 16px; accent-color: #0ea5e9; cursor: pointer; margin: 0;"
+              {{ showCompetencyList ? 'Zamknij listę stanowisk' : '➕ Dodaj kompetencje' }}
+            </button>
+
+            <!-- Lista checkboxów (rozwijana) -->
+            <div v-if="showCompetencyList" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 15px; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px;">
+              <label 
+                v-for="pos in positionsStore.positions" 
+                :key="'chk-'+pos.id"
+                style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s;"
+                :style="{ 
+                  borderColor: form.kompetencje[pos.id] ? '#0ea5e9' : '#e5e7eb', 
+                  background: form.kompetencje[pos.id] ? '#e0f2fe' : '#ffffff', 
+                  color: form.kompetencje[pos.id] ? '#0369a1' : '#4b5563' 
+                }"
               >
-              <span translate="no" class="notranslate">{{ rola.nazwa }}</span>
-            </label>
-            <div v-if="availableAdditionalRoles.length === 0" style="font-size: 13px; color: #9ca3af;">
-              Brak innych stanowisk do wyboru.
+                <input 
+                  type="checkbox" 
+                  :checked="!!form.kompetencje[pos.id]"
+                  @change="toggleCompetency(pos.id)"
+                  style="width: 16px; height: 16px; accent-color: #0ea5e9; cursor: pointer; margin: 0;"
+                >
+                <span translate="no" class="notranslate">{{ pos.nazwa }}</span>
+              </label>
             </div>
+
+            <!-- Lista WYBRANYCH kompetencji z gwiazdkami -->
+            <div v-if="Object.keys(form.kompetencje).length > 0">
+              <div 
+                v-for="posId in Object.keys(form.kompetencje)" 
+                :key="'star-'+posId" 
+                style="display: flex; align-items: center; justify-content: space-between; padding: 10px; border-bottom: 1px solid #f3f4f6;"
+              >
+                <span style="font-weight: 600; color: #374151; font-size: 14px;" translate="no" class="notranslate">
+                  {{ getPositionName(posId) }}
+                </span>
+                
+                <div style="display: flex; gap: 2px; align-items: center;">
+                  <button 
+                    v-for="star in 5" 
+                    :key="star"
+                    @click.prevent="setStar(posId, star)"
+                    style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0 3px; transition: color 0.2s; line-height: 1;"
+                    :style="{ color: (form.kompetencje[posId] >= star) ? '#eab308' : '#d1d5db' }"
+                  >
+                    ★
+                  </button>
+                  
+                  <button 
+                    @click.prevent="confirmDeleteCompetency(posId)"
+                    style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 6px; margin-left: 10px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
+                    title="Usuń kompetencję"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="!showCompetencyList" style="font-size: 13px; color: #9ca3af; text-align: center;">
+              Brak przypisanych stanowisk.
+            </div>
+
           </div>
         </div>
 
@@ -235,7 +296,7 @@
 
     </div>
 
-   <!-- === MODAL POTWIERDZENIA USUNIĘCIA === -->
+   <!-- === MODAL POTWIERDZENIA USUNIĘCIA PRACOWNIKA === -->
     <div v-if="showDeleteModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
       <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
         <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
@@ -246,6 +307,21 @@
         <div style="display: flex; gap: 12px;">
           <button @click="showDeleteModal = false" :disabled="isSaving" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Anuluj</button>
           <button @click="executeDelete" :disabled="isSaving" style="flex: 1; padding: 14px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">{{ isSaving ? 'Usuwanie...' : 'Usuń' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- === MODAL POTWIERDZENIA USUNIĘCIA KOMPETENCJI === -->
+    <div v-if="showDeleteCompetencyModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
+      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
+        <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </div>
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń kompetencję</h3>
+        <p style="color: #6b7280; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">Czy na pewno chcesz usunąć stanowisko:<br><strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ getPositionName(competencyToDelete) }}</strong><br>z profilu tego pracownika?</p>
+        <div style="display: flex; gap: 12px;">
+          <button @click="showDeleteCompetencyModal = false" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Anuluj</button>
+          <button @click="executeDeleteCompetency" style="flex: 1; padding: 14px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Usuń</button>
         </div>
       </div>
     </div>
@@ -269,10 +345,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeesStore } from '../stores/employeesStore.js'
-import { useRolesStore } from '../stores/rolesStore.js'
+import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
+import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js' 
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthStore } from '../stores/authStore.js'
@@ -280,7 +357,8 @@ import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 
 const router = useRouter()
 const employeesStore = useEmployeesStore()
-const rolesStore = useRolesStore()
+const profilesStore = usePermissionProfilesStore()
+const positionsStore = useSchedulePositionsStore() 
 const authStore = useAuthStore()
 const employeeAuthStore = useEmployeeAuthStore()
 
@@ -288,11 +366,13 @@ const scrollAreaRef = ref(null)
 let savedScrollPosition = 0
 
 onMounted(async () => {
-  await rolesStore.fetchRoles() 
+  await profilesStore.fetchProfiles() 
+  await positionsStore.fetchPositions() 
   await employeesStore.fetchEmployees()
 })
 
 const isFormOpen = ref(false)
+const showCompetencyList = ref(false) 
 const editingEmpId = ref(null)
 const isSaving = ref(false)
 const searchQuery = ref('') 
@@ -301,8 +381,8 @@ const searchPlaceholder = ref('Szukaj pracownika...')
 const form = ref({
   imie: '',
   nazwisko: '',
-  roleId: '',
-  additionalRoles: [],
+  permissionProfileId: '',
+  kompetencje: {}, 
   pin: '',
   stawka: '',
   telefon: '',
@@ -313,56 +393,29 @@ const form = ref({
 const isFormValid = computed(() => {
   return form.value.imie.trim().length > 0 && 
          form.value.nazwisko.trim().length > 0 && 
-         form.value.roleId !== '' && 
+         form.value.permissionProfileId !== '' && 
          form.value.pin.trim().length >= 4
 })
 
-
-
-// --- PANCERNE ZABEZPIECZENIE: Dynamiczne filtrowanie stanowisk ---
-const dostepneStanowiska = computed(() => {
-  // 1. Główny Szef widzi wszystko
+const dostepneProfile = computed(() => {
   if (!employeeAuthStore.currentEmployee) {
-    return rolesStore.roles
+    return profilesStore.profiles
   }
-
-  // 2. Pracownik widzi tylko to, do czego sam ma prawo
-  return rolesStore.roles.filter(rola => {
-    const uprawnienia = rola.uprawnienia || {}
-    
-    // PĘTLA: Sprawdzamy KAŻDY klucz uprawnień przypisany do tej roli
+  return profilesStore.profiles.filter(profil => {
+    const uprawnienia = profil.uprawnienia || {}
     for (const klucz in uprawnienia) {
-      // Jeśli sprawdzana rola daje do czegoś dostęp (jest true)...
       if (uprawnienia[klucz] === true) {
-        // ...a nasz Manager tego SAMEGO uprawnienia NIE POSIADA
         if (!employeeAuthStore.hasPermission(klucz)) {
-          console.warn(`[Strażnik] Ukrywam rolę "${rola.nazwa}". Manager nie posiada klucza: ${klucz}`)
-          return false // Od razu wyrzucamy rolę z listy!
+          return false 
         }
       }
     }
-
-    return true // Pokazujemy rolę tylko, jeśli Manager "zdał test" wszystkich jej uprawnień
+    return true 
   })
-})
-
-
-
-
-const availableAdditionalRoles = computed(() => {
-  // Używamy bezpiecznej listy 'dostepneStanowiska', a nie całej bazy!
-  return dostepneStanowiska.value.filter(r => r.id !== form.value.roleId)
-})
-
-watch(() => form.value.roleId, (newMainRole) => {
-  if (form.value.additionalRoles.includes(newMainRole)) {
-    form.value.additionalRoles = form.value.additionalRoles.filter(id => id !== newMainRole)
-  }
 })
 
 const filteredAndSortedEmployees = computed(() => {
   let list = employeesStore.employees || []
-
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase()
     list = list.filter(emp => {
@@ -370,7 +423,6 @@ const filteredAndSortedEmployees = computed(() => {
       return fullname.includes(q)
     })
   }
-
   return list.sort((a, b) => {
     const nazwiskoA = (a.nazwisko || '').toLowerCase()
     const nazwiskoB = (b.nazwisko || '').toLowerCase()
@@ -388,18 +440,40 @@ const handleBack = () => {
   }
 }
 
+// Przełączanie kompetencji (Checkbox z listy)
+const toggleCompetency = (positionId) => {
+  if (form.value.kompetencje[positionId]) {
+    delete form.value.kompetencje[positionId]
+  } else {
+    form.value.kompetencje[positionId] = 5
+  }
+}
+
+// Ręczna zmiana gwiazdek
+const setStar = (positionId, stars) => {
+  form.value.kompetencje[positionId] = stars
+}
+
+// Pobieranie nazwy dla wyświetlania
+const getPositionName = (posId) => {
+  const pos = positionsStore.positions.find(p => p.id === posId)
+  return pos ? pos.nazwa : 'Nieznane stanowisko'
+}
+
 const openForm = (emp = null) => {
   if (scrollAreaRef.value) {
     savedScrollPosition = scrollAreaRef.value.scrollTop
   }
 
+  showCompetencyList.value = false 
+  
   if (emp) {
     editingEmpId.value = emp.id
     form.value = {
       imie: emp.imie || '',
       nazwisko: emp.nazwisko || '',
-      roleId: emp.roleId || '',
-      additionalRoles: emp.additionalRoles || [],
+      permissionProfileId: emp.permissionProfileId || emp.roleId || '',
+      kompetencje: emp.kompetencje ? { ...emp.kompetencje } : {}, 
       pin: emp.pin || '',
       stawka: emp.stawka || '',
       telefon: emp.telefon || '',
@@ -408,7 +482,7 @@ const openForm = (emp = null) => {
     }
   } else {
     editingEmpId.value = null
-    form.value = { imie: '', nazwisko: '', roleId: '', additionalRoles: [], pin: '', stawka: '', telefon: '', email: '', aktywny: true }
+    form.value = { imie: '', nazwisko: '', permissionProfileId: '', kompetencje: {}, pin: '', stawka: '', telefon: '', email: '', aktywny: true }
     generateRandomPin()
   }
   isFormOpen.value = true
@@ -431,49 +505,36 @@ const generateRandomPin = () => {
   form.value.pin = Math.floor(Math.random() * (max - min + 1) + min).toString()
 }
 
-
-
-// Funkcja czyszcząca bazę ze starych kodów tej restauracji
 const cleanupExpiredCodes = async () => {
   try {
-    // MAGIA: Pobieramy ID Szefa LUB ID Restauracji z sesji Managera
     const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
     if (!uid) return;
-
     const codesRef = collection(db, 'pairing_codes');
     const q = query(
       codesRef,
       where('companyUid', '==', uid),
-      where('expiresAt', '<', new Date()) // Szuka kodów, których data wygaśnięcia już minęła
+      where('expiresAt', '<', new Date()) 
     );
-    
     const snapshot = await getDocs(q);
     snapshot.forEach(async (docSnap) => {
-      await deleteDoc(docSnap.ref); // Kasuje wygasły kod
+      await deleteDoc(docSnap.ref); 
     });
   } catch (e) {
     console.error("Błąd podczas sprzątania starych kodów:", e);
   }
 }
 
-// Zaktualizowana funkcja generująca
 const generatePairingCode = async () => {
   if (!editingEmpId.value) {
     alert("Najpierw zapisz pracownika, aby móc sparować urządzenie!");
     return;
   }
-
-  // MAGIA: Pobieramy ID Szefa LUB ID Restauracji z sesji Managera
   const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
   if (!uid) {
     alert("Błąd: Nie udało się zidentyfikować konta restauracji.");
     return;
   }
-
-  // 1. Najpierw sprzątamy stare śmieci!
   await cleanupExpiredCodes();
-
-  // 2. Generujemy nowy kod
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   
   try {
@@ -484,39 +545,33 @@ const generatePairingCode = async () => {
       createdAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + 3 * 60 * 1000) 
     });
-    
     generatedCode.value = code;
     empNameForPairing.value = form.value.imie;
     showPairingModal.value = true;
-
   } catch (e) {
     console.error("Błąd parowania:", e);
     alert('Wystąpił błąd podczas generowania kodu.');
   }
 }
 
-const getRoleName = (roleId) => {
-  const rola = rolesStore.roles.find(r => r.id === roleId)
-  return rola ? rola.nazwa : 'Brak przypisania'
+const getProfileName = (profileId) => {
+  const profil = profilesStore.profiles.find(p => p.id === profileId)
+  return profil ? profil.nazwa : 'Brak przypisania'
 }
 
 const saveEmployee = async () => {
   if (!isFormValid.value || isSaving.value) return
-
   isSaving.value = true
   try {
     const dataToSave = { ...form.value }
-
     if (editingEmpId.value) {
       await employeesStore.updateEmployee(editingEmpId.value, dataToSave)
     } else {
       await employeesStore.addEmployee(dataToSave)
     }
-    
     isFormOpen.value = false
     editingEmpId.value = null
     searchQuery.value = ''
-
     nextTick(() => {
       if (scrollAreaRef.value) {
         scrollAreaRef.value.scrollTop = savedScrollPosition
@@ -554,6 +609,24 @@ const executeDelete = async () => {
     }
   }
 }
+
+// NOWOŚĆ: Logika dla usuwania wybranej kompetencji z modalu
+const showDeleteCompetencyModal = ref(false)
+const competencyToDelete = ref(null)
+
+const confirmDeleteCompetency = (posId) => {
+  competencyToDelete.value = posId
+  showDeleteCompetencyModal.value = true
+}
+
+const executeDeleteCompetency = () => {
+  if (competencyToDelete.value) {
+    delete form.value.kompetencje[competencyToDelete.value]
+    showDeleteCompetencyModal.value = false
+    competencyToDelete.value = null
+  }
+}
+
 </script>
 
 <style scoped>

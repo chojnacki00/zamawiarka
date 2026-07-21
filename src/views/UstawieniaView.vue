@@ -7,14 +7,24 @@
 
     <div class="scroll-area" style="padding: 20px;">
       
-      <!-- Przycisk do zarządzania stanowiskami (Właściciel LUB Manager z uprawnieniem) -->
+      <!-- Przycisk do zarządzania profilami uprawnień (Właściciel LUB Manager z uprawnieniem) -->
       <button 
         v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_roles')"
-        @click="router.push('/stanowiska')" 
+        @click="router.push('/profile-uprawnien')" 
         class="item-card" 
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
       >
-        👥 Zarządzanie Stanowiskami
+        👥 Profile uprawnień
+      </button>
+
+      <!-- NOWOŚĆ: Przycisk do zarządzania stanowiskami na grafiku (Właściciel LUB Manager z uprawnieniem can_manage_roles) -->
+      <button 
+        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_roles')"
+        @click="router.push('/stanowiska-grafik')" 
+        class="item-card" 
+        style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+      >
+        📅 Stanowiska do grafiku
       </button>
 
       <!-- Przycisk Zespół (Właściciel LUB Manager z uprawnieniem) -->
@@ -58,10 +68,10 @@
 <script setup>
 import { ref, inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js' // Dodany import
+import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 
 const router = useRouter()
-const employeeAuthStore = useEmployeeAuthStore() // Inicjalizacja sklepu z uprawnieniami
+const employeeAuthStore = useEmployeeAuthStore()
 const { eksportujBackup, wczytajBackup } = inject('appContext')
 
 const showBackupOptions = ref(false)

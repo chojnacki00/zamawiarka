@@ -1,50 +1,36 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../firebase.js'
 
 export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
-  // Dane aktualnie zalogowanego pracownika
   const currentEmployee = ref(null)
-  
-  // ID Restauracji (właściwie UID właściciela, czyli "worek z danymi")
   const restaurantId = ref(null)
-  
   const isInitialized = ref(false)
 
+  let unsubscribeEmployee = null
 
-  let unsubscribeEmployee = null // Zmienna trzymająca nasz nasłuch (radio)
-
-  // GŁÓWNY STRAŻNIK - KILL SWITCH
   const startEmployeeListener = (restId, empId) => {
-    // Jeśli już czegoś nasłuchujemy, rozłączamy to
     if (unsubscribeEmployee) {
       unsubscribeEmployee()
     }
 
     const empRef = doc(db, 'users', restId, 'employees', empId)
     
-    // Zaczynamy nasłuchiwać na żywo!
     unsubscribeEmployee = onSnapshot(empRef, (docSnap) => {
-      // ZASADA: Brak dokumentu (usunięto) LUB aktywny === false (zablokowano)
       if (!docSnap.exists() || docSnap.data().aktywny === false) {
         console.warn('⚡ KILL SWITCH AKTYWOWANY: Brak dostępu!')
         logout()
-         
       }
     })
   }
 
-
-
-  // 1. Inicjalizacja sesji z pamięci telefonu (odpalana przy starcie aplikacji)
   const initSession = async () => {
     const savedEmpId = localStorage.getItem('gm_emp_id')
     const savedRestId = localStorage.getItem('gm_rest_id')
 
     if (savedEmpId && savedRestId) {
       try {
-        // Sprawdzamy czy pracownik w ogóle istnieje i czy ma status "Aktywny"
         const empRef = doc(db, 'users', savedRestId, 'employees', savedEmpId)
         const empSnap = await getDoc(empRef)
 
@@ -52,25 +38,21 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
           const empData = empSnap.data()
           let uprawnienia = {}
 
-          // Pobieramy uprawnienia stanowiska, jeśli pracownik ma je przypisane
-          if (empData.roleId) {
-            const stanowiskoRef = doc(db, 'users', savedRestId, 'stanowiska', empData.roleId)
-            const stanowiskoSnap = await getDoc(stanowiskoRef)
+          // CZYSTA LOGIKA: Tylko nowe profile uprawnień
+          if (empData.permissionProfileId) {
+            const profileRef = doc(db, 'users', savedRestId, 'permissionProfiles', empData.permissionProfileId)
+            const profileSnap = await getDoc(profileRef)
             
-            if (stanowiskoSnap.exists()) {
-              // Zakładam, że w dokumencie stanowiska flagi są bezpośrednio, lub w obiekcie 'uprawnienia'
-              uprawnienia = stanowiskoSnap.data().uprawnienia || stanowiskoSnap.data()
+            if (profileSnap.exists()) {
+              uprawnienia = profileSnap.data().uprawnienia || profileSnap.data()
             }
           }
 
-          // Wszystko gra - przywracamy sesję w tle (z uprawnieniami)
           currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
           restaurantId.value = savedRestId
-          // Uruchamiamy nasłuch na zmiany w dokumencie pracownika (Kill Switch)
           startEmployeeListener(savedRestId, savedEmpId)
 
         } else {
-          // Zwolniony, zablokowany lub usunięty - wyrzucamy z aplikacji
           logout()
         }
       } catch (error) {
@@ -80,17 +62,14 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     isInitialized.value = true
   }
 
-  // 2. Logowanie z ekranu PIN (Wymaga sparowanego urządzenia)
   const login = async (restId, pinCode) => {
     try {
-      // 1. Pobieramy ID przypisanego pracownika (zapiszemy je podczas parowania)
       const pairedEmpId = localStorage.getItem('gm_saved_emp_id')
 
       if (!pairedEmpId) {
         throw new Error('Urządzenie nie jest poprawnie sparowane z pracownikiem.')
       }
 
-      // 2. Uderzamy prosto w dokument TEGO konkretnego pracownika (np. Lecha)
       const empRef = doc(db, 'users', restId, 'employees', pairedEmpId)
       const empSnap = await getDoc(empRef)
 
@@ -100,46 +79,42 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
 
       const empData = empSnap.data()
 
-      // 3. Sprawdzamy czy podany PIN zgadza się z PIN-em naszego przypisanego pracownika
       if (String(empData.pin) !== String(pinCode)) {
         throw new Error('Nieprawidłowy PIN dla tego urządzenia.')
       }
 
-      // Kill Switch (Blokada)
       if (empData.aktywny === false) {
         throw new Error('Twoje konto zostało zablokowane przez Managera.')
       }
 
-      // Pobieramy uprawnienia ze stanowiska
       let uprawnienia = {}
-      if (empData.roleId) {
-        const stanowiskoRef = doc(db, 'users', restId, 'stanowiska', empData.roleId)
-        const stanowiskoSnap = await getDoc(stanowiskoRef)
+      
+      // CZYSTA LOGIKA: Tylko nowe profile uprawnień
+      if (empData.permissionProfileId) {
+        const profileRef = doc(db, 'users', restId, 'permissionProfiles', empData.permissionProfileId)
+        const profileSnap = await getDoc(profileRef)
         
-        if (stanowiskoSnap.exists()) {
-          uprawnienia = stanowiskoSnap.data().uprawnienia || stanowiskoSnap.data()
+        if (profileSnap.exists()) {
+          uprawnienia = profileSnap.data().uprawnienia || profileSnap.data()
         }
       }
 
-      // Sukces! Logujemy pracownika z jego uprawnieniami
       currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
       restaurantId.value = restId
 
       localStorage.setItem('gm_emp_id', empSnap.id)
       localStorage.setItem('gm_rest_id', restId)
-      // Uruchamiamy nasłuch na zmiany w dokumencie pracownika (Kill Switch)
       startEmployeeListener(restId, empSnap.id)
 
       return true
     } catch (error) {
-      throw error // Przekazujemy błąd wyżej
+      throw error 
     }
   }
 
-  // 3. Wylogowywanie (Czyszczenie pamięci telefonu)
   const logout = () => {
     if (unsubscribeEmployee) {
-      unsubscribeEmployee() // Rozłączamy nasłuch z bazą
+      unsubscribeEmployee() 
       unsubscribeEmployee = null
     }
     currentEmployee.value = null
@@ -148,18 +123,12 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     localStorage.removeItem('gm_rest_id')
   }
 
-
-  // 4. Sprawdzanie konkretnego uprawnienia
   const hasPermission = (permissionKey) => {
-    // Jeśli nie ma zalogowanego pracownika, to nie ma uprawnień
     if (!currentEmployee.value || !currentEmployee.value.uprawnienia) {
       return false
     }
-    // Sprawdzamy czy dany klucz w obiekcie uprawnień jest ustawiony na true
     return currentEmployee.value.uprawnienia[permissionKey] === true
   }
-
-
 
   return {
     currentEmployee,

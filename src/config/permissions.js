@@ -19,7 +19,7 @@ export const PERMISSIONS_DICTIONARY = [
   {
     module: 'Zarządzanie Aplikacją',
     permissions: [
-      { key: 'can_manage_roles', label: 'Zarządzanie stanowiskami (tworzenie ról)' },
+      { key: 'can_manage_roles', label: 'Zarządzanie uprawnieniami (tworzenie stanowisk)' },
       { key: 'can_manage_employees', label: 'Zarządzanie zespołem (konta i PIN)' }
     ]
   }
