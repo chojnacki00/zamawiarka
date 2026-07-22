@@ -43,6 +43,39 @@
         <div class="ios-menu-subtitle">Twój czas pracy</div>
       </button>
 
+
+
+            <!-- KAFELEK 3: MODELE ZAPOTRZEBOWANIA -->
+      <button
+        v-if="isManagerOrHasPermission"
+        @click="goTo('szablony')"
+        class="ios-menu-tile efekt-kliku"
+      >
+        <div class="ios-menu-icon ios-menu-icon-purple">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="7" y1="8" x2="17" y2="8"></line>
+            <line x1="7" y1="12" x2="17" y2="12"></line>
+            <line x1="7" y1="16" x2="13" y2="16"></line>
+          </svg>
+        </div>
+
+        <div class="ios-menu-title">Modele zapotrzebowania</div>
+        <div class="ios-menu-subtitle">Szablony grafiku</div>
+      </button>
+
+
+
+
+
       <!-- KAFELEK 3: USTAWIENIA (Tylko Manager) -->
       <button 
         v-if="isManagerOrHasPermission" 
@@ -86,9 +119,9 @@ const goBack = () => {
 }
 
 const goTo = (sekcja) => {
-  console.log('Przechodzę do:', sekcja)
-  // Gdy utworzymy te podstrony, podepniemy tu nawigację:
-  // setTimeout(() => { router.push(`/grafik/${sekcja}`) }, 40)
+  setTimeout(() => {
+    router.push(`/grafik/${sekcja}`)
+  }, 40)
 }
 </script>
 
