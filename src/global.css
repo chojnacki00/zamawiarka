@@ -352,6 +352,61 @@ textarea {
 }
 
 
+.app-list-row-with-action {
+  padding: 0;
+  cursor: default;
+  overflow: hidden;
+}
+
+.app-list-row-open {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  border: none;
+  background: transparent;
+  padding: 16px 10px 16px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-list-row-open:active {
+  background: #eff6ff;
+}
+
+.app-list-row-delete {
+  width: 46px;
+  height: 46px;
+  margin-right: 10px;
+  flex-shrink: 0;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #dc2626;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-list-row-delete:active {
+  transform: scale(0.94);
+  background: #fee2e2;
+}
+
+.app-dialog-delete {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.schedule-delete-dialog-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+
 /* =========================
    EDYTOR SZABLONU GRAFIKU
 ========================= */

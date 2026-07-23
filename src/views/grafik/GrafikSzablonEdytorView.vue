@@ -234,9 +234,16 @@
       <button
         class="schedule-save-button"
         type="button"
+        :disabled="scheduleDemandModelsStore.isSaving"
         @click="saveTemplate"
-      >
-        Zapisz szablon
+    >
+        {{
+         scheduleDemandModelsStore.isSaving
+         ? 'Zapisywanie...'
+         : isEditMode
+          ? 'Zapisz zmiany'
+          : 'Zapisz szablon'
+        }}
       </button>
     </div>
 
@@ -337,10 +344,12 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore'
+import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore'
 
 const router = useRouter()
 const route = useRoute()
 const schedulePositionsStore = useSchedulePositionsStore()
+const scheduleDemandModelsStore = useScheduleDemandModelsStore()
 const showTimePickerModal = ref(false)
 const activeTimeTarget = ref(null)
 const selectedHour = ref('00')
@@ -352,6 +361,14 @@ const hours = Array.from(
 )
 
 const minutes = ['00', '15', '30', '45']
+
+const editedModelId = ref(
+  typeof route.params.id === 'string'
+    ? route.params.id
+    : null
+)
+
+const isEditMode = ref(Boolean(editedModelId.value))
 
 const templateName = ref(
   typeof route.query.name === 'string' && route.query.name.trim()
@@ -408,6 +425,33 @@ onMounted(async () => {
   if (schedulePositionsStore.positions.length === 0) {
     await schedulePositionsStore.fetchPositions()
   }
+
+  if (!editedModelId.value) return
+
+  const model = await scheduleDemandModelsStore.fetchModelById(
+    editedModelId.value
+  )
+
+  if (!model) {
+    alert('Nie znaleziono szablonu grafiku.')
+    router.push('/grafik/szablony')
+    return
+  }
+
+  templateName.value = model.name || 'Szablon grafiku'
+
+  days.value.forEach(day => {
+    const savedVacancies = model.days?.[day.key]
+
+    day.vacancies = Array.isArray(savedVacancies)
+      ? savedVacancies.map(vacancy => ({
+          id: vacancy.id || crypto.randomUUID(),
+          positionId: vacancy.positionId || '',
+          from: vacancy.from || '00:00',
+          to: vacancy.to || '00:00'
+        }))
+      : []
+  })
 })
 
 function toggleDay(dayKey) {
@@ -503,9 +547,25 @@ function getDaySummary(day) {
   return `${count} stanowisk`
 }
 
-function saveTemplate() {
+async function saveTemplate() {
+  if (scheduleDemandModelsStore.isSaving) return
+
+  const hasIncompleteVacancy = days.value.some(day =>
+    day.vacancies.some(vacancy =>
+      !vacancy.positionId ||
+      !vacancy.from ||
+      !vacancy.to
+    )
+  )
+
+  if (hasIncompleteVacancy) {
+    alert('Uzupełnij stanowisko oraz godziny we wszystkich pozycjach.')
+    return
+  }
+
   const templateData = {
-    name: templateName.value,
+    name: templateName.value.trim(),
+    active: true,
     days: Object.fromEntries(
       days.value.map(day => [
         day.key,
@@ -519,6 +579,23 @@ function saveTemplate() {
     )
   }
 
-  console.log('Szablon do zapisania:', templateData)
+  try {
+    if (isEditMode.value && editedModelId.value) {
+      await scheduleDemandModelsStore.updateModel(
+        editedModelId.value,
+        templateData
+      )
+    } else {
+      await scheduleDemandModelsStore.addModel(templateData)
+    }
+
+    router.push('/grafik/szablony')
+  } catch (error) {
+    alert(
+      isEditMode.value
+        ? 'Nie udało się zapisać zmian w szablonie.'
+        : 'Nie udało się zapisać szablonu grafiku.'
+    )
+  }
 }
 </script>

@@ -16,10 +16,17 @@
     </div>
 
     <div class="scroll-area">
-      <div
-        v-if="models.length === 0"
-        class="empty-state"
-      >
+  <div
+    v-if="scheduleDemandModelsStore.isLoading"
+    class="schedule-loading"
+  >
+    Pobieranie szablonów...
+  </div>
+
+  <div
+    v-else-if="models.length === 0"
+    class="empty-state"
+  >
         <div class="empty-title">
           Brak modeli zapotrzebowania
         </div>
@@ -33,27 +40,57 @@
         v-else
         style="display:flex; flex-direction:column; gap:12px;"
       >
-        <button
-          v-for="model in models"
-          :key="model.id"
-          class="app-list-row"
-          type="button"
-          @click="openModel(model.id)"
-        >
-          <div class="app-list-row-main">
-            <div class="app-list-row-title">
-              {{ model.name }}
-            </div>
+        <div
+  v-for="model in models"
+  :key="model.id"
+  class="app-list-row app-list-row-with-action"
+>
+  <button
+    class="app-list-row-open"
+    type="button"
+    @click="openModel(model.id)"
+  >
+    <div class="app-list-row-main">
+      <div class="app-list-row-title">
+        {{ model.name }}
+      </div>
 
-            <div class="app-list-row-subtitle">
-              7 dni • {{ model.vacanciesCount }} wakatów
-            </div>
-          </div>
+      <div class="app-list-row-subtitle">
+        {{ getVacanciesLabel(model) }}
+      </div>
+    </div>
 
-          <div class="app-list-row-arrow">
-            ›
-          </div>
-        </button>
+    <div class="app-list-row-arrow">
+      ›
+    </div>
+  </button>
+
+  <button
+    class="app-list-row-delete"
+    type="button"
+    title="Usuń szablon"
+    aria-label="Usuń szablon"
+    @click.stop="openDeleteModal(model)"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4h6v2" />
+    </svg>
+  </button>
+</div>
       </div>
     </div>
 
@@ -193,24 +230,155 @@
 
 
 
+<div
+  v-if="showDeleteModal"
+  class="app-dialog-overlay"
+  @click.self="closeDeleteModal"
+>
+  <div class="app-dialog-card">
+    <div class="app-dialog-icon schedule-delete-dialog-icon">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+        <path d="M9 6V4h6v2" />
+      </svg>
+    </div>
+
+    <div class="app-dialog-title">
+      Usuń szablon?
+    </div>
+
+    <div class="app-dialog-message">
+      Czy na pewno chcesz usunąć szablon
+      „{{ modelToDelete?.name }}”?
+
+      Tej operacji nie można cofnąć.
+    </div>
+
+    <div class="app-dialog-actions">
+      <button
+        class="app-dialog-button app-dialog-cancel"
+        type="button"
+        :disabled="scheduleDemandModelsStore.isSaving"
+        @click="closeDeleteModal"
+      >
+        Anuluj
+      </button>
+
+      <button
+        class="app-dialog-button app-dialog-delete"
+        type="button"
+        :disabled="scheduleDemandModelsStore.isSaving"
+        @click="confirmDeleteModel"
+      >
+        {{
+          scheduleDemandModelsStore.isSaving
+            ? 'Usuwanie...'
+            : 'Usuń'
+        }}
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
   </main>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
+import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore'
 
 const router = useRouter()
+const scheduleDemandModelsStore = useScheduleDemandModelsStore()
+const { models } = storeToRefs(scheduleDemandModelsStore)
 
 const showCreateModal = ref(false)
 
 const showNameModal = ref(false)
 const newTemplateName = ref('')
+const showDeleteModal = ref(false)
+const modelToDelete = ref(null)
 
-const models = ref([])
+
+onMounted(async () => {
+  await scheduleDemandModelsStore.fetchModels()
+})
+
+
+function countModelVacancies(model) {
+  if (!model?.days) return 0
+
+  return Object.values(model.days).reduce((total, vacancies) => {
+    return total + (Array.isArray(vacancies) ? vacancies.length : 0)
+  }, 0)
+}
+
+function getVacanciesLabel(model) {
+  const count = countModelVacancies(model)
+
+  if (count === 0) return 'Brak dodanych wakatów'
+  if (count === 1) return '1 wakat'
+  if (count >= 2 && count <= 4) return `${count} wakaty`
+
+  return `${count} wakatów`
+}
+
+
 
 function openModel(modelId) {
-  console.log('Otwórz model:', modelId)
+  router.push({
+    name: 'GrafikSzablonEdycja',
+    params: {
+      id: modelId
+    }
+  })
+}
+
+function openDeleteModal(model) {
+  modelToDelete.value = model
+  showDeleteModal.value = true
+}
+
+function closeDeleteModal() {
+  if (scheduleDemandModelsStore.isSaving) return
+
+  showDeleteModal.value = false
+  modelToDelete.value = null
+}
+
+async function confirmDeleteModel() {
+  if (
+    !modelToDelete.value ||
+    scheduleDemandModelsStore.isSaving
+  ) {
+    return
+  }
+
+  try {
+    await scheduleDemandModelsStore.deleteModel(
+      modelToDelete.value.id
+    )
+
+    closeDeleteModal()
+  } catch (error) {
+    alert('Nie udało się usunąć szablonu grafiku.')
+  }
 }
 
 function createFromScratch() {
