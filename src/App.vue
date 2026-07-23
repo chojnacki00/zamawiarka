@@ -1542,8 +1542,13 @@ const eksportujBackup = async () => {
       }
     }
 
-    // 2. Pobieramy pozostałe kolekcje - Zapis kolekcji 
-    const collectionsToFetch = ['towary', 'cartItems', 'menuItems'];
+    // 2. Pobieramy pozostałe kolekcje - Zapis kolekcji zapis do kopii zapasowej
+    const collectionsToFetch = [
+  'towary',
+  'cartItems',
+  'menuItems',
+  'scheduleDemandModels'
+];
     for (const colName of collectionsToFetch) {
       const colRef = collection(db, 'users', user.uid, colName);
       const snapshot = await getDocs(colRef);
