@@ -5,7 +5,7 @@
         class="zamawiarka-menu-back"
         type="button"
         title="Wróć"
-        @click="router.push('/grafik/szablony')"
+        @click="handleBack"
       >
         ←
       </button>
@@ -17,9 +17,13 @@
 
     <div class="scroll-area">
       <div class="schedule-template-header">
-        <div class="schedule-template-name">
-          {{ templateName }}
-        </div>
+        <input
+         v-model="templateName"
+         type="text"
+         class="schedule-template-name-input"
+         placeholder="Nazwa szablonu"
+          maxlength="60"
+          />
 
         <div class="schedule-template-hint">
           Ustaw zapotrzebowanie na stanowiska dla każdego dnia tygodnia
@@ -67,9 +71,15 @@
                 {{ day.label }}
               </div>
 
+              <div class="schedule-day-summary-row">
               <div class="schedule-day-summary">
-                {{ getDaySummary(day) }}
+              {{ getDaySummary(day) }}
               </div>
+
+  <div class="schedule-day-hours">
+    {{ getDayTotalTime(day) }}
+  </div>
+</div>
             </div>
 
             <div
@@ -249,72 +259,76 @@
 
 
     <div
-  v-if="showTimePickerModal"
-  class="app-dialog-overlay"
-  @click.self="closeTimePicker"
->
-  <div class="app-dialog-card schedule-time-dialog">
-    <div class="app-dialog-icon">
+      v-if="showTimePickerModal"
+      class="app-dialog-overlay"
+      @click.self="closeTimePicker"
+      >
+       <div class="app-dialog-card schedule-time-dialog">
+      <div class="app-dialog-icon">
       🕒
-    </div>
+      </div>
 
-    <div class="app-dialog-title">
+      <div class="app-dialog-title">
       Wybierz godzinę
-    </div>
+      </div>
 
-    <div class="app-dialog-message">
+      <div class="app-dialog-message">
       Ustaw godzinę i minuty.
+      </div>
+
+      <div class="schedule-time-picker-grid">
+  <div class="schedule-time-picker-column">
+    <div class="schedule-time-picker-label">
+      Godzina
     </div>
 
-    <div class="schedule-time-picker-grid">
-      <div class="schedule-time-picker-column">
-        <label class="schedule-time-picker-label">
-          Godzina
-        </label>
+    <div class="schedule-time-wheel">
+      <button
+        v-for="hour in hours"
+        :key="hour"
+        type="button"
+        class="schedule-time-wheel-option"
+        :class="{
+          'schedule-time-wheel-option-active': selectedHour === hour
+        }"
+        @click="selectedHour = hour"
+      >
+        {{ hour }}
+      </button>
+    </div>
+  </div>
 
-        <select
-          v-model="selectedHour"
-          class="schedule-time-picker-select"
-        >
-          <option
-            v-for="hour in hours"
-            :key="hour"
-            :value="hour"
-          >
-            {{ hour }}
-          </option>
-        </select>
-      </div>
+  <div class="schedule-time-picker-separator">
+    :
+  </div>
 
-      <div class="schedule-time-picker-separator">
-        :
-      </div>
-
-      <div class="schedule-time-picker-column">
-        <label class="schedule-time-picker-label">
-          Minuty
-        </label>
-
-        <select
-          v-model="selectedMinute"
-          class="schedule-time-picker-select"
-        >
-          <option
-            v-for="minute in minutes"
-            :key="minute"
-            :value="minute"
-          >
-            {{ minute }}
-          </option>
-        </select>
-      </div>
+  <div class="schedule-time-picker-column">
+    <div class="schedule-time-picker-label">
+      Minuty
     </div>
 
-    <div class="schedule-time-picker-preview">
+    <div class="schedule-time-wheel">
+      <button
+        v-for="minute in minutes"
+        :key="minute"
+        type="button"
+        class="schedule-time-wheel-option"
+        :class="{
+          'schedule-time-wheel-option-active': selectedMinute === minute
+        }"
+        @click="selectedMinute = minute"
+      >
+        {{ minute }}
+      </button>
+    </div>
+  </div>
+</div>
+
+     <div class="schedule-time-picker-preview">
       {{ selectedHour }}:{{ selectedMinute }}
-    </div>
+      </div>
 
-    <div class="app-dialog-actions">
+       <div class="app-dialog-actions">
       <button
         class="app-dialog-button app-dialog-cancel"
         type="button"
@@ -335,13 +349,84 @@
 </div>
 
 
+<div
+  v-if="showUnsavedChangesModal"
+  class="app-dialog-overlay"
+  @click.self="closeUnsavedChangesModal"
+>
+  <div class="app-dialog-card">
+    <div class="app-dialog-icon schedule-unsaved-dialog-icon">
+      !
+    </div>
+
+    <div class="app-dialog-title">
+      Niezapisane zmiany
+    </div>
+
+    <div class="app-dialog-message">
+      Masz niezapisane zmiany w szablonie.
+
+      Czy na pewno chcesz wyjść bez zapisywania?
+    </div>
+
+    <div class="app-dialog-actions">
+      <button
+        class="app-dialog-button app-dialog-cancel"
+        type="button"
+        @click="closeUnsavedChangesModal"
+      >
+        Zostań
+      </button>
+
+      <button
+        class="app-dialog-button app-dialog-delete"
+        type="button"
+        @click="leaveWithoutSaving"
+      >
+        Wyjdź bez zapisywania
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+<div
+  v-if="showValidationModal"
+  class="app-dialog-overlay"
+  @click.self="closeValidationModal"
+>
+  <div class="app-dialog-card">
+    <div class="app-dialog-icon schedule-validation-dialog-icon">
+      !
+    </div>
+
+    <div class="app-dialog-title">
+      Uzupełnij dane
+    </div>
+
+    <div class="app-dialog-message">
+    W każdej dodanej pozycji wybierz stanowisko oraz ustaw różne godziny rozpoczęcia i zakończenia.
+    </div>
+
+    <div class="app-dialog-actions">
+      <button
+        class="app-dialog-button app-dialog-ok"
+        type="button"
+        @click="closeValidationModal"
+      >
+        Rozumiem
+      </button>
+    </div>
+  </div>
+</div>
 
 
   </main>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore'
@@ -354,6 +439,10 @@ const showTimePickerModal = ref(false)
 const activeTimeTarget = ref(null)
 const selectedHour = ref('00')
 const selectedMinute = ref('00')
+const hasUnsavedChanges = ref(false)
+const isInitialDataLoaded = ref(false)
+const showUnsavedChangesModal = ref(false)
+const showValidationModal = ref(false)
 
 const hours = Array.from(
   { length: 24 },
@@ -421,12 +510,29 @@ const days = ref([
   }
 ])
 
+watch(
+  [templateName, days],
+  () => {
+    if (!isInitialDataLoaded.value) return
+
+    hasUnsavedChanges.value = true
+  },
+  {
+    deep: true
+  }
+)
+
 onMounted(async () => {
   if (schedulePositionsStore.positions.length === 0) {
     await schedulePositionsStore.fetchPositions()
   }
 
-  if (!editedModelId.value) return
+  if (!editedModelId.value) {
+  await nextTick()
+  isInitialDataLoaded.value = true
+  hasUnsavedChanges.value = false
+  return
+}
 
   const model = await scheduleDemandModelsStore.fetchModelById(
     editedModelId.value
@@ -452,7 +558,38 @@ onMounted(async () => {
         }))
       : []
   })
+  await nextTick()
+isInitialDataLoaded.value = true
+hasUnsavedChanges.value = false
 })
+
+
+function handleBack() {
+  if (!hasUnsavedChanges.value) {
+    router.push('/grafik/szablony')
+    return
+  }
+
+  showUnsavedChangesModal.value = true
+}
+
+function closeUnsavedChangesModal() {
+  showUnsavedChangesModal.value = false
+}
+
+function leaveWithoutSaving() {
+  showUnsavedChangesModal.value = false
+  hasUnsavedChanges.value = false
+
+  router.push('/grafik/szablony')
+}
+
+function closeValidationModal() {
+  showValidationModal.value = false
+}
+
+
+
 
 function toggleDay(dayKey) {
   const selectedDay = days.value.find(item => item.key === dayKey)
@@ -467,6 +604,8 @@ function toggleDay(dayKey) {
 
   selectedDay.isOpen = shouldOpen
 }
+
+
 
 function addVacancy(dayKey) {
   const day = days.value.find(item => item.key === dayKey)
@@ -529,6 +668,62 @@ function removeVacancy(dayKey, vacancyId) {
   )
 }
 
+
+function calculateVacancyMinutes(vacancy) {
+  if (
+    !vacancy?.from ||
+    !vacancy?.to ||
+    vacancy.from === vacancy.to
+  ) {
+    return 0
+  }
+
+  const [fromHour, fromMinute] =
+    vacancy.from.split(':').map(Number)
+
+  const [toHour, toMinute] =
+    vacancy.to.split(':').map(Number)
+
+  const startMinutes =
+    fromHour * 60 + fromMinute
+
+  let endMinutes =
+    toHour * 60 + toMinute
+
+  if (endMinutes < startMinutes) {
+    endMinutes += 24 * 60
+  }
+
+  return endMinutes - startMinutes
+}
+
+function getDayTotalTime(day) {
+  const totalMinutes = day.vacancies.reduce(
+    (total, vacancy) =>
+      total + calculateVacancyMinutes(vacancy),
+    0
+  )
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours === 0 && minutes === 0) {
+    return '0 godz.'
+  }
+
+  if (minutes === 0) {
+    return `${hours} godz.`
+  }
+
+  if (hours === 0) {
+    return `${minutes} min`
+  }
+
+  return `${hours} godz. ${minutes} min`
+}
+
+
+
 function getDaySummary(day) {
   const count = day.vacancies.length
 
@@ -550,21 +745,29 @@ function getDaySummary(day) {
 async function saveTemplate() {
   if (scheduleDemandModelsStore.isSaving) return
 
-  const hasIncompleteVacancy = days.value.some(day =>
-    day.vacancies.some(vacancy =>
-      !vacancy.positionId ||
-      !vacancy.from ||
-      !vacancy.to
-    )
-  )
+    const trimmedTemplateName = templateName.value.trim()
 
-  if (hasIncompleteVacancy) {
-    alert('Uzupełnij stanowisko oraz godziny we wszystkich pozycjach.')
+  if (!trimmedTemplateName) {
+    alert('Wpisz nazwę szablonu.')
     return
   }
 
+  const hasInvalidVacancy = days.value.some(day =>
+  day.vacancies.some(vacancy =>
+    !vacancy.positionId ||
+    !vacancy.from ||
+    !vacancy.to ||
+    vacancy.from === vacancy.to
+  )
+)
+
+if (hasInvalidVacancy) {
+  showValidationModal.value = true
+  return
+}
+
   const templateData = {
-    name: templateName.value.trim(),
+    name: trimmedTemplateName,
     active: true,
     days: Object.fromEntries(
       days.value.map(day => [

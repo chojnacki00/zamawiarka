@@ -55,9 +55,15 @@
         {{ model.name }}
       </div>
 
-      <div class="app-list-row-subtitle">
-        {{ getVacanciesLabel(model) }}
-      </div>
+      <div class="schedule-model-meta-row">
+  <div class="app-list-row-subtitle">
+    {{ getVacanciesLabel(model) }}
+  </div>
+
+  <div class="schedule-model-total-hours">
+    {{ getModelTotalTime(model) }}
+  </div>
+</div>
     </div>
 
     <div class="app-list-row-arrow">
@@ -174,6 +180,66 @@
         </div>
       </div>
     </div>
+
+
+
+    <div
+  v-if="showCopyModal"
+  class="app-dialog-overlay"
+  @click.self="closeCopyModal"
+>
+  <div class="app-dialog-card grafik-create-dialog">
+    <div class="app-dialog-icon">
+      📋
+    </div>
+
+    <div class="app-dialog-title">
+      Wybierz szablon
+    </div>
+
+    <div class="app-dialog-message">
+      Wskaż szablon, który chcesz powielić.
+    </div>
+
+    <div class="grafik-create-options">
+      <button
+        v-for="model in models"
+        :key="model.id"
+        class="app-list-row"
+        type="button"
+        @click="selectModelToCopy(model)"
+      >
+        <div class="app-list-row-main">
+          <div class="app-list-row-title">
+            {{ model.name }}
+          </div>
+
+          <div class="app-list-row-subtitle">
+            {{ getVacanciesLabel(model) }}
+          </div>
+        </div>
+
+        <div class="app-list-row-arrow">
+          ›
+        </div>
+      </button>
+    </div>
+
+    <div class="app-dialog-actions grafik-create-actions">
+      <button
+        class="app-dialog-button app-dialog-cancel"
+        type="button"
+        @click="closeCopyModal"
+      >
+        Anuluj
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
 
 
 
@@ -312,6 +378,10 @@ const showCreateModal = ref(false)
 
 const showNameModal = ref(false)
 const newTemplateName = ref('')
+
+const showCopyModal = ref(false)
+const selectedModelToCopy = ref(null)
+
 const showDeleteModal = ref(false)
 const modelToDelete = ref(null)
 
@@ -319,6 +389,70 @@ const modelToDelete = ref(null)
 onMounted(async () => {
   await scheduleDemandModelsStore.fetchModels()
 })
+
+
+
+function calculateVacancyMinutes(vacancy) {
+  if (
+    !vacancy?.from ||
+    !vacancy?.to ||
+    vacancy.from === vacancy.to
+  ) {
+    return 0
+  }
+
+  const [fromHour, fromMinute] =
+    vacancy.from.split(':').map(Number)
+
+  const [toHour, toMinute] =
+    vacancy.to.split(':').map(Number)
+
+  const startMinutes =
+    fromHour * 60 + fromMinute
+
+  let endMinutes =
+    toHour * 60 + toMinute
+
+  if (endMinutes < startMinutes) {
+    endMinutes += 24 * 60
+  }
+
+  return endMinutes - startMinutes
+}
+
+function getModelTotalTime(model) {
+  if (!model?.days) return '0 godz.'
+
+  const totalMinutes = Object.values(model.days)
+    .flatMap(vacancies =>
+      Array.isArray(vacancies) ? vacancies : []
+    )
+    .reduce(
+      (total, vacancy) =>
+        total + calculateVacancyMinutes(vacancy),
+      0
+    )
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours === 0 && minutes === 0) {
+    return '0 godz.'
+  }
+
+  if (minutes === 0) {
+    return `${hours} godz.`
+  }
+
+  if (hours === 0) {
+    return `${minutes} min`
+  }
+
+  return `${hours} godz. ${minutes} min`
+}
+
+
+
 
 
 function countModelVacancies(model) {
@@ -389,11 +523,25 @@ function createFromScratch() {
 
 function copyExisting() {
   showCreateModal.value = false
-  console.log('Skopiuj istniejący model')
+  selectedModelToCopy.value = null
+  showCopyModal.value = true
 }
 
 function closeCreateModal() {
   showCreateModal.value = false
+}
+
+function closeCopyModal() {
+  showCopyModal.value = false
+  selectedModelToCopy.value = null
+}
+
+function selectModelToCopy(model) {
+  selectedModelToCopy.value = model
+  showCopyModal.value = false
+
+  newTemplateName.value = `${model.name} — kopia`
+  showNameModal.value = true
 }
 
 
@@ -402,19 +550,71 @@ function closeNameModal() {
   newTemplateName.value = ''
 }
 
-function confirmTemplateName() {
+async function confirmTemplateName() {
   const name = newTemplateName.value.trim()
 
-  if (!name) return
+  if (!name || scheduleDemandModelsStore.isSaving) return
 
-  showNameModal.value = false
+  if (!selectedModelToCopy.value) {
+    showNameModal.value = false
 
-  router.push({
-    name: 'GrafikSzablonNowy',
-    query: {
-      name
+    router.push({
+      name: 'GrafikSzablonNowy',
+      query: {
+        name
+      }
+    })
+
+    return
+  }
+
+  try {
+    const originalModel =
+      await scheduleDemandModelsStore.fetchModelById(
+        selectedModelToCopy.value.id
+      )
+
+    if (!originalModel) {
+      alert('Nie udało się pobrać wybranego szablonu.')
+      return
     }
-  })
+
+    const copiedDays = {}
+
+    Object.entries(originalModel.days || {}).forEach(
+      ([dayKey, vacancies]) => {
+        copiedDays[dayKey] = Array.isArray(vacancies)
+          ? vacancies.map((vacancy) => ({
+              ...vacancy,
+              id: crypto.randomUUID()
+            }))
+          : []
+      }
+    )
+
+    const copiedModel =
+      await scheduleDemandModelsStore.addModel({
+        name,
+        active: true,
+        days: copiedDays
+      })
+
+    if (!copiedModel) return
+
+    showNameModal.value = false
+    selectedModelToCopy.value = null
+    newTemplateName.value = ''
+
+    router.push({
+      name: 'GrafikSzablonEdycja',
+      params: {
+        id: copiedModel.id
+      }
+    })
+  } catch (error) {
+    console.error('Błąd powielania szablonu:', error)
+    alert('Nie udało się powielić szablonu grafiku.')
+  }
 }
 
 
