@@ -24,6 +24,11 @@ const routes = [
   name: 'GrafikKalendarzDyspozycji',
   component: () => import('./views/grafik/GrafikKalendarzDyspozycjiView.vue')
  },
+ {
+  path: '/grafik/dyspozycyjnosc/okresy',
+  name: 'GrafikOkresyDyspozycji',
+  component: () => import('./views/grafik/GrafikOkresyDyspozycjiView.vue')
+  },
   { path: '/grafik/szablony', name: 'GrafikSzablony', component: () => import('./views/grafik/GrafikSzablonyView.vue') },
   { path: '/grafik/szablony/nowy', name: 'GrafikSzablonNowy', component: () => import('./views/grafik/GrafikSzablonEdytorView.vue') },
   { path: '/grafik/szablony/:id', name: 'GrafikSzablonEdycja', component: () => import('./views/grafik/GrafikSzablonEdytorView.vue') }
