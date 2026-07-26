@@ -18,6 +18,12 @@ const routes = [
   { path: '/logowanie', name: 'LogowaniePIN', component: () => import('./views/PinLoginView.vue') },
   { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
   { path: '/grafik', name: 'GrafikHome', component: () => import('./views/grafik/GrafikHomeView.vue') },
+  { path: '/grafik/dyspozycyjnosc', name: 'GrafikDyspozycyjnosc', component: () => import('./views/grafik/GrafikDyspozycyjnoscView.vue') },
+  {
+  path: '/grafik/dyspozycyjnosc/kalendarz',
+  name: 'GrafikKalendarzDyspozycji',
+  component: () => import('./views/grafik/GrafikKalendarzDyspozycjiView.vue')
+ },
   { path: '/grafik/szablony', name: 'GrafikSzablony', component: () => import('./views/grafik/GrafikSzablonyView.vue') },
   { path: '/grafik/szablony/nowy', name: 'GrafikSzablonNowy', component: () => import('./views/grafik/GrafikSzablonEdytorView.vue') },
   { path: '/grafik/szablony/:id', name: 'GrafikSzablonEdycja', component: () => import('./views/grafik/GrafikSzablonEdytorView.vue') }

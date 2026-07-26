@@ -17,14 +17,14 @@
         👥 Profile uprawnień
       </button>
 
-      <!-- NOWOŚĆ: Przycisk do zarządzania stanowiskami na grafiku (Właściciel LUB Manager z uprawnieniem can_manage_roles) -->
+      <!-- Przycisk do zarządzania stanowiskami na grafiku (Właściciel LUB Manager z uprawnieniem can_manage_roles) -->
       <button 
         v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_roles')"
         @click="router.push('/stanowiska-grafik')" 
         class="item-card" 
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
       >
-        📅 Stanowiska do grafiku
+        📅 Stanowiska
       </button>
 
       <!-- Przycisk Zespół (Właściciel LUB Manager z uprawnieniem) -->

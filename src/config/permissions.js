@@ -17,6 +17,20 @@ export const PERMISSIONS_DICTIONARY = [
     ]
   },
   {
+  module: 'Grafik',
+  permissions: [
+    {
+      key: 'can_view_schedule',
+      label: 'Dostęp do grafiku i własnej dyspozycyjności'
+    },
+    {
+      key: 'can_manage_schedule',
+      label: 'Zarządzanie grafikiem i dyspozycyjnością pracowników'
+    }
+  ]
+ },
+
+  {
     module: 'Zarządzanie Aplikacją',
     permissions: [
       { key: 'can_manage_roles', label: 'Zarządzanie uprawnieniami (tworzenie stanowisk)' },
