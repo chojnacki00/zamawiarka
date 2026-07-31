@@ -1635,25 +1635,8 @@ const saveTeamAvailability = async () => {
     const currentAvailability =
       employee.availability || null
 
-    let employeeEntry =
-      currentAvailability?.employeeEntry || null
-
-    if (
-      !employeeEntry &&
-      currentAvailability &&
-      !currentAvailability.managerEntry
-    ) {
-      employeeEntry = {
-        ...createAvailabilitySnapshot(
-          currentAvailability
-        ),
-        enteredById: employee.id,
-        enteredByName:
-          `${employee.imie || ''} ${employee.nazwisko || ''}`.trim(),
-        enteredAt:
-          currentAvailability.updatedAt || serverTimestamp()
-      }
-    }
+    const employeeEntry =
+  currentAvailability?.employeeEntry || null
 
     const managerEntry = {
       type: teamEditAvailabilityType.value,
@@ -1896,25 +1879,8 @@ if (!hasChanges) {
 
 changedDatesCount += 1
 
-      let employeeEntry =
-        currentAvailability?.employeeEntry || null
-
-      if (
-        !employeeEntry &&
-        currentAvailability &&
-        !currentAvailability.managerEntry
-      ) {
-        employeeEntry = {
-          ...createAvailabilitySnapshot(
-            currentAvailability
-          ),
-          enteredById: employee.id,
-          enteredByName:
-            `${employee.imie || ''} ${employee.nazwisko || ''}`.trim(),
-          enteredAt:
-            currentAvailability.updatedAt || serverTimestamp()
-        }
-      }
+      const employeeEntry =
+  currentAvailability?.employeeEntry || null
 
       const managerEntry = {
         type: selectedAvailabilityType.value,
