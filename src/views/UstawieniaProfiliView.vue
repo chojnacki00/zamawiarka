@@ -75,7 +75,7 @@
       <div v-else>
         <div style="margin-bottom: 25px;">
           <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
-            Nazwa profilu (np. Kelner)
+            Nazwa profilu (np. Kelnerzy)
           </label>
           <input 
             v-model="newProfileName" 

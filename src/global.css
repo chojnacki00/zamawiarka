@@ -2208,3 +2208,599 @@ button {
 .app-dialog-title {
   color: #b91c1c;
 }
+
+
+/* IKONA NOTATKI PRZY DNIU W KALENDARZU */
+
+.schedule-availability-note-marker {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+
+  color: #7c3aed;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+
+  pointer-events: none;
+  opacity: 1;
+  z-index: 2;
+}
+
+
+
+/* LISTA DYSPOZYCYJNOŚCI ZESPOŁU DLA WYBRANEGO DNIA */
+
+.schedule-team-availability-list {
+  margin-top: 14px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schedule-team-availability-row {
+  position: relative;
+
+  padding: 12px 13px;
+
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  background: #f8fafc;
+
+  box-sizing: border-box;
+}
+
+
+
+.schedule-team-employee {
+  min-width: 0;
+}
+
+.schedule-team-employee-name {
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.schedule-team-employee-status {
+  margin-top: 4px;
+
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+
+/* KOLORY STATUSÓW DYSPOZYCYJNOŚCI W WIDOKU ZESPOŁU */
+
+.schedule-team-employee-status.status-full {
+  color: #15803d;
+}
+
+.schedule-team-employee-status.status-partial {
+  color: #2563eb;
+}
+
+.schedule-team-employee-status.status-preferred_off {
+  color: #ca8a04;
+}
+
+.schedule-team-employee-status.status-unavailable {
+  color: #dc2626;
+}
+
+
+/* OZNACZENIE NOTATKI PRZY PRACOWNIKU W WIDOKU ZESPOŁU */
+
+.schedule-team-employee-name-row {
+  min-width: 0;
+}
+
+.schedule-team-note-marker {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+
+  pointer-events: none;
+}
+
+
+
+/* ROZWIJANE SZCZEGÓŁY PRACOWNIKA W WIDOKU ZESPOŁU */
+
+.schedule-team-employee-details {
+  margin-top: 12px;
+  padding: 12px;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+
+  box-shadow:
+    inset 0 0 0 1px rgba(148, 163, 184, 0.08),
+    0 3px 10px rgba(15, 23, 42, 0.05);
+}
+
+.schedule-team-availability-row.expanded {
+  background: #eef4ff;
+  border-color: #93c5fd;
+}
+
+.schedule-team-detail-block + .schedule-team-detail-block {
+  margin-top: 10px;
+}
+
+.schedule-team-detail-label {
+  margin-bottom: 4px;
+
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.schedule-team-detail-text {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+/* PRZYCISK EDYCJI DYSPOZYCJI W WIDOKU ZESPOŁU */
+
+.schedule-team-edit-button {
+  margin-top: 9px;
+  padding: 7px 13px;
+
+  border: 1px solid #007aff;
+  border-radius: 999px;
+  background: #ffffff;
+
+  color: #007aff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.schedule-team-edit-button:active {
+  background: #007aff;
+  color: #ffffff;
+  transform: scale(0.97);
+}
+
+
+/* MODAL EDYCJI DYSPOZYCJI ZESPOŁU */
+
+.schedule-team-edit-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 18px;
+
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.schedule-team-edit-modal {
+  width: min(100%, 460px);
+  max-height: calc(100vh - 36px);
+
+  padding: 18px;
+
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 22px;
+
+  background: rgba(255, 255, 255, 0.96);
+
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.28),
+    0 8px 24px rgba(15, 23, 42, 0.14);
+
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.schedule-team-edit-modal-header {
+  position: relative;
+
+  display: flex;
+  justify-content: center;
+
+  min-height: 58px;
+  padding-right: 42px;
+  padding-left: 42px;
+}
+
+.schedule-team-edit-modal-heading {
+  width: 100%;
+  text-align: center;
+}
+
+.schedule-team-edit-modal-label {
+  margin-bottom: 4px;
+
+  color: #007aff;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.schedule-team-edit-modal-name {
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.schedule-team-edit-modal-date {
+  margin-top: 5px;
+
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.schedule-team-edit-modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  flex: 0 0 auto;
+
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+
+  border: none;
+  border-radius: 50%;
+  background: #eef2f7;
+
+  color: #475569;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.schedule-team-edit-modal-close:active {
+  background: #dbe3ee;
+  transform: scale(0.94);
+}
+
+
+/* OPCJE DYSPOZYCJI W MODALU MANAGERA */
+
+.schedule-team-edit-options {
+  margin-top: 18px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.schedule-team-edit-option {
+  min-height: 48px;
+  padding: 10px 12px;
+
+  border: 1px solid #d7dee8;
+  border-radius: 14px;
+  background: #f8fafc;
+
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.schedule-team-edit-option:active {
+  transform: scale(0.97);
+}
+
+.schedule-team-edit-option.active {
+  border-color: #007aff;
+  background: #eaf3ff;
+  color: #007aff;
+
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08);
+}
+
+
+/* OZNACZENIA NOTATKI I EDYCJI W KALENDARZU */
+
+.schedule-availability-note-marker {
+  right: 4px;
+}
+
+.schedule-availability-edit-marker {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+
+  color: #2563eb;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+
+  pointer-events: none;
+  z-index: 2;
+}
+
+
+/* OZNACZENIA N I E PRZY PRACOWNIKU */
+
+.schedule-team-note-marker {
+  top: 6px;
+  right: 8px;
+}
+
+.schedule-team-edit-marker {
+  position: absolute;
+  top: 22px;
+  right: 8px;
+
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+
+  pointer-events: none;
+  z-index: 2;
+}
+
+
+/* INFORMACJE DODATKOWE O DYSPOZYCJI */
+
+.schedule-availability-additional-info {
+  margin-top: 14px;
+}
+
+.schedule-availability-info-button {
+  width: 100%;
+  min-height: 44px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 9px 12px;
+
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  background: #f8fafc;
+
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.schedule-availability-info-icon {
+  width: 22px;
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+
+  border-radius: 50%;
+  background: #007aff;
+
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  font-family: Georgia, serif;
+}
+
+.schedule-availability-info-content {
+  margin-top: 8px;
+  padding: 11px 12px;
+
+  border: 1px solid #dbe3ee;
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.schedule-availability-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.schedule-availability-info-row strong {
+  color: #334155;
+  font-size: 12px;
+}
+
+.schedule-availability-info-row + .schedule-availability-info-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.schedule-availability-info-row.manager strong,
+.schedule-team-manager-edit-info {
+  color: #2563eb;
+}
+
+.schedule-team-manager-edit-info {
+  margin-top: 5px;
+  font-weight: 700;
+}
+
+
+/* PRZYWRÓCENIE WERSJI PRACOWNIKA */
+
+.schedule-restore-employee-button {
+  width: 100%;
+  min-height: 44px;
+
+  margin-top: 12px;
+  padding: 10px 14px;
+
+  border: 1px solid #007aff;
+  border-radius: 14px;
+  background: #ffffff;
+
+  color: #007aff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease,
+    opacity 0.15s ease;
+}
+
+.schedule-restore-employee-button:active {
+  background: #007aff;
+  color: #ffffff;
+  transform: scale(0.98);
+}
+
+.schedule-restore-employee-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+
+
+.schedule-team-competency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.schedule-team-competency-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.schedule-team-competency-name {
+  flex: 1;
+  min-width: 0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-team-competency-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  color: #d1d5db;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.schedule-team-competency-stars span {
+  color: #d1d5db;
+}
+
+.schedule-team-competency-stars span.active {
+  color: #eab308;
+}
+
+
+
+.schedule-team-position-filter {
+  width: 100%;
+  margin: 14px 0 12px;
+}
+
+.schedule-team-position-filter-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.schedule-team-position-filter-select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 42px 0 14px;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: white;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+}
+
+
+.schedule-employee-newer-entry-warning {
+  display: block;
+  margin-top: 7px;
+  padding: 8px 10px;
+  border: 1px solid #fbbf24;
+  border-radius: 9px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}

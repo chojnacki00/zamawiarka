@@ -157,6 +157,24 @@
   class="schedule-availability-status-dot"
   :class="`status-${getAvailabilityForDay(day).type}`"
 ></span>
+
+
+<span
+  v-if="getAvailabilityForDay(day)?.note?.trim()"
+  class="schedule-availability-note-marker"
+  title="Ten dzień zawiera notatkę"
+>
+  N
+</span>
+
+
+<span
+  v-if="getAvailabilityForDay(day)?.managerEntry"
+  class="schedule-availability-edit-marker"
+  title="Dyspozycja zmieniona przez osobę zarządzającą"
+>
+  E
+</span>
   
 
 
@@ -181,9 +199,295 @@
 
 
 
+<div
+  v-if="selectedViewMode === 'all' && selectedDateKey"
+  class="schedule-selected-day-panel"
+>
+  <div class="schedule-selected-day-label">
+    Dyspozycyjność zespołu
+  </div>
+
+  <div class="schedule-selected-day-date">
+    {{ selectedDateLabel }}
+  </div>
+
+  <div
+  v-if="isLoadingTeamAvailability"
+  class="schedule-selected-day-hint"
+>
+  Wczytywanie dyspozycyjności zespołu...
+</div>
+
 
 <div
-  v-if="selectedDateKey || selectedDateKeys.length > 0"
+  v-if="!isLoadingTeamAvailability"
+  class="schedule-team-position-filter"
+>
+  <label class="schedule-team-position-filter-label">
+    Filtr stanowiska
+  </label>
+
+  <select
+    v-model="selectedPositionFilter"
+    class="schedule-team-position-filter-select"
+  >
+    <option value="">
+      Wszystkie stanowiska
+    </option>
+
+    <option
+      v-for="position in positionsStore.positions"
+      :key="position.id"
+      :value="position.id"
+    >
+      {{ position.nazwa }}
+    </option>
+  </select>
+</div>
+
+
+
+<div
+  v-if="!isLoadingTeamAvailability"
+  class="schedule-team-availability-list"
+>
+  <div
+  v-for="employee in teamAvailabilityForSelectedDay"
+  :key="employee.id"
+  class="schedule-team-availability-row"
+  :class="{
+    expanded: expandedTeamEmployeeId === employee.id
+  }"
+  @click="toggleTeamEmployeeDetails(employee.id)"
+>
+    <div class="schedule-team-employee">
+      <div class="schedule-team-employee-name-row">
+  <div class="schedule-team-employee-name">
+    {{ employee.nazwisko }} {{ employee.imie }}
+  </div>
+
+  <span
+    v-if="employee.availability?.note?.trim()"
+    class="schedule-team-note-marker"
+    title="Pracownik dodał notatkę"
+  >
+    N
+  </span>
+
+  <span
+  v-if="employee.availability?.managerEntry"
+  class="schedule-team-edit-marker"
+  title="Dyspozycja zmieniona przez osobę zarządzającą"
+>
+  E
+</span>
+
+
+</div>
+
+      <div
+  class="schedule-team-employee-status"
+  :class="[
+    !employee.availability
+      ? 'status-full'
+      : `status-${employee.availability.type}`
+  ]"
+>
+  {{
+  !employee.availability ||
+  employee.availability.type === 'full'
+    ? 'Mogę cały dzień'
+    : employee.availability.type === 'partial'
+      ? `Tylko ${employee.availability.timeFrom}–${employee.availability.timeTo}`
+      : employee.availability.type === 'preferred_off'
+        ? 'Prośba o wolne'
+        : 'Nie mogę pracować'
+}}
+</div>
+
+
+
+
+    </div>
+
+
+    <div
+  v-if="expandedTeamEmployeeId === employee.id"
+  class="schedule-team-employee-details"
+  @click.stop
+>
+  <div
+    v-if="employee.availability?.note?.trim()"
+    class="schedule-team-detail-block"
+  >
+    <div class="schedule-team-detail-label">
+      Notatka
+    </div>
+
+    <div class="schedule-team-detail-text">
+      {{ employee.availability.note }}
+    </div>
+  </div>
+
+
+  <button
+  type="button"
+  class="schedule-team-edit-button"
+  @click.stop="openTeamAvailabilityEdit(employee)"
+>
+  Edytuj dyspozycję
+</button>
+
+
+
+  <div class="schedule-team-detail-block">
+  <div class="schedule-team-detail-label">
+    Kompetencje
+  </div>
+
+  <div
+    v-if="
+      employee.kompetencje &&
+      Object.keys(employee.kompetencje).length > 0
+    "
+    class="schedule-team-competency-list"
+  >
+    <div
+      v-for="positionId in Object.keys(employee.kompetencje)"
+      :key="positionId"
+      class="schedule-team-competency-row"
+    >
+      <span class="schedule-team-competency-name">
+        {{ getSchedulePositionName(positionId) }}
+      </span>
+
+      <span
+        class="schedule-team-competency-stars"
+        :title="`${employee.kompetencje[positionId]} z 5`"
+      >
+        <span
+          v-for="star in 5"
+          :key="star"
+          :class="{
+            active: employee.kompetencje[positionId] >= star
+          }"
+        >
+          ★
+        </span>
+      </span>
+    </div>
+  </div>
+
+  <div
+    v-else
+    class="schedule-team-detail-text"
+  >
+    Brak przypisanych kompetencji
+  </div>
+</div>
+
+
+  
+
+
+
+  <div
+  v-if="
+    employee.availability?.employeeEntry ||
+    employee.availability?.managerEntry
+  "
+  class="schedule-team-detail-block"
+>
+  <div class="schedule-team-detail-label">
+    Informacje dodatkowe
+  </div>
+
+  <div
+  v-if="employee.availability?.employeeEntry"
+  class="schedule-team-detail-text"
+>
+  <div>
+    Dyspozycja dodana przez
+    {{ employee.availability.employeeEntry.enteredByName }}
+    dnia
+    {{
+      formatAvailabilityEntryDate(
+        employee.availability.employeeEntry.enteredAt
+      )
+    }}
+  </div>
+
+  <div>
+    Stan:
+    {{
+      formatAvailabilityEntry(
+        employee.availability.employeeEntry
+      )
+    }}
+  </div>
+
+  <div
+  v-if="isEmployeeEntryNewerThanManager(employee.availability)"
+  class="schedule-employee-newer-entry-warning"
+>
+  Pracownik zaktualizował deklarację po decyzji osoby zarządzającej.
+</div>
+
+
+</div>
+
+ <div
+  v-if="employee.availability?.managerEntry"
+  class="schedule-team-detail-text schedule-team-manager-edit-info"
+>
+  Dyspozycja edytowana przez
+  {{ employee.availability.managerEntry.enteredByName }}
+  dnia
+  {{
+    formatAvailabilityEntryDate(
+      employee.availability.managerEntry.enteredAt
+    )
+  }}
+</div>
+
+<button
+  v-if="
+    employee.availability?.employeeEntry &&
+    employee.availability?.managerEntry
+  "
+  type="button"
+  class="schedule-restore-employee-button"
+  :disabled="isSavingTeamAvailability"
+  @click.stop="
+    restoreEmployeeAvailability(
+      employee.id,
+      selectedDateKey,
+      employee.availability.employeeEntry
+    )
+  "
+>
+  Przywróć wersję pracownika i zdejmij blokadę
+</button>
+</div>
+
+  
+
+
+</div>
+
+
+  </div>
+</div>
+</div>
+
+
+
+
+<div
+  v-if="
+    selectedViewMode !== 'all' &&
+    (selectedDateKey || selectedDateKeys.length > 0)
+  "
   class="schedule-selected-day-panel"
 >
   <div class="schedule-selected-day-label">
@@ -333,6 +637,124 @@
   ></textarea>
 </div>
 
+
+<div
+  v-if="
+    selectedAvailabilityRecord?.employeeEntry ||
+    selectedAvailabilityRecord?.managerEntry
+  "
+  class="schedule-availability-additional-info"
+>
+  <button
+    type="button"
+    class="schedule-availability-info-button"
+    @click="showAvailabilityAdditionalInfo = !showAvailabilityAdditionalInfo"
+  >
+    <span class="schedule-availability-info-icon">
+      i
+    </span>
+
+    <span>
+      Informacje dodatkowe
+    </span>
+  </button>
+
+  <div
+    v-if="showAvailabilityAdditionalInfo"
+    class="schedule-availability-info-content"
+  >
+    <div
+  v-if="selectedAvailabilityRecord?.employeeEntry"
+  class="schedule-availability-info-row"
+>
+  <strong>Dyspozycja pracownika</strong>
+
+  <span>
+    Dodana przez
+    {{ selectedAvailabilityRecord.employeeEntry.enteredByName }}
+    dnia
+    {{
+      formatAvailabilityEntryDate(
+        selectedAvailabilityRecord.employeeEntry.enteredAt
+      )
+    }}
+  </span>
+
+  <span>
+    Stan:
+    {{
+      formatAvailabilityEntry(
+        selectedAvailabilityRecord.employeeEntry
+      )
+    }}
+  </span>
+
+
+  <span
+  v-if="
+    isEmployeeEntryNewerThanManager(
+      selectedAvailabilityRecord
+    )
+  "
+  class="schedule-employee-newer-entry-warning"
+>
+  Pracownik zaktualizował deklarację po decyzji osoby zarządzającej.
+</span>
+
+
+</div>
+
+    <div
+      v-if="selectedAvailabilityRecord?.managerEntry"
+      class="schedule-availability-info-row manager"
+    >
+
+
+    
+
+
+      <strong>Dyspozycja nadrzędna</strong>
+
+      <span>
+        Edytowana przez
+        {{ selectedAvailabilityRecord.managerEntry.enteredByName }}
+        dnia
+        {{
+          formatAvailabilityEntryDate(
+            selectedAvailabilityRecord.managerEntry.enteredAt
+          )
+        }}
+      </span>
+    </div>
+
+
+    <button
+  v-if="
+    selectedViewMode === 'employee' &&
+    selectedAvailabilityRecord?.employeeEntry &&
+    selectedAvailabilityRecord?.managerEntry
+  "
+  type="button"
+  class="schedule-restore-employee-button"
+  :disabled="isSavingTeamAvailability"
+  @click="
+    restoreEmployeeAvailability(
+      availabilityEmployeeId,
+      selectedDateKey,
+      selectedAvailabilityRecord.employeeEntry
+    )
+  "
+>
+  Przywróć wersję pracownika i zdejmij blokadę
+</button>
+
+
+
+  </div>
+</div>
+
+
+
 <button
   type="button"
   class="schedule-availability-save-button"
@@ -355,21 +777,7 @@
 
 
 
-  <div class="empty-state">
-    <div class="empty-title">
-      {{
-        selectedViewMode === 'all'
-          ? 'Dyspozycyjność całego zespołu'
-          : selectedViewMode === 'employee'
-            ? 'Dyspozycyjność pracownika'
-            : 'Moja dyspozycyjność'
-      }}
-    </div>
-
-    <div class="empty-subtitle">
-      Tutaj pojawi się kalendarz dyspozycyjności.
-    </div>
-  </div>
+  
 </div>
 
 
@@ -496,9 +904,218 @@
     <div class="app-dialog-message">
       {{ saveResultModal.message }}
     </div>
+    <div
+  v-if="saveResultModal.requireConfirmation"
+  class="app-dialog-actions"
+>
+  <button
+    type="button"
+    class="app-dialog-button app-dialog-ok"
+    @click="saveResultModal.visible = false"
+  >
+    OK
+  </button>
+</div>
   </div>
 </div>
+
+
+  <div
+  v-if="isTeamAvailabilityEditOpen && editingTeamEmployee"
+  class="schedule-team-edit-modal-overlay"
+  @click.self="closeTeamAvailabilityEdit"
+>
+  <div class="schedule-team-edit-modal">
+    <div class="schedule-team-edit-modal-header">
+     <div class="schedule-team-edit-modal-heading">
+        <div class="schedule-team-edit-modal-label">
+          Edycja dyspozycji
+        </div>
+
+        <div class="schedule-team-edit-modal-name">
+          {{ editingTeamEmployee.nazwisko }}
+          {{ editingTeamEmployee.imie }}
+        </div>
+
+        <div class="schedule-team-edit-modal-date">
+          {{ selectedDateKey }}
+        </div>
+
+
+
+
+      </div>
+
+      <button
+        type="button"
+        class="schedule-team-edit-modal-close"
+        @click="closeTeamAvailabilityEdit"
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="schedule-availability-options">
+      <button
+      v-for="option in availabilityOptions"
+     :key="option.value"
+     type="button"
+     class="schedule-availability-option"
+     :class="[
+      `color-${option.color}`,
+      {
+        active: teamEditAvailabilityType === option.value
+      }
+    ]"
+    @click="teamEditAvailabilityType = option.value"
+  >
+    <span class="schedule-availability-option-icon">
+      {{ option.icon }}
+    </span>
+
+    <span class="schedule-availability-option-content">
+      <span class="schedule-availability-option-title">
+        {{ option.label }}
+      </span>
+
+      <span class="schedule-availability-option-description">
+        {{ option.description }}
+      </span>
+    </span>
+  </button>
+</div>
+
+
+
+<div
+  v-if="teamEditAvailabilityType === 'partial'"
+  class="schedule-availability-time-range"
+>
+  <label class="schedule-availability-time-field">
+    <span class="schedule-availability-time-label">
+      Od
+    </span>
+
+    <div class="schedule-time-input-wrap">
+      <input
+        v-model="teamEditTimeFrom"
+        type="time"
+        class="schedule-availability-time-input"
+        aria-label="Godzina rozpoczęcia dyspozycyjności pracownika"
+      >
+
+      <button
+        class="schedule-time-picker-button"
+        type="button"
+        title="Wybierz godzinę rozpoczęcia"
+        @click="openAvailabilityTimePicker('team-from')"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 7v5l3 2"></path>
+        </svg>
+      </button>
+    </div>
+  </label>
+
+  <label class="schedule-availability-time-field">
+    <span class="schedule-availability-time-label">
+      Do
+    </span>
+
+    <div class="schedule-time-input-wrap">
+      <input
+        v-model="teamEditTimeTo"
+        type="time"
+        class="schedule-availability-time-input"
+        aria-label="Godzina zakończenia dyspozycyjności pracownika"
+      >
+
+      <button
+        class="schedule-time-picker-button"
+        type="button"
+        title="Wybierz godzinę zakończenia"
+        @click="openAvailabilityTimePicker('team-to')"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 7v5l3 2"></path>
+        </svg>
+      </button>
+    </div>
+  </label>
+</div>
+
+
+
+
+<div class="schedule-availability-note">
+  <div class="schedule-availability-note-header">
+    <label class="schedule-availability-note-label">
+      Notatka
+    </label>
+
+    <span class="schedule-availability-note-counter">
+      {{ teamEditNote.length }}/{{ availabilityNoteMaxLength }}
+    </span>
+  </div>
+
+  <textarea
+    v-model="teamEditNote"
+    :maxlength="availabilityNoteMaxLength"
+    class="schedule-availability-note-input"
+    placeholder="Opcjonalna krótka informacja..."
+    rows="3"
+  ></textarea>
+</div>
+
+
+
+
+<button
+  type="button"
+  class="schedule-availability-save-button"
+  :disabled="isSavingTeamAvailability"
+  :class="{ disabled: isSavingTeamAvailability }"
+  @click="saveTeamAvailability"
+>
+  {{
+    isSavingTeamAvailability
+      ? 'Zapisywanie...'
+      : 'Zapisz zmiany'
+  }}
+</button>
+
+
+ 
+
+
+
+
+
+  </div>
+</div>
+
+
+
   </main>
+
 </template>
 
 <script setup>
@@ -506,6 +1123,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
+import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
 import { db } from '../../firebase.js'
@@ -513,10 +1131,14 @@ import { db } from '../../firebase.js'
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
 const employeesStore = useEmployeesStore()
+const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
 
 onMounted(async () => {
-  await employeesStore.fetchEmployees()
+  await Promise.all([
+    employeesStore.fetchEmployees(),
+    positionsStore.fetchPositions()
+  ])
 })
 
 
@@ -543,12 +1165,29 @@ const selectedEmployeeId = ref(
 
 const selectedViewMode = ref('mine')
 
-const setViewMode = (mode) => {
+const setViewMode = async (mode) => {
   selectedViewMode.value = mode
 
   if (mode === 'mine') {
     selectedEmployeeId.value = loggedEmployeeId.value
   }
+
+  if (!selectedDateKey.value) {
+    return
+  }
+
+  if (mode === 'all') {
+    await loadTeamAvailabilityForDay(
+      selectedDateKey.value
+    )
+    return
+  }
+
+  await loadAvailability()
+
+  loadAvailabilityIntoForm(
+    selectedDateKey.value
+  )
 }
 
 
@@ -632,7 +1271,7 @@ const availabilityOptions = [
   },
   {
     value: 'preferred_off',
-    label: 'Chciałbym wolne',
+    label: 'Prośba o wolne',
     description: 'Preferowany dzień wolny',
     icon: '♡',
     color: 'orange'
@@ -658,6 +1297,30 @@ const availabilityEmployeeId = computed(() => {
 
   return null
 })
+
+
+const isManagerEditingEmployee = computed(() => {
+  return (
+    canManageSchedule.value &&
+    selectedViewMode.value === 'employee' &&
+    selectedEmployeeId.value
+  )
+})
+
+
+const selectedAvailabilityEmployee = computed(() => {
+  if (!availabilityEmployeeId.value) {
+    return null
+  }
+
+  return activeEmployees.value.find(
+    employee =>
+      employee.id === availabilityEmployeeId.value
+  ) || null
+})
+
+
+
 
 const availabilityRestaurantId = computed(() => {
   return (
@@ -692,23 +1355,725 @@ const saveResultModal = ref({
 
 let saveResultModalTimeout = null
 
-const showSaveResultModal = (type, message) => {
+const showSaveResultModal = (
+  type,
+  message,
+  duration = 1000,
+  requireConfirmation = false
+) => {
   if (saveResultModalTimeout) {
     clearTimeout(saveResultModalTimeout)
   }
 
   saveResultModal.value = {
-    visible: true,
-    type,
-    message
+   visible: true,
+   type,
+   message,
+   requireConfirmation
   }
 
-  saveResultModalTimeout = setTimeout(() => {
+  if (!requireConfirmation) {
+   saveResultModalTimeout = setTimeout(() => {
     saveResultModal.value.visible = false
-  }, 1000)
+   }, duration)
+  }
 }
 const availabilityRecords = ref({})
 const isLoadingAvailability = ref(false)
+const teamAvailabilityRecords = ref({})
+const isLoadingTeamAvailability = ref(false)
+const expandedTeamEmployeeId = ref(null)
+const selectedPositionFilter = ref('')
+const editingTeamEmployee = ref(null)
+const isTeamAvailabilityEditOpen = ref(false)
+const teamEditAvailabilityType = ref('full')
+const teamEditTimeFrom = ref('00:00')
+const teamEditTimeTo = ref('00:00')
+const teamEditNote = ref('')
+const isSavingTeamAvailability = ref(false)
+const hasTeamAvailabilityChanges = computed(() => {
+  const availability = editingTeamEmployee.value?.availability
+
+  const currentType = availability?.type || 'full'
+  const currentTimeFrom =
+    currentType === 'partial'
+      ? availability?.timeFrom || '00:00'
+      : null
+
+  const currentTimeTo =
+    currentType === 'partial'
+      ? availability?.timeTo || '00:00'
+      : null
+
+  const editedTimeFrom =
+    teamEditAvailabilityType.value === 'partial'
+      ? teamEditTimeFrom.value
+      : null
+
+  const editedTimeTo =
+    teamEditAvailabilityType.value === 'partial'
+      ? teamEditTimeTo.value
+      : null
+
+  return (
+    teamEditAvailabilityType.value !== currentType ||
+    editedTimeFrom !== currentTimeFrom ||
+    editedTimeTo !== currentTimeTo ||
+    teamEditNote.value.trim() !== (availability?.note || '').trim()
+  )
+})
+
+
+
+const formatAvailabilityEntry = (entry) => {
+  if (!entry) {
+    return 'Mogę cały dzień'
+  }
+
+  if (entry.type === 'full') {
+    return entry.note
+      ? `Mogę cały dzień. Notatka: ${entry.note}`
+      : 'Mogę cały dzień'
+  }
+
+  if (entry.type === 'partial') {
+    const timeText =
+      `Mogę pracować w godzinach ${entry.timeFrom}–${entry.timeTo}`
+
+    return entry.note
+      ? `${timeText}. Notatka: ${entry.note}`
+      : timeText
+  }
+
+  if (entry.type === 'preferred_off') {
+    return entry.note
+      ? `Prośba o wolne. Notatka: ${entry.note}`
+      : 'Prośba o wolne'
+  }
+
+  if (entry.type === 'unavailable') {
+    return entry.note
+      ? `Nie mogę pracować. Notatka: ${entry.note}`
+      : 'Nie mogę pracować'
+  }
+
+  return 'Brak informacji'
+}
+
+
+const getSchedulePositionName = (positionId) => {
+  const position = positionsStore.positions.find(
+    item => item.id === positionId
+  )
+
+  return position
+    ? position.nazwa
+    : 'Nieznane stanowisko'
+}
+
+
+const getAvailabilityEntryMilliseconds = (timestamp) => {
+  if (!timestamp) {
+    return 0
+  }
+
+  if (typeof timestamp.toMillis === 'function') {
+    return timestamp.toMillis()
+  }
+
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate().getTime()
+  }
+
+  return new Date(timestamp).getTime()
+}
+
+const isEmployeeEntryNewerThanManager = (availability) => {
+  if (
+    !availability?.employeeEntry?.enteredAt ||
+    !availability?.managerEntry?.enteredAt
+  ) {
+    return false
+  }
+
+  return (
+    getAvailabilityEntryMilliseconds(
+      availability.employeeEntry.enteredAt
+    ) >
+    getAvailabilityEntryMilliseconds(
+      availability.managerEntry.enteredAt
+    )
+  )
+}
+
+
+
+const formatAvailabilityEntryDate = (timestamp) => {
+  if (!timestamp) {
+    return ''
+  }
+
+  const date =
+    typeof timestamp.toDate === 'function'
+      ? timestamp.toDate()
+      : new Date(timestamp)
+
+  return new Intl.DateTimeFormat('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Warsaw'
+  }).format(date)
+}
+
+
+
+
+
+
+
+
+const teamAvailabilityEditor = computed(() => {
+
+
+
+  const employee = employeeAuthStore.currentEmployee
+
+  if (employee) {
+    return {
+      id: employee.id,
+      name: `${employee.imie || ''} ${employee.nazwisko || ''}`.trim()
+    }
+  }
+
+  return {
+    id: authStore.currentUser?.uid || null,
+    name: 'Administrator'
+  }
+})
+
+
+const openTeamAvailabilityEdit = (employee) => {
+  editingTeamEmployee.value = employee
+
+  const availability = employee.availability
+
+  if (!availability) {
+    teamEditAvailabilityType.value = 'full'
+    teamEditTimeFrom.value = '00:00'
+    teamEditTimeTo.value = '00:00'
+    teamEditNote.value = ''
+  } else {
+    teamEditAvailabilityType.value = availability.type || 'full'
+    teamEditTimeFrom.value = availability.timeFrom || '00:00'
+    teamEditTimeTo.value = availability.timeTo || '00:00'
+    teamEditNote.value = availability.note || ''
+  }
+
+  isTeamAvailabilityEditOpen.value = true
+}
+
+const closeTeamAvailabilityEdit = () => {
+  editingTeamEmployee.value = null
+  isTeamAvailabilityEditOpen.value = false
+}
+
+
+const saveTeamAvailability = async () => {
+  if (isSavingTeamAvailability.value) return
+
+    if (!hasTeamAvailabilityChanges.value) {
+    closeTeamAvailabilityEdit()
+
+    showSaveResultModal(
+      'success',
+      'Nie wprowadzono żadnych zmian'
+    )
+
+    return
+  }
+
+  const restaurantId = availabilityRestaurantId.value
+  const employee = editingTeamEmployee.value
+  const dateKey = selectedDateKey.value
+
+  if (!restaurantId || !employee || !dateKey) {
+    showSaveResultModal(
+      'error',
+      'Brakuje danych potrzebnych do zapisu'
+    )
+    return
+  }
+
+  if (
+    teamEditAvailabilityType.value === 'partial' &&
+    teamEditTimeFrom.value === teamEditTimeTo.value
+  ) {
+    showSaveResultModal(
+  'error',
+  'Wybierz różne godziny rozpoczęcia i zakończenia.',
+  2000
+)
+    return
+  }
+
+  isSavingTeamAvailability.value = true
+
+  try {
+    const documentId = `${employee.id}_${dateKey}`
+
+    const availabilityRef = doc(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc',
+      documentId
+    )
+
+    const currentAvailability =
+      employee.availability || null
+
+    let employeeEntry =
+      currentAvailability?.employeeEntry || null
+
+    if (
+      !employeeEntry &&
+      currentAvailability &&
+      !currentAvailability.managerEntry
+    ) {
+      employeeEntry = {
+        ...createAvailabilitySnapshot(
+          currentAvailability
+        ),
+        enteredById: employee.id,
+        enteredByName:
+          `${employee.imie || ''} ${employee.nazwisko || ''}`.trim(),
+        enteredAt:
+          currentAvailability.updatedAt || serverTimestamp()
+      }
+    }
+
+    const managerEntry = {
+      type: teamEditAvailabilityType.value,
+
+      timeFrom:
+        teamEditAvailabilityType.value === 'partial'
+          ? teamEditTimeFrom.value
+          : null,
+
+      timeTo:
+        teamEditAvailabilityType.value === 'partial'
+          ? teamEditTimeTo.value
+          : null,
+
+      note: teamEditNote.value.trim(),
+
+      enteredById:
+        teamAvailabilityEditor.value.id,
+
+      enteredByName:
+        teamAvailabilityEditor.value.name,
+
+      enteredAt: serverTimestamp()
+    }
+
+    const availabilityData = {
+      employeeId: employee.id,
+      date: dateKey,
+
+      type: managerEntry.type,
+      timeFrom: managerEntry.timeFrom,
+      timeTo: managerEntry.timeTo,
+      note: managerEntry.note,
+
+      effectiveSource: 'manager',
+      managerEntry,
+
+      updatedAt: serverTimestamp()
+    }
+
+    if (employeeEntry) {
+      availabilityData.employeeEntry = employeeEntry
+    }
+
+    const batch = writeBatch(db)
+
+    batch.set(
+      availabilityRef,
+      availabilityData
+    )
+
+    await batch.commit()
+    await loadTeamAvailabilityForDay(dateKey)
+
+    closeTeamAvailabilityEdit()
+
+    showSaveResultModal(
+      'success',
+      'Zapisano zmianę dyspozycyjności'
+    )
+  } catch (error) {
+    console.error(
+      'Błąd zapisu edycji dyspozycyjności:',
+      error
+    )
+
+    showSaveResultModal(
+      'error',
+      'Nie udało się zapisać zmiany'
+    )
+  } finally {
+    isSavingTeamAvailability.value = false
+  }
+}
+
+
+const restoreEmployeeAvailability = async (
+  employeeId,
+  dateKey,
+  employeeEntry
+) => {
+  if (
+    isSavingTeamAvailability.value ||
+    !employeeId ||
+    !dateKey ||
+    !employeeEntry
+  ) {
+    return
+  }
+
+  const restaurantId = availabilityRestaurantId.value
+
+  if (!restaurantId) {
+    showSaveResultModal(
+      'error',
+      'Nie udało się rozpoznać restauracji.',
+      2000
+    )
+    return
+  }
+
+  isSavingTeamAvailability.value = true
+
+  try {
+    const availabilityRef = doc(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc',
+      `${employeeId}_${dateKey}`
+    )
+
+    const availabilityData = {
+      employeeId,
+      date: dateKey,
+
+      type: employeeEntry.type,
+      timeFrom:
+        employeeEntry.type === 'partial'
+          ? employeeEntry.timeFrom
+          : null,
+      timeTo:
+        employeeEntry.type === 'partial'
+          ? employeeEntry.timeTo
+          : null,
+      note: employeeEntry.note || '',
+
+      effectiveSource: 'employee',
+      employeeEntry,
+
+      updatedAt: serverTimestamp()
+    }
+
+    const batch = writeBatch(db)
+
+    batch.set(
+      availabilityRef,
+      availabilityData
+    )
+
+    await batch.commit()
+    showAvailabilityAdditionalInfo.value = false
+
+    if (selectedViewMode.value === 'all') {
+      await loadTeamAvailabilityForDay(dateKey)
+    } else {
+      await loadAvailability()
+      loadAvailabilityIntoForm(dateKey)
+    }
+
+    showSaveResultModal(
+      'success',
+      'Przywrócono wersję pracownika'
+    )
+  } catch (error) {
+    console.error(
+      'Błąd przywracania wersji pracownika:',
+      error
+    )
+
+    showSaveResultModal(
+      'error',
+      'Nie udało się przywrócić wersji pracownika',
+      2000
+    )
+  } finally {
+    isSavingTeamAvailability.value = false
+  }
+}
+
+
+const saveEmployeeViewAsManager = async () => {
+  const employee = selectedAvailabilityEmployee.value
+  const selectedDates = datesSelectedForAvailability.value
+
+  if (!employee || selectedDates.length === 0) {
+    showSaveResultModal(
+      'error',
+      'Brakuje danych potrzebnych do zapisu'
+    )
+    return
+  }
+
+  if (
+    selectedAvailabilityType.value === 'partial' &&
+    availabilityTimeFrom.value === availabilityTimeTo.value
+  ) {
+    showSaveResultModal(
+      'error',
+      'Wybierz różne godziny rozpoczęcia i zakończenia.',
+      2000
+    )
+    return
+  }
+
+  isSavingAvailability.value = true
+
+  try {
+    const restaurantId = availabilityRestaurantId.value
+    const batch = writeBatch(db)
+    let changedDatesCount = 0
+
+    selectedDates.forEach(dateKey => {
+      const currentAvailability =
+        availabilityRecords.value[dateKey] || null
+
+        const currentType =
+  currentAvailability?.type || 'full'
+
+const currentTimeFrom =
+  currentType === 'partial'
+    ? currentAvailability?.timeFrom || '00:00'
+    : null
+
+const currentTimeTo =
+  currentType === 'partial'
+    ? currentAvailability?.timeTo || '00:00'
+    : null
+
+const newTimeFrom =
+  selectedAvailabilityType.value === 'partial'
+    ? availabilityTimeFrom.value
+    : null
+
+const newTimeTo =
+  selectedAvailabilityType.value === 'partial'
+    ? availabilityTimeTo.value
+    : null
+
+const hasChanges =
+  selectedAvailabilityType.value !== currentType ||
+  newTimeFrom !== currentTimeFrom ||
+  newTimeTo !== currentTimeTo ||
+  availabilityNote.value.trim() !==
+    (currentAvailability?.note || '').trim()
+
+if (!hasChanges) {
+  return
+}
+
+changedDatesCount += 1
+
+      let employeeEntry =
+        currentAvailability?.employeeEntry || null
+
+      if (
+        !employeeEntry &&
+        currentAvailability &&
+        !currentAvailability.managerEntry
+      ) {
+        employeeEntry = {
+          ...createAvailabilitySnapshot(
+            currentAvailability
+          ),
+          enteredById: employee.id,
+          enteredByName:
+            `${employee.imie || ''} ${employee.nazwisko || ''}`.trim(),
+          enteredAt:
+            currentAvailability.updatedAt || serverTimestamp()
+        }
+      }
+
+      const managerEntry = {
+        type: selectedAvailabilityType.value,
+
+        timeFrom:
+          selectedAvailabilityType.value === 'partial'
+            ? availabilityTimeFrom.value
+            : null,
+
+        timeTo:
+          selectedAvailabilityType.value === 'partial'
+            ? availabilityTimeTo.value
+            : null,
+
+        note: availabilityNote.value.trim(),
+
+        enteredById:
+          teamAvailabilityEditor.value.id,
+
+        enteredByName:
+          teamAvailabilityEditor.value.name,
+
+        enteredAt: serverTimestamp()
+      }
+
+      const availabilityData = {
+        employeeId: employee.id,
+        date: dateKey,
+
+        type: managerEntry.type,
+        timeFrom: managerEntry.timeFrom,
+        timeTo: managerEntry.timeTo,
+        note: managerEntry.note,
+
+        effectiveSource: 'manager',
+        managerEntry,
+
+        updatedAt: serverTimestamp()
+      }
+
+      if (employeeEntry) {
+        availabilityData.employeeEntry = employeeEntry
+      }
+
+      const availabilityRef = doc(
+        db,
+        'users',
+        restaurantId,
+        'grafik_dyspozycyjnosc',
+        `${employee.id}_${dateKey}`
+      )
+
+      batch.set(
+        availabilityRef,
+        availabilityData
+      )
+    })
+
+    if (changedDatesCount === 0) {
+  showSaveResultModal(
+    'success',
+    'Nie wprowadzono żadnych zmian'
+  )
+
+  return
+}
+
+    await batch.commit()
+    await loadAvailability()
+
+    if (selectedDateKey.value) {
+      loadAvailabilityIntoForm(
+        selectedDateKey.value
+      )
+    }
+
+    if (selectedDates.length > 1) {
+      isMultiSelectMode.value = false
+      selectedDateKeys.value = []
+    }
+
+    showSaveResultModal(
+      'success',
+      selectedDates.length === 1
+        ? 'Zapisano zmianę dyspozycyjności'
+        : `Zapisano zmiany dla ${selectedDates.length} dni`
+    )
+  } catch (error) {
+    console.error(
+      'Błąd zapisu dyspozycyjności przez managera:',
+      error
+    )
+
+    showSaveResultModal(
+      'error',
+      'Nie udało się zapisać zmiany'
+    )
+  } finally {
+    isSavingAvailability.value = false
+  }
+}
+
+
+
+const toggleTeamEmployeeDetails = (employeeId) => {
+  expandedTeamEmployeeId.value =
+    expandedTeamEmployeeId.value === employeeId
+      ? null
+      : employeeId
+}
+const loadTeamAvailabilityForDay = async (dateKey) => {
+  const restaurantId = availabilityRestaurantId.value
+
+  if (!restaurantId || !dateKey) {
+    teamAvailabilityRecords.value = {}
+    return
+  }
+
+  isLoadingTeamAvailability.value = true
+
+  try {
+    const teamQuery = query(
+      collection(
+        db,
+        'users',
+        restaurantId,
+        'grafik_dyspozycyjnosc'
+      ),
+      where('date', '==', dateKey)
+    )
+
+    const snapshot = await getDocs(teamQuery)
+
+    teamAvailabilityRecords.value = snapshot.docs.reduce(
+      (records, documentSnapshot) => {
+        const data = documentSnapshot.data()
+
+        if (data.employeeId) {
+          records[data.employeeId] = {
+            id: documentSnapshot.id,
+            ...data
+          }
+        }
+
+        return records
+      },
+      {}
+    )
+  } catch (error) {
+    console.error(
+      'Błąd pobierania dyspozycyjności zespołu:',
+      error
+    )
+
+    teamAvailabilityRecords.value = {}
+  } finally {
+    isLoadingTeamAvailability.value = false
+  }
+}
 const loadAvailability = async () => {
   const restaurantId = availabilityRestaurantId.value
   const employeeId = availabilityEmployeeId.value
@@ -792,6 +2157,15 @@ watch(
   availabilityEmployeeId,
   async () => {
     await loadAvailability()
+
+    if (
+      selectedDateKey.value &&
+      selectedViewMode.value !== 'all'
+    ) {
+      loadAvailabilityIntoForm(
+        selectedDateKey.value
+      )
+    }
   },
   { immediate: true }
 )
@@ -801,6 +2175,11 @@ watch(
 
 const saveAvailability = async () => {
   if (isSavingAvailability.value) return
+
+  if (isManagerEditingEmployee.value) {
+    await saveEmployeeViewAsManager()
+    return
+  }
 
   const restaurantId = availabilityRestaurantId.value
   const employeeId = availabilityEmployeeId.value
@@ -812,7 +2191,7 @@ const saveAvailability = async () => {
   }
 
   if (!employeeId) {
-    alert('Wybierz pracownika.')
+    alert('Nie udało się rozpoznać pracownika.')
     return
   }
 
@@ -825,60 +2204,155 @@ const saveAvailability = async () => {
     selectedAvailabilityType.value === 'partial' &&
     availabilityTimeFrom.value === availabilityTimeTo.value
   ) {
-    alert('Godziny „od” i „do” muszą być różne.')
+    showSaveResultModal(
+  'error',
+  'Wybierz różne godziny rozpoczęcia i zakończenia.',
+  2000
+)
     return
   }
+
+  const employee =
+    selectedAvailabilityEmployee.value ||
+    employeeAuthStore.currentEmployee
+
+  const employeeName =
+    `${employee?.imie || ''} ${employee?.nazwisko || ''}`.trim() ||
+    'Pracownik'
 
   isSavingAvailability.value = true
 
   try {
     const batch = writeBatch(db)
+    const managerEditorNames = new Set()
 
     selectedDates.forEach(dateKey => {
-      const documentId = `${employeeId}_${dateKey}`
+      const currentAvailability =
+        availabilityRecords.value[dateKey] || null
+
+      const existingManagerEntry =
+        currentAvailability?.managerEntry || null
+
+      const employeeEntry = {
+        type: selectedAvailabilityType.value,
+
+        timeFrom:
+          selectedAvailabilityType.value === 'partial'
+            ? availabilityTimeFrom.value
+            : null,
+
+        timeTo:
+          selectedAvailabilityType.value === 'partial'
+            ? availabilityTimeTo.value
+            : null,
+
+        note: availabilityNote.value.trim(),
+
+        enteredById: employeeId,
+        enteredByName: employeeName,
+        enteredAt: serverTimestamp()
+      }
 
       const availabilityRef = doc(
         db,
         'users',
         restaurantId,
         'grafik_dyspozycyjnosc',
-        documentId
+        `${employeeId}_${dateKey}`
       )
 
-      if (selectedAvailabilityType.value === 'full') {
+      if (existingManagerEntry) {
+       if (existingManagerEntry.enteredByName) {
+          managerEditorNames.add(
+            existingManagerEntry.enteredByName
+          )
+        }
+        batch.set(availabilityRef, {
+          employeeId,
+          date: dateKey,
+
+          type: existingManagerEntry.type,
+          timeFrom: existingManagerEntry.timeFrom ?? null,
+          timeTo: existingManagerEntry.timeTo ?? null,
+          note: existingManagerEntry.note || '',
+
+          effectiveSource: 'manager',
+
+          employeeEntry,
+          managerEntry: existingManagerEntry,
+
+          updatedAt: serverTimestamp()
+        })
+
+        return
+      }
+
+      if (
+        employeeEntry.type === 'full' &&
+        !employeeEntry.note
+      ) {
         batch.delete(availabilityRef)
         return
       }
 
-      const availabilityData = {
+      batch.set(availabilityRef, {
         employeeId,
         date: dateKey,
-        type: selectedAvailabilityType.value,
-        note: availabilityNote.value.trim(),
+
+        type: employeeEntry.type,
+        timeFrom: employeeEntry.timeFrom,
+        timeTo: employeeEntry.timeTo,
+        note: employeeEntry.note,
+
+        effectiveSource: 'employee',
+        employeeEntry,
+
         updatedAt: serverTimestamp()
-      }
-
-      if (selectedAvailabilityType.value === 'partial') {
-        availabilityData.timeFrom = availabilityTimeFrom.value
-        availabilityData.timeTo = availabilityTimeTo.value
-      }
-
-      batch.set(
-        availabilityRef,
-        availabilityData,
-        { merge: true }
-      )
+      })
     })
 
     await batch.commit()
     await loadAvailability()
 
-    showSaveResultModal(
-  'success',
-  selectedDates.length === 1
-    ? 'Zapisano dyspozycyjność'
-    : `Zapisano dyspozycyjność dla ${selectedDates.length} dni`
-)
+    if (
+      selectedDateKey.value &&
+      selectedViewMode.value !== 'all'
+    ) {
+      loadAvailabilityIntoForm(
+        selectedDateKey.value
+      )
+    }
+
+    if (selectedDates.length > 1) {
+      isMultiSelectMode.value = false
+      selectedDateKeys.value = []
+
+      selectedAvailabilityType.value = 'full'
+      availabilityTimeFrom.value = '00:00'
+      availabilityTimeTo.value = '00:00'
+      availabilityNote.value = ''
+    }
+
+        if (managerEditorNames.size > 0) {
+      const editorNames =
+        [...managerEditorNames].join(', ')
+
+      showSaveResultModal(
+        'success',
+        managerEditorNames.size === 1
+          ? `Twoja deklaracja została zapisana, ale nadal obowiązuje dyspozycja ustawiona przez: ${editorNames}. Skontaktuj się z tą osobą, jeśli potrzebujesz zmiany.`
+          : `Twoja deklaracja została zapisana, ale dla części dni nadal obowiązują dyspozycje osób zarządzających: ${editorNames}.`,
+        5000,
+        true
+      )
+    } else {
+      showSaveResultModal(
+        'success',
+        selectedDates.length === 1
+          ? 'Zapisano dyspozycyjność'
+          : `Zapisano dyspozycyjność dla ${selectedDates.length} dni`
+      )
+    }
   } catch (error) {
     console.error(
       'Błąd zapisu dyspozycyjności:',
@@ -886,13 +2360,15 @@ const saveAvailability = async () => {
     )
 
     showSaveResultModal(
-  'error',
-  'Nie udało się zapisać dyspozycyjności'
-)
+      'error',
+      'Nie udało się zapisać dyspozycyjności'
+    )
   } finally {
     isSavingAvailability.value = false
   }
 }
+
+ 
 
 
 
@@ -919,10 +2395,23 @@ const minutes = Array.from(
 const openAvailabilityTimePicker = (target) => {
   availabilityTimePickerTarget.value = target
 
-  const currentTime =
-    target === 'from'
-      ? availabilityTimeFrom.value
-      : availabilityTimeTo.value
+  let currentTime = '00:00'
+
+  if (target === 'from') {
+    currentTime = availabilityTimeFrom.value
+  }
+
+  if (target === 'to') {
+    currentTime = availabilityTimeTo.value
+  }
+
+  if (target === 'team-from') {
+    currentTime = teamEditTimeFrom.value
+  }
+
+  if (target === 'team-to') {
+    currentTime = teamEditTimeTo.value
+  }
 
   const [hour = '00', minute = '00'] =
     currentTime.split(':')
@@ -950,24 +2439,56 @@ const applyAvailabilityTime = () => {
     availabilityTimeTo.value = selectedTime
   }
 
+  if (availabilityTimePickerTarget.value === 'team-from') {
+    teamEditTimeFrom.value = selectedTime
+  }
+
+  if (availabilityTimePickerTarget.value === 'team-to') {
+    teamEditTimeTo.value = selectedTime
+  }
+
   closeAvailabilityTimePicker()
 }
 const availabilityNote = ref('')
 const availabilityNoteMaxLength = 60
+const showAvailabilityAdditionalInfo = ref(false)
+const selectedAvailabilityRecord = computed(() => {
+  if (!selectedDateKey.value) {
+    return null
+  }
+
+  return availabilityRecords.value[selectedDateKey.value] || null
+})
+
+
+watch(
+  [
+    selectedDateKey,
+    selectedEmployeeId,
+    selectedViewMode
+  ],
+  () => {
+    showAvailabilityAdditionalInfo.value = false
+  }
+)
+
+
+
+
 
 const toggleMultiSelectMode = () => {
   isMultiSelectMode.value = !isMultiSelectMode.value
 
-  if (isMultiSelectMode.value) {
-    selectedDateKey.value = null
-    selectedDateKeys.value = []
-    return
-  }
-
+  selectedDateKey.value = null
   selectedDateKeys.value = []
+
+  selectedAvailabilityType.value = 'full'
+  availabilityTimeFrom.value = '00:00'
+  availabilityTimeTo.value = '00:00'
+  availabilityNote.value = ''
 }
 
-const selectCalendarDay = (day) => {
+const selectCalendarDay = async (day) => {
   if (!day) return
 
   const dateKey = formatDateKey(day)
@@ -985,6 +2506,12 @@ const selectCalendarDay = (day) => {
   }
 
   selectedDateKey.value = dateKey
+
+  if (selectedViewMode.value === 'all') {
+    await loadTeamAvailabilityForDay(dateKey)
+    return
+  }
+
   loadAvailabilityIntoForm(dateKey)
 }
 
@@ -997,6 +2524,19 @@ const displayedMonth = ref(
     1
   )
 )
+
+
+watch(
+  displayedMonth,
+  () => {
+    showAvailabilityAdditionalInfo.value = false
+    selectedDateKey.value = null
+    expandedTeamEmployeeId.value = null
+  }
+)
+
+
+
 
 const displayedMonthLabel = computed(() => {
   return new Intl.DateTimeFormat('pl-PL', {
@@ -1097,6 +2637,40 @@ const activeEmployees = computed(() => {
       )
     })
 })
+
+
+const teamAvailabilityForSelectedDay = computed(() => {
+  let employees = activeEmployees.value.map(employee => {
+    return {
+      ...employee,
+      availability:
+        teamAvailabilityRecords.value[employee.id] || null
+    }
+  })
+
+  if (!selectedPositionFilter.value) {
+    return employees
+  }
+
+  employees = employees.filter(employee => {
+    return Boolean(
+      employee.kompetencje?.[selectedPositionFilter.value]
+    )
+  })
+
+  return employees.sort((employeeA, employeeB) => {
+    const starsA =
+      employeeA.kompetencje?.[selectedPositionFilter.value] || 0
+
+    const starsB =
+      employeeB.kompetencje?.[selectedPositionFilter.value] || 0
+
+    return starsB - starsA
+  })
+})
+
+
+
 
 
 
