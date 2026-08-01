@@ -1503,17 +1503,23 @@ const loadCompanyDataWithFallback = async () => {
 
 
 
-// --- KONFIGURACJA BACKUPU ---
+// --- KOLEKCJE ZAPISYWANE W KOPII ZAPASOWEJ ---
+// Główny dokument "state" jest zapisywany osobno.
+// Ta lista zawiera wyłącznie podkolekcje users/{uid}/...
 const COLLECTIONS_TO_BACKUP = [
-  'state',
   'towary',
-  'cartItems', // Dodałem, żebyś miał pełny obraz danych
-  'kategorie',
-  'magazyny',
-  'whoOrders',
-  'units',
-  'orderTimings'
-];
+  'cartItems',
+  'menuItems',
+
+  // Pracownicy i uprawnienia
+  'employees',
+  'permissionProfiles',
+
+  // Moduł grafiku
+  'positions',
+  'scheduleDemandModels',
+  'grafik_dyspozycyjnosc'
+]
 
 // --- FUNKCJA EKSPORTU ---
 const eksportujBackup = async () => {
@@ -1542,21 +1548,23 @@ const eksportujBackup = async () => {
       }
     }
 
-    // 2. Pobieramy pozostałe kolekcje - Zapis kolekcji zapis do kopii zapasowej
-    const collectionsToFetch = [
-  'towary',
-  'cartItems',
-  'menuItems',
-  'scheduleDemandModels'
-];
-    for (const colName of collectionsToFetch) {
-      const colRef = collection(db, 'users', user.uid, colName);
-      const snapshot = await getDocs(colRef);
-      backupData.collections[colName] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    }
+    // 2. Pobieramy wszystkie podkolekcje objęte kopią zapasową
+for (const collectionName of COLLECTIONS_TO_BACKUP) {
+  const collectionRef = collection(
+    db,
+    'users',
+    user.uid,
+    collectionName
+  )
+
+  const collectionSnapshot = await getDocs(collectionRef)
+
+  backupData.collections[collectionName] =
+    collectionSnapshot.docs.map(documentSnapshot => ({
+      id: documentSnapshot.id,
+      ...documentSnapshot.data()
+    }))
+}
 
     // 3. Generowanie poprawnej daty lokalnej (rozwiązuje problem "wczorajszej daty" po północy!)
     const now = new Date();
@@ -1585,14 +1593,14 @@ const eksportujBackup = async () => {
 
 // --- FUNKCJA WCZYTYWANIA BACKUPU ---
 const wczytajBackup = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+  const file = event.target.files[0]
+  if (!file) return
 
-  const reader = new FileReader();
-  
+  const reader = new FileReader()
+
   reader.onload = async (e) => {
-    try {
-      const backupData = JSON.parse(e.target.result);
+  try {
+      const backupData = JSON.parse(e.target.result)
 
       if (!backupData.state || !backupData.collections) {
         await showAlert('Nieprawidłowy format pliku kopii zapasowej.', 'Błąd pliku', '❌');
@@ -1618,26 +1626,64 @@ const wczytajBackup = async (event) => {
 
       // 1. Zapisujemy główny stan aplikacji (nie zawiera już starych towarów)
       if (backupData.state) {
-        await setDoc(getUserStateDocRef(user.uid), backupData.state);
-      }
+  await setDoc(
+    getUserStateDocRef(user.uid),
+    backupData.state
+  )
+}
 
       // 2. Zapisujemy kolekcje (w tym 'towary')
-      if (backupData.collections) {
-        for (const [colName, docsArray] of Object.entries(backupData.collections)) {
-          
-          // Złota zasada: Najpierw w pełni czyścimy istniejącą kolekcję na żywo...
-          const currentCollectionSnapshot = await getDocs(collection(db, 'users', user.uid, colName));
-          for (const docSnap of currentCollectionSnapshot.docs) {
-            await deleteDoc(docSnap.ref);
-          }
+if (backupData.collections) {
+  for (
+    const [colName, docsArray]
+    of Object.entries(backupData.collections)
+  ) {
+    if (!Array.isArray(docsArray)) {
+      throw new Error(
+        `Kolekcja "${colName}" nie zawiera prawidłowej listy dokumentów.`
+      )
+    }
 
-          // ...a potem zapisujemy do niej idealnie odwzorowane dane z pliku.
-          for (const itemData of docsArray) {
-            const docRef = doc(db, 'users', user.uid, colName, String(itemData.id));
-            await setDoc(docRef, itemData);
-          }
-        }
+    const currentCollectionSnapshot = await getDocs(
+      collection(
+        db,
+        'users',
+        user.uid,
+        colName
+      )
+    )
+
+    for (const documentSnapshot of currentCollectionSnapshot.docs) {
+      await deleteDoc(documentSnapshot.ref)
+    }
+
+    for (const itemData of docsArray) {
+      if (
+        !itemData ||
+        typeof itemData !== 'object' ||
+        itemData.id === undefined ||
+        itemData.id === null
+      ) {
+        throw new Error(
+          `Jeden z dokumentów w kolekcji "${colName}" nie ma identyfikatora.`
+        )
       }
+
+      const documentRef = doc(
+        db,
+        'users',
+        user.uid,
+        colName,
+        String(itemData.id)
+      )
+
+      await setDoc(
+        documentRef,
+        itemData
+      )
+    }
+  }
+}
 
       await loadCompanyDataWithFallback();
       await showAlert('Kopia zapasowa wczytana pomyślnie! Aplikacja zostanie odświeżona.', 'Sukces', '✅');
@@ -1646,9 +1692,19 @@ const wczytajBackup = async (event) => {
       window.location.reload();
 
     } catch (error) {
-      console.error("Błąd odczytu pliku:", error);
-      await showAlert('Nie udało się odczytać pliku. Plik jest uszkodzony.', 'Błąd', '❌');
-    }
+  console.error(
+    'Błąd przywracania kopii zapasowej:',
+    error
+  )
+
+  await showAlert(
+    error?.message
+      ? `Nie udało się przywrócić kopii zapasowej.\n\n${error.message}`
+      : 'Nie udało się przywrócić kopii zapasowej.',
+    'Błąd przywracania danych',
+    '❌'
+  )
+}
     
     event.target.value = ''; 
   };
@@ -5568,6 +5624,7 @@ const openZamawiarkaMenuFromHome = () => {
       appVersion,
       aktywneModuly,
       eksportujBackup,
+      wczytajBackup,
       recepturyView,
       isLoggedIn,
       isLoggingIn,
