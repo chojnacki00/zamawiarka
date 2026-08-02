@@ -1,4 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import {
+  getAuth,
+  onAuthStateChanged
+} from 'firebase/auth'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js' // <-- NOWOŚĆ: Importujemy nasz sklep z uprawnieniami
 
 import LoginView from './views/LoginView.vue'
@@ -40,16 +44,85 @@ const router = createRouter({
 })
 
 // === STRAŻNIK TRAS ===
-router.beforeEach((to, from, next) => {
-  const hasEmployeeSession = !!localStorage.getItem('gm_emp_id')
-  
-  // Pobieramy sklep z uprawnieniami wewnątrz strażnika
-  const employeeStore = useEmployeeAuthStore()
+
+const getResolvedFirebaseUser = () => {
+  return new Promise((resolve) => {
+    const auth = getAuth()
+
+    let unsubscribe = () => {}
+
+    unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        unsubscribe()
+        resolve(user)
+      }
+    )
+  })
+}
+
+router.beforeEach(async (to, from, next) => {
+    const employeeStore = useEmployeeAuthStore()
+
+  const hasSavedEmployeeSession =
+    Boolean(
+      localStorage.getItem('gm_emp_id') &&
+      localStorage.getItem('gm_rest_id')
+    )
+
+  if (
+    hasSavedEmployeeSession &&
+    !employeeStore.isInitialized
+  ) {
+    await employeeStore.initSession()
+  }
+
+  const hasEmployeeSession =
+    Boolean(employeeStore.currentEmployee)
 
   // ZASADA 1: Zalogowany Pracownik chce wejść na logowanie -> odsyłamy na stronę główną
   if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login')) {
     return next('/') 
   }
+
+
+
+    // Okresy dyspozycji:
+  // administrator albo pracownik z uprawnieniem
+  if (
+    to.path ===
+    '/grafik/dyspozycyjnosc/okresy'
+  ) {
+    if (hasEmployeeSession) {
+      if (
+        !employeeStore.hasPermission(
+          'can_manage_schedule'
+        )
+      ) {
+        console.warn(
+          'Strażnik: Brak uprawnienia do zarządzania okresami dyspozycji!'
+        )
+
+        return next(
+          '/grafik/dyspozycyjnosc'
+        )
+      }
+    } else {
+      const firebaseUser =
+        await getResolvedFirebaseUser()
+
+      if (!firebaseUser) {
+        console.warn(
+          'Strażnik: Próba wejścia na okresy bez logowania!'
+        )
+
+        return next('/login')
+      }
+    }
+  }
+
+
+
 
   // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami bez uprawnień!
   const isManagerRoute = ['/ustawienia', '/profile-uprawnien', '/stanowiska-grafik', '/zespol'].includes(to.path)
@@ -88,6 +161,10 @@ router.beforeEach((to, from, next) => {
         return next('/')
       }
     }
+
+
+
+
   }
 
   // Jeśli wszystko jest OK, wpuszczamy dalej

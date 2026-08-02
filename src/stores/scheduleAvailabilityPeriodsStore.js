@@ -4,7 +4,7 @@ import {
   collection,
   doc,
   addDoc,
-  getDocs,
+  onSnapshot,
   updateDoc,
   deleteDoc,
   Timestamp,
@@ -21,6 +21,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     const periods = ref([])
     const isLoading = ref(false)
     const isSaving = ref(false)
+
+    let unsubscribePeriods = null
 
     const getRestaurantId = () => {
       return new Promise((resolve) => {
@@ -102,9 +104,93 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     }
 
 
+        const formatLocalDateKey = (date) => {
+      const year = date.getFullYear()
+
+      const month = String(
+        date.getMonth() + 1
+      ).padStart(2, '0')
+
+      const day = String(
+        date.getDate()
+      ).padStart(2, '0')
+
+      return `${year}-${month}-${day}`
+    }
+
+    const getTimestampMilliseconds = (timestamp) => {
+      if (!timestamp) {
+        return 0
+      }
+
+      if (typeof timestamp.toMillis === 'function') {
+        return timestamp.toMillis()
+      }
+
+      if (typeof timestamp.toDate === 'function') {
+        return timestamp.toDate().getTime()
+      }
+
+      return new Date(timestamp).getTime()
+    }
+
+    const rangesOverlap = (
+      firstDateFrom,
+      firstDateTo,
+      secondDateFrom,
+      secondDateTo
+    ) => {
+      return (
+        firstDateFrom <= secondDateTo &&
+        secondDateFrom <= firstDateTo
+      )
+    }
+
+    const normalizeBlockedDates = (
+      blockedDates,
+      dateFrom,
+      dateTo
+    ) => {
+      if (!Array.isArray(blockedDates)) {
+        return []
+      }
+
+      return [...new Set(blockedDates)]
+        .filter(dateKey => {
+          return (
+            typeof dateKey === 'string' &&
+            dateKey >= dateFrom &&
+            dateKey <= dateTo
+          )
+        })
+        .sort()
+    }
+
+    const isPeriodEffectivelyOpen = (period) => {
+      if (period?.status !== 'open') {
+        return false
+      }
+
+      if (
+        getTimestampMilliseconds(period.closesAt) <
+        Date.now()
+      ) {
+        return false
+      }
+
+      const todayDateKey =
+        formatLocalDateKey(new Date())
+
+      return (
+        period.dateTo &&
+        period.dateTo >= todayDateKey
+      )
+    }
 
 
-    const fetchPeriods = async () => {
+
+
+        const fetchPeriods = async () => {
       const periodsRef = await getPeriodsCollectionRef()
 
       if (!periodsRef) {
@@ -112,31 +198,61 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         return
       }
 
+      if (unsubscribePeriods) {
+        unsubscribePeriods()
+        unsubscribePeriods = null
+      }
+
       isLoading.value = true
 
-      try {
-        const snapshot = await getDocs(periodsRef)
+      return new Promise((resolve, reject) => {
+        let isFirstSnapshot = true
 
-        periods.value = snapshot.docs
-          .map((document) => ({
-            id: document.id,
-            ...document.data()
-          }))
-          .sort((periodA, periodB) => {
-            return (periodA.dateFrom || '').localeCompare(
-              periodB.dateFrom || ''
+        unsubscribePeriods = onSnapshot(
+          periodsRef,
+          (snapshot) => {
+            periods.value = snapshot.docs
+              .map((document) => ({
+                id: document.id,
+                ...document.data()
+              }))
+              .sort((periodA, periodB) => {
+                return (periodA.dateFrom || '').localeCompare(
+                  periodB.dateFrom || ''
+                )
+              })
+
+            isLoading.value = false
+
+            if (isFirstSnapshot) {
+              isFirstSnapshot = false
+              resolve()
+            }
+          },
+          (error) => {
+            console.error(
+              'Błąd nasłuchu okresów dyspozycji:',
+              error
             )
-          })
-      } catch (error) {
-        console.error(
-          'Błąd pobierania okresów dyspozycji:',
-          error
-        )
 
-        throw error
-      } finally {
-        isLoading.value = false
+            isLoading.value = false
+
+            if (isFirstSnapshot) {
+              isFirstSnapshot = false
+              reject(error)
+            }
+          }
+        )
+      })
+    }
+
+    const stopPeriodsListener = () => {
+      if (!unsubscribePeriods) {
+        return
       }
+
+      unsubscribePeriods()
+      unsubscribePeriods = null
     }
 
     const addPeriod = async (periodData) => {
@@ -168,8 +284,15 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
           status: 'draft',
 
-          demandModelId: null,
-          blockedDates: [],
+          demandModelId:
+            periodData.demandModelId || null,
+
+          blockedDates:
+            normalizeBlockedDates(
+              periodData.blockedDates,
+              periodData.dateFrom,
+              periodData.dateTo
+            ),
 
           createdById: periodData.createdById || null,
           createdByName: periodData.createdByName || '',
@@ -193,8 +316,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           closesAt: dataToSave.closesAt,
           expiresAt: dataToSave.expiresAt,
           status: dataToSave.status,
-          demandModelId: null,
-          blockedDates: [],
+          demandModelId: dataToSave.demandModelId,
+          blockedDates: dataToSave.blockedDates,
           createdById: dataToSave.createdById,
           createdByName: dataToSave.createdByName,
           updatedById: dataToSave.updatedById,
@@ -245,9 +368,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         existingPeriod.status !== 'draft'
       ) {
         throw new Error(
-          'Można edytować wyłącznie okres zapisany jako szkic.'
+          'Można edytować wyłącznie szkic okresu.'
         )
       }
+
+
 
       isSaving.value = true
 
@@ -270,8 +395,18 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
               periodData.closesOn
             ),
 
-          expiresAt:
+            expiresAt:
             getExpirationTimestamp(
+              periodData.dateTo
+            ),
+
+          demandModelId:
+            periodData.demandModelId || null,
+
+          blockedDates:
+            normalizeBlockedDates(
+              periodData.blockedDates,
+              periodData.dateFrom,
               periodData.dateTo
             ),
 
@@ -318,6 +453,84 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       }
     }
 
+    const updateBlockedDates = async (
+      periodId,
+      blockedDates,
+      editorData
+    ) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !periodId) {
+        throw new Error(
+          'Brakuje danych potrzebnych do zapisu wyłączonych dni.'
+        )
+      }
+
+      const period = periods.value.find(
+        item => item.id === periodId
+      )
+
+      if (!period) {
+        throw new Error(
+          'Nie znaleziono wybranego okresu.'
+        )
+      }
+
+      const canEditBlockedDates =
+        period.status === 'draft' ||
+        isPeriodEffectivelyOpen(period)
+
+      if (!canEditBlockedDates) {
+        throw new Error(
+          'Wyłączone dni można zmieniać tylko w szkicu lub otwartym okresie.'
+        )
+      }
+
+      const normalizedBlockedDates =
+        normalizeBlockedDates(
+          blockedDates,
+          period.dateFrom,
+          period.dateTo
+        )
+
+      isSaving.value = true
+
+      try {
+        await updateDoc(
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'grafik_okresy_dyspozycji',
+            periodId
+          ),
+          {
+            blockedDates: normalizedBlockedDates,
+            blockedDatesUpdatedById:
+              editorData?.id || null,
+            blockedDatesUpdatedByName:
+              editorData?.name || '',
+            blockedDatesUpdatedAt:
+              serverTimestamp(),
+            updatedById: editorData?.id || null,
+            updatedByName: editorData?.name || '',
+            updatedAt: serverTimestamp()
+          }
+        )
+
+        return normalizedBlockedDates
+      } catch (error) {
+        console.error(
+          'Błąd zapisu wyłączonych dni:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
     const deletePeriod = async (periodId) => {
       const restaurantId = await getRestaurantId()
 
@@ -331,12 +544,15 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         period => period.id === periodId
       )
 
-      if (
-        !existingPeriod ||
-        existingPeriod.status !== 'draft'
-      ) {
+      if (!existingPeriod) {
         throw new Error(
-          'Na tym etapie można usunąć wyłącznie szkic okresu.'
+          'Nie znaleziono wybranego okresu.'
+        )
+      }
+
+      if (isPeriodEffectivelyOpen(existingPeriod)) {
+        throw new Error(
+          'Najpierw zamknij otwarty okres dyspozycji.'
         )
       }
 
@@ -369,6 +585,365 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     }
 
 
+
+
+    const openPeriod = async (
+      periodId,
+      editorData
+    ) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !periodId) {
+        throw new Error(
+          'Brakuje danych potrzebnych do otwarcia okresu.'
+        )
+      }
+
+      const period = periods.value.find(
+        item => item.id === periodId
+      )
+
+      if (!period) {
+        throw new Error(
+          'Nie znaleziono wybranego okresu.'
+        )
+      }
+
+      if (period.status !== 'draft') {
+        throw new Error(
+          'Można otworzyć wyłącznie okres zapisany jako szkic.'
+        )
+      }
+
+      if (!period.demandModelId) {
+        throw new Error(
+          'Wybierz model zapotrzebowania przed otwarciem dyspozycji.'
+        )
+      }
+
+      if (
+        getTimestampMilliseconds(period.closesAt) <
+        Date.now()
+      ) {
+        throw new Error(
+          'Termin wprowadzania zmian już minął. Ustaw nowy termin.'
+        )
+      }
+
+      const todayDateKey =
+        formatLocalDateKey(new Date())
+
+      if (
+        !period.dateTo ||
+        period.dateTo < todayDateKey
+      ) {
+        throw new Error(
+          'Nie można otworzyć okresu, którego zakres już się zakończył.'
+        )
+      }
+
+      const conflictingPeriod = periods.value.find(
+        otherPeriod => {
+          return (
+            otherPeriod.id !== period.id &&
+            isPeriodEffectivelyOpen(otherPeriod) &&
+            rangesOverlap(
+              period.dateFrom,
+              period.dateTo,
+              otherPeriod.dateFrom,
+              otherPeriod.dateTo
+            )
+          )
+        }
+      )
+
+      if (conflictingPeriod) {
+        throw new Error(
+          `Ten zakres pokrywa się z otwartym okresem „${conflictingPeriod.name}”.`
+        )
+      }
+
+      isSaving.value = true
+
+      try {
+        const periodRef = doc(
+          db,
+          'users',
+          restaurantId,
+          'grafik_okresy_dyspozycji',
+          periodId
+        )
+
+        await updateDoc(periodRef, {
+          status: 'open',
+
+          openedById:
+            editorData?.id || null,
+
+          openedByName:
+            editorData?.name || '',
+
+          openedAt: serverTimestamp(),
+
+          updatedById:
+            editorData?.id || null,
+
+          updatedByName:
+            editorData?.name || '',
+
+          updatedAt: serverTimestamp()
+        })
+      } catch (error) {
+        console.error(
+          'Błąd otwierania okresu dyspozycji:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
+    const closePeriod = async (
+      periodId,
+      editorData
+    ) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !periodId) {
+        throw new Error(
+          'Brakuje danych potrzebnych do zamknięcia okresu.'
+        )
+      }
+
+      const period = periods.value.find(
+        item => item.id === periodId
+      )
+
+      if (!period || !isPeriodEffectivelyOpen(period)) {
+        throw new Error(
+          'Ten okres nie jest obecnie otwarty.'
+        )
+      }
+
+      isSaving.value = true
+
+      try {
+        await updateDoc(
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'grafik_okresy_dyspozycji',
+            periodId
+          ),
+          {
+            status: 'closed',
+            closedById: editorData?.id || null,
+            closedByName: editorData?.name || '',
+            closedAt: serverTimestamp(),
+            updatedById: editorData?.id || null,
+            updatedByName: editorData?.name || '',
+            updatedAt: serverTimestamp()
+          }
+        )
+      } catch (error) {
+        console.error(
+          'Błąd zamykania okresu dyspozycji:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
+    const extendPeriodDeadline = async (
+      periodId,
+      closesOn,
+      editorData
+    ) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !periodId || !closesOn) {
+        throw new Error(
+          'Brakuje danych potrzebnych do przedłużenia terminu.'
+        )
+      }
+
+      const period = periods.value.find(
+        item => item.id === periodId
+      )
+
+      if (!period || !isPeriodEffectivelyOpen(period)) {
+        throw new Error(
+          'Można przedłużyć wyłącznie aktualnie otwarty okres.'
+        )
+      }
+
+      const todayDateKey = formatLocalDateKey(new Date())
+      const newClosesAt = getEndOfDayTimestamp(closesOn)
+
+      if (
+        closesOn < todayDateKey ||
+        closesOn > period.dateTo
+      ) {
+        throw new Error(
+          'Nowy termin musi przypadać od dzisiaj do końca okresu.'
+        )
+      }
+
+      
+
+      isSaving.value = true
+
+      try {
+        await updateDoc(
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'grafik_okresy_dyspozycji',
+            periodId
+          ),
+          {
+            closesAt: newClosesAt,
+            deadlineExtendedById: editorData?.id || null,
+            deadlineExtendedByName: editorData?.name || '',
+            deadlineExtendedAt: serverTimestamp(),
+            updatedById: editorData?.id || null,
+            updatedByName: editorData?.name || '',
+            updatedAt: serverTimestamp()
+          }
+        )
+      } catch (error) {
+        console.error(
+          'Błąd przedłużania terminu okresu dyspozycji:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
+    const reopenPeriod = async (
+      periodId,
+      closesOn,
+      editorData
+    ) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !periodId || !closesOn) {
+        throw new Error(
+          'Brakuje danych potrzebnych do ponownego otwarcia okresu.'
+        )
+      }
+
+      const period = periods.value.find(
+        item => item.id === periodId
+      )
+
+      if (!period) {
+        throw new Error(
+          'Nie znaleziono wybranego okresu.'
+        )
+      }
+
+      if (isPeriodEffectivelyOpen(period)) {
+        throw new Error(
+          'Ten okres jest już otwarty.'
+        )
+      }
+
+      if (period.status === 'draft') {
+        throw new Error(
+          'Szkic otwórz przyciskiem „Otwórz dyspozycje”.'
+        )
+      }
+
+      if (!period.demandModelId) {
+        throw new Error(
+          'Ten okres nie ma wybranego modelu zapotrzebowania.'
+        )
+      }
+
+      const todayDateKey = formatLocalDateKey(new Date())
+
+      if (!period.dateTo || period.dateTo < todayDateKey) {
+        throw new Error(
+          'Nie można ponownie otworzyć okresu, którego zakres już minął.'
+        )
+      }
+
+      if (
+        closesOn < todayDateKey ||
+        closesOn > period.dateTo
+      ) {
+        throw new Error(
+          'Nowy termin musi przypadać od dzisiaj do końca okresu.'
+        )
+      }
+
+      const conflictingPeriod = periods.value.find(
+        otherPeriod => {
+          return (
+            otherPeriod.id !== period.id &&
+            isPeriodEffectivelyOpen(otherPeriod) &&
+            rangesOverlap(
+              period.dateFrom,
+              period.dateTo,
+              otherPeriod.dateFrom,
+              otherPeriod.dateTo
+            )
+          )
+        }
+      )
+
+      if (conflictingPeriod) {
+        throw new Error(
+          `Ten zakres pokrywa się z otwartym okresem „${conflictingPeriod.name}”.`
+        )
+      }
+
+      isSaving.value = true
+
+      try {
+        await updateDoc(
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'grafik_okresy_dyspozycji',
+            periodId
+          ),
+          {
+            status: 'open',
+            closesAt: getEndOfDayTimestamp(closesOn),
+            reopenedById: editorData?.id || null,
+            reopenedByName: editorData?.name || '',
+            reopenedAt: serverTimestamp(),
+            updatedById: editorData?.id || null,
+            updatedByName: editorData?.name || '',
+            updatedAt: serverTimestamp()
+          }
+        )
+      } catch (error) {
+        console.error(
+          'Błąd ponownego otwierania okresu dyspozycji:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
+
       
 
     return {
@@ -376,9 +951,15 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isLoading,
       isSaving,
       fetchPeriods,
+      stopPeriodsListener,
       addPeriod,
       updatePeriod,
-      deletePeriod
+      updateBlockedDates,
+      deletePeriod,
+      openPeriod,
+      closePeriod,
+      extendPeriodDeadline,
+      reopenPeriod
     }
 
 

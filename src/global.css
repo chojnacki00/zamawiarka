@@ -3037,3 +3037,216 @@ button {
 .availability-period-calendar-actions .app-dialog-cancel {
   width: 100%;
 }
+
+
+/* =========================
+   OTWARTY OKRES DYSPOZYCJI
+========================= */
+
+.availability-period-row-open {
+  border-color: #86efac;
+  background: #ecfdf3;
+
+  box-shadow:
+    inset 4px 0 0 #34c759,
+    0 6px 18px rgba(22, 163, 74, 0.1);
+}
+
+.availability-period-row-open .app-list-row-open {
+  background: transparent;
+}
+
+.availability-period-row-open .app-list-row-open:active {
+  background: #dcfce7;
+}
+
+.availability-period-row-open .app-list-row-title {
+  color: #166534;
+}
+
+.availability-period-row-open .app-list-row-subtitle {
+  color: #3f7350;
+}
+
+.availability-period-row-open .app-list-row-arrow {
+  color: #22a447;
+}
+
+
+/* PRZYCISK OTWARCIA DYSPOZYCJI */
+
+.availability-period-open-button {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 14px;
+  padding: 13px 16px;
+
+  border: none;
+  border-radius: 16px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #34c759 0%,
+      #28a745 100%
+    );
+
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+
+  box-shadow:
+    0 8px 18px rgba(40, 167, 69, 0.24);
+
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.availability-period-open-button:active {
+  transform: scale(0.98);
+  box-shadow:
+    0 4px 10px rgba(40, 167, 69, 0.2);
+}
+
+.availability-period-open-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+
+/* OTWARTE OKRESY DYSPOZYCJI — POŁĄCZONE ZAKRESY */
+
+.schedule-calendar-cell.availability-period-open {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.schedule-calendar-cell.availability-period-open.availability-period-start:not(.availability-period-end) {
+  border-radius: 12px 0 0 12px;
+  box-shadow: 6px 0 0 #dcfce7;
+}
+
+.schedule-calendar-cell.availability-period-open.availability-period-end:not(.availability-period-start) {
+  border-radius: 0 12px 12px 0;
+  box-shadow: -6px 0 0 #dcfce7;
+}
+
+.schedule-calendar-cell.availability-period-open:not(.availability-period-start):not(.availability-period-end) {
+  border-radius: 0;
+  box-shadow:
+    -6px 0 0 #dcfce7,
+    6px 0 0 #dcfce7;
+}
+
+.schedule-calendar-cell.availability-period-open.availability-period-start.availability-period-end {
+  border-radius: 12px;
+}
+
+.schedule-calendar-cell.availability-period-open.today {
+  background: #2563eb;
+  border-color: #22c55e;
+  color: #ffffff;
+}
+
+.schedule-calendar-cell.availability-period-open.selected,
+.schedule-calendar-cell.availability-period-open.multiSelected {
+  outline: 2px solid #2563eb;
+  outline-offset: -3px;
+}
+
+.schedule-calendar-cell.availability-period-closed {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.schedule-calendar-cell.availability-period-closed.today {
+  background: #e2e8f0;
+  border-color: #93c5fd;
+  color: #64748b;
+  box-shadow: 0 0 0 2px #bfdbfe;
+}
+
+.schedule-calendar-cell.availability-period-closed.today::after {
+  background: #2563eb;
+}
+
+.schedule-calendar-cell.availability-period-closed.availability-period-manager-override {
+  opacity: 0.78;
+  cursor: pointer;
+}
+
+.schedule-calendar-cell.availability-period-open.availability-period-blocked {
+  background:
+  repeating-linear-gradient(
+    135deg,
+    #fecaca 0,
+    #fecaca 6px,
+    #dcfce7 6px,
+    #dcfce7 12px
+  ) !important;
+
+  border-color: #ef4444 !important;
+  color: #991b1b !important;
+}
+
+
+/* WYBÓR DNI WYŁĄCZONYCH W OKRESIE DYSPOZYCJI */
+
+.availability-period-calendar-day.blocked-date-period-range {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+  opacity: 1;
+}
+
+.availability-period-calendar-day.blocked-date-period-range.blocked-date-range-start:not(.blocked-date-range-end) {
+  border-radius: 12px 0 0 12px;
+  box-shadow: 6px 0 0 #dcfce7;
+}
+
+.availability-period-calendar-day.blocked-date-period-range.blocked-date-range-end:not(.blocked-date-range-start) {
+  border-radius: 0 12px 12px 0;
+  box-shadow: -6px 0 0 #dcfce7;
+}
+
+.availability-period-calendar-day.blocked-date-period-range:not(.blocked-date-range-start):not(.blocked-date-range-end) {
+  border-radius: 0;
+  box-shadow:
+    -6px 0 0 #dcfce7,
+    6px 0 0 #dcfce7;
+}
+
+.availability-period-calendar-day.blocked-date-period-range.blocked-date-range-start.blocked-date-range-end {
+  border-radius: 12px;
+}
+
+.availability-period-calendar-day.blocked-date-period-range.today {
+  background: #2563eb;
+  border-color: #22c55e;
+  color: #ffffff;
+}
+
+.availability-period-calendar-day.blocked-date-selected {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+  outline: 2px solid #ef4444;
+  outline-offset: -3px;
+}
+
+.availability-period-calendar-day.blocked-date-outside-period {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.availability-period-calendar-day.blocked-date-period-range:disabled {
+  opacity: 1;
+  cursor: default;
+}

@@ -137,14 +137,23 @@
       :key="day ? day.toISOString() : `empty-${index}`"
       class="schedule-calendar-cell"
       @click="selectCalendarDay(day)"
-     :class="{
-  empty: !day,
-  today: day && formatDateKey(day) === todayDateKey,
-  selected: day && formatDateKey(day) === selectedDateKey,
-  multiSelected:
-    day &&
-    selectedDateKeys.includes(formatDateKey(day))
-}"
+      :class="[
+        {
+          empty: !day,
+          today:
+            day &&
+            formatDateKey(day) === todayDateKey,
+          selected:
+            day &&
+            formatDateKey(day) === selectedDateKey,
+          multiSelected:
+            day &&
+            selectedDateKeys.includes(
+              formatDateKey(day)
+            )
+        },
+        getAvailabilityPeriodClasses(day, index)
+      ]"
     >
       <template v-if="day">
   <span class="schedule-calendar-day-number">
@@ -506,11 +515,19 @@
   }}
 </div>
 
+<div
+  v-if="!canEditSelectedAvailability"
+  class="schedule-employee-newer-entry-warning"
+>
+  {{ selectedAvailabilityLockMessage }}
+</div>
+
   <div class="schedule-availability-options">
   <button
     v-for="option in availabilityOptions"
     :key="option.value"
     type="button"
+    :disabled="!canEditSelectedAvailability"
     class="schedule-availability-option"
     :class="[
   `color-${option.color}`,
@@ -551,6 +568,7 @@
       <input
         v-model="availabilityTimeFrom"
         type="time"
+        :disabled="!canEditSelectedAvailability"
         class="schedule-availability-time-input"
         aria-label="Godzina rozpoczęcia dyspozycyjności"
       >
@@ -558,6 +576,7 @@
       <button
         class="schedule-time-picker-button"
         type="button"
+        :disabled="!canEditSelectedAvailability"
         title="Wybierz godzinę rozpoczęcia"
         @click="openAvailabilityTimePicker('from')"
       >
@@ -586,6 +605,7 @@
       <input
         v-model="availabilityTimeTo"
         type="time"
+        :disabled="!canEditSelectedAvailability"
         class="schedule-availability-time-input"
         aria-label="Godzina zakończenia dyspozycyjności"
       >
@@ -593,6 +613,7 @@
       <button
         class="schedule-time-picker-button"
         type="button"
+        :disabled="!canEditSelectedAvailability"
         title="Wybierz godzinę zakończenia"
         @click="openAvailabilityTimePicker('to')"
       >
@@ -631,6 +652,7 @@
   <textarea
     v-model="availabilityNote"
     :maxlength="availabilityNoteMaxLength"
+    :disabled="!canEditSelectedAvailability"
     class="schedule-availability-note-input"
     placeholder="Opcjonalna krótka informacja..."
     rows="3"
@@ -758,8 +780,15 @@
 <button
   type="button"
   class="schedule-availability-save-button"
-  :disabled="isSavingAvailability"
-  :class="{ disabled: isSavingAvailability }"
+  :disabled="
+    isSavingAvailability ||
+    !canEditSelectedAvailability
+  "
+  :class="{
+    disabled:
+      isSavingAvailability ||
+      !canEditSelectedAvailability
+  }"
   @click="saveAvailability"
 >
   {{
@@ -1119,12 +1148,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch
+} from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
+import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
 import { db } from '../../firebase.js'
 
@@ -1133,12 +1169,31 @@ const employeeAuthStore = useEmployeeAuthStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
+const periodsStore =
+  useScheduleAvailabilityPeriodsStore()
+
+const periodsClock = ref(Date.now())
+let periodsClockInterval = null
 
 onMounted(async () => {
   await Promise.all([
     employeesStore.fetchEmployees(),
-    positionsStore.fetchPositions()
+    positionsStore.fetchPositions(),
+    periodsStore.fetchPeriods()
   ])
+
+  periodsClockInterval = window.setInterval(() => {
+    periodsClock.value = Date.now()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  periodsStore.stopPeriodsListener()
+
+  if (periodsClockInterval) {
+    window.clearInterval(periodsClockInterval)
+    periodsClockInterval = null
+  }
 })
 
 
@@ -1345,6 +1400,52 @@ const datesSelectedForAvailability = computed(() => {
 
   return []
 })
+
+const canEditSelectedAvailability = computed(() => {
+  if (canManageSchedule.value) {
+    return true
+  }
+
+  const selectedDates =
+    datesSelectedForAvailability.value
+
+  if (selectedDates.length === 0) {
+    return false
+  }
+
+  return selectedDates.every(dateKey => {
+    return Boolean(
+      getEditablePeriodForDateKey(dateKey)
+    )
+  })
+})
+
+
+
+const selectedAvailabilityLockMessage = computed(() => {
+  const selectedDates =
+    datesSelectedForAvailability.value
+
+  const containsBlockedDay =
+    selectedDates.some(dateKey => {
+      const period =
+        getOpenPeriodForDateKey(dateKey)
+
+      return Boolean(
+        period &&
+        isDateBlockedInPeriod(period, dateKey)
+      )
+    })
+
+  if (containsBlockedDay) {
+    return 'Ten dzień został wyłączony z edycji w obecnym okresie dyspozycji.'
+  }
+
+  return 'Ten dzień nie należy obecnie do otwartego okresu dyspozycji. Możesz zobaczyć zapisaną dyspozycję, ale nie możesz jej zmienić.'
+})
+
+
+
 
 const isSavingAvailability = ref(false)
 const saveResultModal = ref({
@@ -1622,6 +1723,9 @@ const saveTeamAvailability = async () => {
   isSavingTeamAvailability.value = true
 
   try {
+    const availabilityPeriod =
+      getOpenPeriodForDateKey(dateKey)
+
     const documentId = `${employee.id}_${dateKey}`
 
     const availabilityRef = doc(
@@ -1639,6 +1743,8 @@ const saveTeamAvailability = async () => {
   currentAvailability?.employeeEntry || null
 
     const managerEntry = {
+      periodId: availabilityPeriod?.id || null,
+
       type: teamEditAvailabilityType.value,
 
       timeFrom:
@@ -1665,6 +1771,7 @@ const saveTeamAvailability = async () => {
     const availabilityData = {
       employeeId: employee.id,
       date: dateKey,
+      periodId: availabilityPeriod?.id || null,
 
       type: managerEntry.type,
       timeFrom: managerEntry.timeFrom,
@@ -1840,6 +1947,9 @@ const saveEmployeeViewAsManager = async () => {
     let changedDatesCount = 0
 
     selectedDates.forEach(dateKey => {
+      const availabilityPeriod =
+        getOpenPeriodForDateKey(dateKey)
+
       const currentAvailability =
         availabilityRecords.value[dateKey] || null
 
@@ -1883,6 +1993,8 @@ changedDatesCount += 1
   currentAvailability?.employeeEntry || null
 
       const managerEntry = {
+        periodId: availabilityPeriod?.id || null,
+
         type: selectedAvailabilityType.value,
 
         timeFrom:
@@ -1909,6 +2021,7 @@ changedDatesCount += 1
       const availabilityData = {
         employeeId: employee.id,
         date: dateKey,
+        periodId: availabilityPeriod?.id || null,
 
         type: managerEntry.type,
         timeFrom: managerEntry.timeFrom,
@@ -2166,6 +2279,23 @@ const saveAvailability = async () => {
     return
   }
 
+  const closedDate = canManageSchedule.value
+    ? null
+    : selectedDates.find(
+        dateKey =>
+          !getEditablePeriodForDateKey(dateKey)
+      )
+
+  if (closedDate) {
+    showSaveResultModal(
+      'error',
+      'Co najmniej jeden wybrany dzień nie jest już otwarty do wprowadzania dyspozycji.',
+      3000
+    )
+
+    return
+  }
+
   if (
     selectedAvailabilityType.value === 'partial' &&
     availabilityTimeFrom.value === availabilityTimeTo.value
@@ -2193,6 +2323,9 @@ const saveAvailability = async () => {
     const managerEditorNames = new Set()
 
     selectedDates.forEach(dateKey => {
+      const availabilityPeriod =
+        getEditablePeriodForDateKey(dateKey)
+
       const currentAvailability =
         availabilityRecords.value[dateKey] || null
 
@@ -2200,6 +2333,8 @@ const saveAvailability = async () => {
         currentAvailability?.managerEntry || null
 
       const employeeEntry = {
+        periodId: availabilityPeriod?.id || null,
+
         type: selectedAvailabilityType.value,
 
         timeFrom:
@@ -2236,6 +2371,7 @@ const saveAvailability = async () => {
         batch.set(availabilityRef, {
           employeeId,
           date: dateKey,
+          periodId: availabilityPeriod?.id || null,
 
           type: existingManagerEntry.type,
           timeFrom: existingManagerEntry.timeFrom ?? null,
@@ -2264,6 +2400,7 @@ const saveAvailability = async () => {
       batch.set(availabilityRef, {
         employeeId,
         date: dateKey,
+        periodId: availabilityPeriod?.id || null,
 
         type: employeeEntry.type,
         timeFrom: employeeEntry.timeFrom,
@@ -2459,6 +2596,22 @@ const selectCalendarDay = async (day) => {
 
   const dateKey = formatDateKey(day)
 
+  const canEditDate =
+    canSelectAvailabilityDate(dateKey)
+
+  if (
+    isMultiSelectMode.value &&
+    !canEditDate
+  ) {
+    showSaveResultModal(
+      'error',
+      'Dyspozycje dla tego dnia nie są obecnie otwarte.',
+      2500
+    )
+
+    return
+  }
+
   if (isMultiSelectMode.value) {
     const dayIndex = selectedDateKeys.value.indexOf(dateKey)
 
@@ -2538,6 +2691,147 @@ const todayDateKey = new Intl.DateTimeFormat(
     day: '2-digit'
   }
 ).format(new Date())
+
+const getTimestampMilliseconds = (timestamp) => {
+  if (!timestamp) {
+    return 0
+  }
+
+  if (typeof timestamp.toMillis === 'function') {
+    return timestamp.toMillis()
+  }
+
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate().getTime()
+  }
+
+  return new Date(timestamp).getTime()
+}
+
+const isPeriodEffectivelyOpen = (period) => {
+  if (period?.status !== 'open') {
+    return false
+  }
+
+  if (
+    getTimestampMilliseconds(period.closesAt) <
+    periodsClock.value
+  ) {
+    return false
+  }
+
+  return Boolean(
+    period.dateTo &&
+    period.dateTo >= todayDateKey
+  )
+}
+
+const getOpenPeriodForDateKey = (dateKey) => {
+  if (!dateKey) {
+    return null
+  }
+
+  return periodsStore.periods.find(period => {
+    return (
+      isPeriodEffectivelyOpen(period) &&
+      period.dateFrom <= dateKey &&
+      period.dateTo >= dateKey
+    )
+  }) || null
+}
+
+const isDateBlockedInPeriod = (period, dateKey) => {
+  return Boolean(
+    period?.blockedDates?.includes(dateKey)
+  )
+}
+
+const getEditablePeriodForDateKey = (dateKey) => {
+  const period = getOpenPeriodForDateKey(dateKey)
+
+  if (
+    !period ||
+    isDateBlockedInPeriod(period, dateKey)
+  ) {
+    return null
+  }
+
+  return period
+}
+
+const getShiftedDateKey = (dateKey, offset) => {
+  const [year, month, day] = dateKey
+    .split('-')
+    .map(Number)
+
+  return formatDateKey(
+    new Date(year, month - 1, day + offset)
+  )
+}
+
+const getAvailabilityPeriodClasses = (
+  day,
+  calendarIndex
+) => {
+  if (!day) {
+    return {}
+  }
+
+  const dateKey = formatDateKey(day)
+  const period = getOpenPeriodForDateKey(dateKey)
+
+  if (!period) {
+    return {
+      'availability-period-closed': true,
+      'availability-period-manager-override':
+        canManageSchedule.value
+    }
+  }
+
+  const columnIndex = calendarIndex % 7
+
+  const previousPeriod =
+    columnIndex > 0
+      ? getOpenPeriodForDateKey(
+          getShiftedDateKey(dateKey, -1)
+        )
+      : null
+
+  const nextPeriod =
+    columnIndex < 6
+      ? getOpenPeriodForDateKey(
+          getShiftedDateKey(dateKey, 1)
+        )
+      : null
+
+  const startsRange =
+    previousPeriod?.id !== period.id
+
+  const endsRange =
+    nextPeriod?.id !== period.id
+
+  return {
+    'availability-period-open': true,
+    'availability-period-start': startsRange,
+    'availability-period-end': endsRange,
+    'availability-period-blocked':
+      isDateBlockedInPeriod(period, dateKey)
+  }
+}
+
+const canSelectAvailabilityDate = (dateKey) => {
+  if (selectedViewMode.value === 'all') {
+    return true
+  }
+
+  if (canManageSchedule.value) {
+    return true
+  }
+
+  return Boolean(
+    getEditablePeriodForDateKey(dateKey)
+  )
+}
 
 
 
