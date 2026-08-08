@@ -420,6 +420,14 @@ function calculateVacancyMinutes(vacancy) {
   return endMinutes - startMinutes
 }
 
+function getRequiredPeople(vacancy) {
+  const value = Math.trunc(Number(vacancy?.requiredPeople))
+
+  return Number.isFinite(value) && value >= 1
+    ? value
+    : 1
+}
+
 function getModelTotalTime(model) {
   if (!model?.days) return '0 godz.'
 
@@ -429,7 +437,9 @@ function getModelTotalTime(model) {
     )
     .reduce(
       (total, vacancy) =>
-        total + calculateVacancyMinutes(vacancy),
+        total +
+        calculateVacancyMinutes(vacancy) *
+        getRequiredPeople(vacancy),
       0
     )
 
@@ -459,7 +469,13 @@ function countModelVacancies(model) {
   if (!model?.days) return 0
 
   return Object.values(model.days).reduce((total, vacancies) => {
-    return total + (Array.isArray(vacancies) ? vacancies.length : 0)
+    if (!Array.isArray(vacancies)) return total
+
+    return total + vacancies.reduce(
+      (dayTotal, vacancy) =>
+        dayTotal + getRequiredPeople(vacancy),
+      0
+    )
   }, 0)
 }
 

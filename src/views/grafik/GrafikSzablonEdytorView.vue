@@ -110,23 +110,27 @@
                 :key="vacancy.id"
                 class="schedule-vacancy-row"
               >
-                <select
-                 v-model="vacancy.positionId"
-                 class="schedule-vacancy-select"
-                 :class="{ 'schedule-vacancy-select-filled': vacancy.positionId }"
+                <button
+                  class="schedule-position-select-button notranslate"
+                  :class="{
+                    'schedule-position-select-button-filled': vacancy.positionId
+                  }"
+                  type="button"
+                  translate="no"
+                  @click="openPositionPicker(vacancy)"
                 >
-                  <option value="">
-                    Wybierz stanowisko
-                  </option>
+                  <span>
+                    {{
+                      vacancy.positionId
+                        ? getPositionName(vacancy.positionId)
+                        : 'Wybierz stanowisko'
+                    }}
+                  </span>
 
-                  <option
-                    v-for="position in schedulePositionsStore.positions"
-                    :key="position.id"
-                    :value="position.id"
-                  >
-                    {{ position.nazwa }}
-                  </option>
-                </select>
+                  <span class="schedule-position-select-arrow">
+                    ›
+                  </span>
+                </button>
 
 <div class="schedule-time-row">
   <label class="schedule-time-field">
@@ -198,40 +202,92 @@
   </label>
 </div>
 
-                <button
-                  class="schedule-vacancy-delete"
-                  type="button"
-                  title="Usuń wakat"
-                  @click="removeVacancy(day.key, vacancy.id)"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="17"
-                    height="17"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                <div class="schedule-vacancy-footer">
+                  <div class="schedule-vacancy-people">
+                    <span class="schedule-vacancy-people-label">
+                      Liczba osób
+                    </span>
+
+                    <div class="schedule-vacancy-people-controls">
+                      <button
+                        class="schedule-vacancy-people-button"
+                        type="button"
+                        aria-label="Zmniejsz liczbę osób"
+                        :disabled="Number(vacancy.requiredPeople) <= 1"
+                        @click="decreaseRequiredPeople(vacancy)"
+                      >
+                        −
+                      </button>
+
+                      <input
+                        v-model.number="vacancy.requiredPeople"
+                        class="schedule-vacancy-people-input"
+                        type="number"
+                        min="1"
+                        max="99"
+                        inputmode="numeric"
+                        aria-label="Liczba potrzebnych osób"
+                        @blur="normalizeRequiredPeople(vacancy)"
+                      >
+
+                      <button
+                        class="schedule-vacancy-people-button"
+                        type="button"
+                        aria-label="Zwiększ liczbę osób"
+                        :disabled="Number(vacancy.requiredPeople) >= 99"
+                        @click="increaseRequiredPeople(vacancy)"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    class="schedule-vacancy-delete"
+                    type="button"
+                    title="Usuń pozycję"
+                    aria-label="Usuń pozycję"
+                    @click="removeVacancy(day.key, vacancy.id)"
                   >
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6l-1 14H6L5 6" />
-                    <path d="M10 11v6" />
-                    <path d="M14 11v6" />
-                    <path d="M9 6V4h6v2" />
-                  </svg>
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                      <path d="M9 6V4h6v2" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <button
-              class="schedule-add-vacancy"
-              type="button"
-              @click="addVacancy(day.key)"
-            >
-              + Dodaj stanowisko
-            </button>
+            <div class="schedule-day-actions">
+              <button
+                class="schedule-add-vacancy"
+                type="button"
+                @click="addVacancy(day.key)"
+              >
+                + Dodaj stanowisko
+              </button>
+
+              <button
+                class="schedule-copy-day-button"
+                type="button"
+                @click="openCopyDayModal(day.key)"
+              >
+                Kopiuj dzień
+              </button>
+            </div>
           </div>
         </section>
       </div>
@@ -255,6 +311,136 @@
           : 'Zapisz szablon'
         }}
       </button>
+    </div>
+
+
+    <div
+      v-if="showPositionPickerModal"
+      class="app-dialog-overlay"
+      @click.self="closePositionPicker"
+    >
+      <div class="app-dialog-card schedule-position-dialog">
+        <div class="app-dialog-icon">
+          👤
+        </div>
+
+        <div class="app-dialog-title">
+          Wybierz stanowisko
+        </div>
+
+        <div class="app-dialog-message">
+          Dotknij stanowiska, aby je przypisać.
+        </div>
+
+        <div
+          class="schedule-position-options notranslate"
+          translate="no"
+        >
+          <button
+            v-for="position in schedulePositionsStore.positions"
+            :key="position.id"
+            class="schedule-position-option"
+            :class="{
+              'schedule-position-option-active':
+                activePositionVacancy?.positionId === position.id
+            }"
+            type="button"
+            @click="selectPosition(position.id)"
+          >
+            <span>{{ position.nazwa }}</span>
+
+            <span
+              v-if="activePositionVacancy?.positionId === position.id"
+              class="schedule-position-option-check"
+            >
+              ✓
+            </span>
+          </button>
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            @click="closePositionPicker"
+          >
+            Anuluj
+          </button>
+
+          <button
+            class="app-dialog-button schedule-position-clear-button"
+            type="button"
+            :disabled="!activePositionVacancy?.positionId"
+            @click="clearSelectedPosition"
+          >
+            Wyczyść
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <div
+      v-if="showCopyDayModal"
+      class="app-dialog-overlay"
+      @click.self="closeCopyDayModal"
+    >
+      <div class="app-dialog-card schedule-copy-day-dialog">
+        <div class="app-dialog-icon">
+          📋
+        </div>
+
+        <div class="app-dialog-title">
+          Kopiuj: {{ getCopySourceDayLabel() }}
+        </div>
+
+        <div class="app-dialog-message">
+          Wybierz dni docelowe. Ich obecna zawartość zostanie zastąpiona.
+        </div>
+
+        <div class="schedule-copy-day-options">
+          <button
+            v-for="targetDay in getCopyTargetDays()"
+            :key="targetDay.key"
+            class="schedule-copy-day-option"
+            :class="{
+              'schedule-copy-day-option-active':
+                selectedCopyDayKeys.includes(targetDay.key)
+            }"
+            type="button"
+            @click="toggleCopyTargetDay(targetDay.key)"
+          >
+            <span>{{ targetDay.label }}</span>
+
+            <span class="schedule-copy-day-checkbox">
+              {{
+                selectedCopyDayKeys.includes(targetDay.key)
+                  ? '✓'
+                  : ''
+              }}
+            </span>
+          </button>
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            @click="closeCopyDayModal"
+          >
+            Anuluj
+          </button>
+
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            :disabled="selectedCopyDayKeys.length === 0"
+            @click="copyDayToSelectedDays"
+          >
+            Kopiuj
+          </button>
+        </div>
+      </div>
     </div>
 
 
@@ -406,7 +592,7 @@
     </div>
 
     <div class="app-dialog-message">
-    W każdej dodanej pozycji wybierz stanowisko oraz ustaw różne godziny rozpoczęcia i zakończenia.
+    W każdej dodanej pozycji wybierz stanowisko, ustaw liczbę osób (minimum 1) oraz różne godziny rozpoczęcia i zakończenia.
     </div>
 
     <div class="app-dialog-actions">
@@ -443,6 +629,11 @@ const hasUnsavedChanges = ref(false)
 const isInitialDataLoaded = ref(false)
 const showUnsavedChangesModal = ref(false)
 const showValidationModal = ref(false)
+const showPositionPickerModal = ref(false)
+const activePositionVacancy = ref(null)
+const showCopyDayModal = ref(false)
+const copySourceDayKey = ref(null)
+const selectedCopyDayKeys = ref([])
 
 const hours = Array.from(
   { length: 24 },
@@ -554,7 +745,8 @@ onMounted(async () => {
           id: vacancy.id || crypto.randomUUID(),
           positionId: vacancy.positionId || '',
           from: vacancy.from || '00:00',
-          to: vacancy.to || '00:00'
+          to: vacancy.to || '00:00',
+          requiredPeople: getRequiredPeople(vacancy)
         }))
       : []
   })
@@ -616,8 +808,128 @@ function addVacancy(dayKey) {
   id: crypto.randomUUID(),
   positionId: '',
   from: '00:00',
-  to: '00:00'
+  to: '00:00',
+  requiredPeople: 1
 })
+}
+
+function getPositionName(positionId) {
+  const position = schedulePositionsStore.positions.find(
+    item => item.id === positionId
+  )
+
+  return position?.nazwa || 'Nieznane stanowisko'
+}
+
+function openPositionPicker(vacancy) {
+  activePositionVacancy.value = vacancy
+  showPositionPickerModal.value = true
+}
+
+function closePositionPicker() {
+  showPositionPickerModal.value = false
+  activePositionVacancy.value = null
+}
+
+function selectPosition(positionId) {
+  if (!activePositionVacancy.value) return
+
+  activePositionVacancy.value.positionId = positionId
+  closePositionPicker()
+}
+
+function clearSelectedPosition() {
+  if (!activePositionVacancy.value) return
+
+  activePositionVacancy.value.positionId = ''
+  closePositionPicker()
+}
+
+function openCopyDayModal(dayKey) {
+  copySourceDayKey.value = dayKey
+  selectedCopyDayKeys.value = []
+  showCopyDayModal.value = true
+}
+
+function closeCopyDayModal() {
+  showCopyDayModal.value = false
+  copySourceDayKey.value = null
+  selectedCopyDayKeys.value = []
+}
+
+function getCopySourceDayLabel() {
+  return days.value.find(
+    day => day.key === copySourceDayKey.value
+  )?.label || ''
+}
+
+function getCopyTargetDays() {
+  return days.value.filter(
+    day => day.key !== copySourceDayKey.value
+  )
+}
+
+function toggleCopyTargetDay(dayKey) {
+  if (selectedCopyDayKeys.value.includes(dayKey)) {
+    selectedCopyDayKeys.value = selectedCopyDayKeys.value.filter(
+      key => key !== dayKey
+    )
+    return
+  }
+
+  selectedCopyDayKeys.value.push(dayKey)
+}
+
+function copyDayToSelectedDays() {
+  const sourceDay = days.value.find(
+    day => day.key === copySourceDayKey.value
+  )
+
+  if (!sourceDay || selectedCopyDayKeys.value.length === 0) {
+    return
+  }
+
+  days.value.forEach(targetDay => {
+    if (!selectedCopyDayKeys.value.includes(targetDay.key)) {
+      return
+    }
+
+    targetDay.vacancies = sourceDay.vacancies.map(vacancy => ({
+      id: crypto.randomUUID(),
+      positionId: vacancy.positionId,
+      from: vacancy.from,
+      to: vacancy.to,
+      requiredPeople: getRequiredPeople(vacancy)
+    }))
+  })
+
+  closeCopyDayModal()
+}
+
+function getRequiredPeople(vacancy) {
+  const value = Math.trunc(Number(vacancy?.requiredPeople))
+
+  return Number.isFinite(value) && value >= 1
+    ? Math.min(99, value)
+    : 1
+}
+
+function normalizeRequiredPeople(vacancy) {
+  vacancy.requiredPeople = getRequiredPeople(vacancy)
+}
+
+function increaseRequiredPeople(vacancy) {
+  vacancy.requiredPeople = Math.min(
+    99,
+    getRequiredPeople(vacancy) + 1
+  )
+}
+
+function decreaseRequiredPeople(vacancy) {
+  vacancy.requiredPeople = Math.max(
+    1,
+    getRequiredPeople(vacancy) - 1
+  )
 }
 
 
@@ -700,7 +1012,9 @@ function calculateVacancyMinutes(vacancy) {
 function getDayTotalTime(day) {
   const totalMinutes = day.vacancies.reduce(
     (total, vacancy) =>
-      total + calculateVacancyMinutes(vacancy),
+      total +
+      calculateVacancyMinutes(vacancy) *
+      getRequiredPeople(vacancy),
     0
   )
 
@@ -725,21 +1039,24 @@ function getDayTotalTime(day) {
 
 
 function getDaySummary(day) {
-  const count = day.vacancies.length
+  const count = day.vacancies.reduce(
+    (total, vacancy) => total + getRequiredPeople(vacancy),
+    0
+  )
 
   if (count === 0) {
     return 'Brak zapotrzebowania'
   }
 
   if (count === 1) {
-    return '1 stanowisko'
+    return '1 osoba'
   }
 
   if (count >= 2 && count <= 4) {
-    return `${count} stanowiska`
+    return `${count} osoby`
   }
 
-  return `${count} stanowisk`
+  return `${count} osób`
 }
 
 async function saveTemplate() {
@@ -757,7 +1074,10 @@ async function saveTemplate() {
     !vacancy.positionId ||
     !vacancy.from ||
     !vacancy.to ||
-    vacancy.from === vacancy.to
+    vacancy.from === vacancy.to ||
+    !Number.isInteger(Number(vacancy.requiredPeople)) ||
+    Number(vacancy.requiredPeople) < 1 ||
+    Number(vacancy.requiredPeople) > 99
   )
 )
 
@@ -776,7 +1096,8 @@ if (hasInvalidVacancy) {
           id: vacancy.id,
           positionId: vacancy.positionId,
           from: vacancy.from,
-          to: vacancy.to
+          to: vacancy.to,
+          requiredPeople: Number(vacancy.requiredPeople)
         }))
       ])
     )
