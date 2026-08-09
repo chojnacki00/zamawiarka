@@ -60,35 +60,72 @@
           class="schedule-day-card"
           :class="{ active: day.isOpen }"
        >
-          <button
-          class="schedule-day-header"
-          :class="{ active: day.isOpen }"
-          type="button"
-          @click="toggleDay(day.key)"
->
-            <div class="schedule-day-main">
-              <div class="schedule-day-name">
-                {{ day.label }}
-              </div>
-
-              <div class="schedule-day-summary-row">
-              <div class="schedule-day-summary">
-              {{ getDaySummary(day) }}
-              </div>
-
-  <div class="schedule-day-hours">
-    {{ getDayTotalTime(day) }}
-  </div>
-</div>
-            </div>
-
-            <div
-              class="schedule-day-arrow"
-              :class="{ open: day.isOpen }"
+          <div
+            class="schedule-day-header"
+            :class="{ active: day.isOpen }"
+          >
+            <button
+              class="schedule-day-toggle-main"
+              type="button"
+              @click="toggleDay(day.key)"
             >
-              ▾
-            </div>
-          </button>
+              <div class="schedule-day-main">
+                <div class="schedule-day-name">
+                  {{ day.label }}
+                </div>
+
+                <div class="schedule-day-summary-row">
+                  <div class="schedule-day-summary">
+                    {{ getDaySummary(day) }}
+                  </div>
+
+                  <div class="schedule-day-hours">
+                    {{ getDayTotalTime(day) }}
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              class="schedule-copy-day-header-button"
+              type="button"
+              :title="`Kopiuj ${day.label}`"
+              :aria-label="`Kopiuj ${day.label}`"
+              @click.stop="openCopyDayModal(day.key)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+
+            <button
+              class="schedule-day-toggle-arrow"
+              type="button"
+              :title="day.isOpen ? 'Zwiń dzień' : 'Rozwiń dzień'"
+              :aria-label="day.isOpen ? 'Zwiń dzień' : 'Rozwiń dzień'"
+              @click="toggleDay(day.key)"
+            >
+              <span
+                class="schedule-day-arrow"
+                :class="{ open: day.isOpen }"
+                aria-hidden="true"
+              >
+                ▾
+              </span>
+            </button>
+          </div>
 
           <div
             v-if="day.isOpen"
@@ -278,14 +315,6 @@
                 @click="addVacancy(day.key)"
               >
                 + Dodaj stanowisko
-              </button>
-
-              <button
-                class="schedule-copy-day-button"
-                type="button"
-                @click="openCopyDayModal(day.key)"
-              >
-                Kopiuj dzień
               </button>
             </div>
           </div>
@@ -612,7 +641,7 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore'
@@ -660,7 +689,7 @@ const days = ref([
   {
     key: 'monday',
     label: 'Poniedziałek',
-    isOpen: true,
+    isOpen: false,
     vacancies: []
   },
   {
@@ -701,8 +730,18 @@ const days = ref([
   }
 ])
 
+const editableTemplateState = computed(() => {
+  return {
+    templateName: templateName.value,
+    days: days.value.map(day => ({
+      key: day.key,
+      vacancies: day.vacancies
+    }))
+  }
+})
+
 watch(
-  [templateName, days],
+  editableTemplateState,
   () => {
     if (!isInitialDataLoaded.value) return
 

@@ -81,16 +81,82 @@
 
 
   <div class="schedule-calendar-actions">
-  <button
-  type="button"
-  class="schedule-multi-select-button"
-  :class="{ active: isMultiSelectMode }"
-  title="Tryb zaznaczania"
-  @click="toggleMultiSelectMode"
->
-  ☑️
-</button>
-</div>
+    <div
+      v-if="visibleAvailabilityPeriods.length > 0"
+      class="schedule-calendar-periods-summary"
+    >
+      <div
+        v-for="period in visibleAvailabilityPeriods"
+        :key="period.id"
+        class="schedule-calendar-period-summary"
+        :class="{
+          'current-month': period.isCurrentMonth,
+          urgent: period.daysRemaining <= 2
+        }"
+      >
+        <template v-if="canManageSchedule">
+          <span
+            class="schedule-calendar-period-name"
+            :title="period.name"
+          >
+            {{ period.name }}
+          </span>
+
+          <span class="schedule-calendar-period-separator">
+            •
+          </span>
+        </template>
+
+        <span class="schedule-calendar-period-nowrap">
+          <template v-if="!canManageSchedule">
+            zakres:
+          </template>
+          {{ period.dateRange }}
+        </span>
+
+        <span class="schedule-calendar-period-separator">
+          •
+        </span>
+
+        <template v-if="canManageSchedule">
+          <span
+            class="schedule-calendar-period-model"
+            :title="period.modelName"
+          >
+            {{ period.modelName }}
+          </span>
+
+          <span class="schedule-calendar-period-separator">
+            •
+          </span>
+        </template>
+
+        <span class="schedule-calendar-period-nowrap">
+          {{ canManageSchedule ? 'do' : 'termin do' }}
+          {{ period.closesOn }}
+        </span>
+
+        <span class="schedule-calendar-period-separator">
+          •
+        </span>
+
+        <span class="schedule-calendar-period-nowrap">
+          {{ formatDaysRemaining(period.daysRemaining) }}
+        </span>
+      </div>
+    </div>
+
+    <button
+      type="button"
+      class="schedule-multi-select-button"
+      style="margin-left: auto;"
+      :class="{ active: isMultiSelectMode }"
+      title="Tryb zaznaczania"
+      @click="toggleMultiSelectMode"
+    >
+      ☑️
+    </button>
+  </div>
 
 
 
@@ -1161,6 +1227,7 @@ import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
 import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
+import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
 import { db } from '../../firebase.js'
 
@@ -1171,6 +1238,8 @@ const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
 const periodsStore =
   useScheduleAvailabilityPeriodsStore()
+const demandModelsStore =
+  useScheduleDemandModelsStore()
 
 const periodsClock = ref(Date.now())
 let periodsClockInterval = null
@@ -1179,7 +1248,8 @@ onMounted(async () => {
   await Promise.all([
     employeesStore.fetchEmployees(),
     positionsStore.fetchPositions(),
-    periodsStore.fetchPeriods()
+    periodsStore.fetchPeriods(),
+    demandModelsStore.fetchModels()
   ])
 
   periodsClockInterval = window.setInterval(() => {
@@ -2671,6 +2741,166 @@ const changeMonth = (offset) => {
     1
   )
 }
+
+
+
+const formatCompactDateKey = (dateKey) => {
+  if (!dateKey) {
+    return '--.--'
+  }
+
+  const [, month, day] = dateKey.split('-')
+
+  return `${day}.${month}`
+}
+
+const getDateFromTimestamp = (timestamp) => {
+  if (!timestamp) {
+    return null
+  }
+
+  const date =
+    typeof timestamp.toDate === 'function'
+      ? timestamp.toDate()
+      : new Date(timestamp)
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date
+}
+
+const getWarsawDateKey = (date) => {
+  const parts = new Intl.DateTimeFormat(
+    'en-GB',
+    {
+      timeZone: 'Europe/Warsaw',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }
+  ).formatToParts(date)
+
+  const getPart = (type) => {
+    return parts.find(part => part.type === type)?.value || ''
+  }
+
+  return (
+    `${getPart('year')}-` +
+    `${getPart('month')}-` +
+    getPart('day')
+  )
+}
+
+const getDaysBetweenDateKeys = (
+  firstDateKey,
+  secondDateKey
+) => {
+  const toUtcDay = (dateKey) => {
+    const [year, month, day] = dateKey
+      .split('-')
+      .map(Number)
+
+    return Date.UTC(year, month - 1, day)
+  }
+
+  return Math.max(
+    0,
+    Math.round(
+      (
+        toUtcDay(secondDateKey) -
+        toUtcDay(firstDateKey)
+      ) / 86400000
+    )
+  )
+}
+
+const getDemandModelName = (modelId) => {
+  if (!modelId) {
+    return 'bez modelu'
+  }
+
+  const model = demandModelsStore.models.find(
+    item => item.id === modelId
+  )
+
+  return model?.name || 'model usunięty'
+}
+
+const formatDaysRemaining = (days) => {
+  if (days === 1) {
+    return '1 dzień'
+  }
+
+  if (
+    days % 10 >= 2 &&
+    days % 10 <= 4 &&
+    (days % 100 < 12 || days % 100 > 14)
+  ) {
+    return `${days} dni`
+  }
+
+  return `${days} dni`
+}
+
+const visibleAvailabilityPeriods = computed(() => {
+  const monthStart = formatDateKey(
+    new Date(
+      displayedMonth.value.getFullYear(),
+      displayedMonth.value.getMonth(),
+      1
+    )
+  )
+
+  const monthEnd = formatDateKey(
+    new Date(
+      displayedMonth.value.getFullYear(),
+      displayedMonth.value.getMonth() + 1,
+      0
+    )
+  )
+
+  const todayKey = getWarsawDateKey(
+    new Date(periodsClock.value)
+  )
+
+  return periodsStore.periods
+    .filter(period => {
+      return isPeriodEffectivelyOpen(period)
+    })
+    .map(period => {
+      const closesAtDate =
+        getDateFromTimestamp(period.closesAt)
+
+      const closesOnKey = closesAtDate
+        ? getWarsawDateKey(closesAtDate)
+        : todayKey
+
+      return {
+        id: period.id,
+        dateFrom: period.dateFrom,
+        isCurrentMonth:
+          period.dateFrom <= monthEnd &&
+          period.dateTo >= monthStart,
+        name: period.name || 'Okres bez nazwy',
+        modelName: getDemandModelName(
+          period.demandModelId
+        ),
+        dateRange:
+          `${formatCompactDateKey(period.dateFrom)}–` +
+          `${formatCompactDateKey(period.dateTo)}`,
+        closesOn: formatCompactDateKey(closesOnKey),
+        daysRemaining: getDaysBetweenDateKeys(
+          todayKey,
+          closesOnKey
+        )
+      }
+    })
+    .sort((periodA, periodB) => {
+      return periodA.dateFrom.localeCompare(
+        periodB.dateFrom
+      )
+    })
+})
 
 
 

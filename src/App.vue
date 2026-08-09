@@ -971,7 +971,7 @@ export default {
     // =========================
     // wersja aplikacji    
     // =========================
-    const appVersion = ref('3.1.3')
+    const appVersion = ref('4.1.3')
 
 
     // =========================
