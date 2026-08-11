@@ -167,8 +167,8 @@
               : editingPeriodStatus === 'closed'
                 ? 'Okres został zamknięty. Możesz otworzyć go ponownie, dopóki jego zakres nie minął.'
               : editingPeriodId
-                ? 'Zmień ustawienia zapisanego szkicu.'
-                : 'Podaj nazwę oraz zakres dat. Nowy okres zostanie zapisany jako szkic.'
+                ? 'Zmień ustawienia okresu. Model jest już przypisany do dni w jego zakresie.'
+                : 'Po zapisaniu model zostanie przypisany do dni w wybranym zakresie. Pracownicy będą mogli wpisywać dyspozycje dopiero po otwarciu okresu.'
           }}
         </div>
 
@@ -353,7 +353,7 @@
           <button
             class="app-dialog-button app-dialog-ok"
             type="button"
-            :disabled="!canSavePeriod || periodsStore.isSaving"
+            :disabled="periodsStore.isSaving"
             @click="savePeriod"
           >
             {{
@@ -361,7 +361,7 @@
                 ? 'Zapisywanie...'
                 : editingPeriodId
                   ? 'Zapisz zmiany'
-                  : 'Zapisz szkic'
+                  : 'Zapisz okres'
             }}
           </button>
         </div>
@@ -436,6 +436,37 @@
 
 
 
+      </div>
+    </div>
+
+    <div
+      v-if="showRequiredFieldsModal"
+      class="app-dialog-overlay"
+      @click.self="closeRequiredFieldsModal"
+    >
+      <div class="app-dialog-card">
+        <div class="app-dialog-icon">
+          ⚠️
+        </div>
+
+        <div class="app-dialog-title">
+          Nie można zapisać okresu
+        </div>
+
+        <div class="app-dialog-message">
+          Uzupełnij wymagane pola:
+          {{ missingPeriodFields.join(', ') }}.
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="closeRequiredFieldsModal"
+          >
+            OK
+          </button>
+        </div>
       </div>
     </div>
 
@@ -691,13 +722,14 @@
         </div>
 
         <div class="app-dialog-title">
-          Usuń okres?
+          Usuń okres i dyspozycje?
         </div>
 
         <div class="app-dialog-message">
           Czy na pewno chcesz usunąć okres
           „{{ periodToDelete?.name }}”?
-
+          Model zostanie odłączony od dni w tym zakresie,
+          a zapisane dla niego dyspozycje zostaną usunięte.
           Tej operacji nie można cofnąć.
         </div>
 
@@ -774,6 +806,8 @@ const newPeriodBlockedDates = ref([])
 const createError = ref('')
 const loadError = ref('')
 
+const showRequiredFieldsModal = ref(false)
+
 const showDeleteModal = ref(false)
 const periodToDelete = ref(null)
 
@@ -824,10 +858,37 @@ const currentEditor = computed(() => {
 const canSavePeriod = computed(() => {
   return Boolean(
     newPeriodName.value.trim() &&
+    newPeriodDemandModelId.value &&
     newPeriodDateFrom.value &&
     newPeriodDateTo.value &&
     newPeriodClosesOn.value
   )
+})
+
+const missingPeriodFields = computed(() => {
+  const fields = []
+
+  if (!newPeriodName.value.trim()) {
+    fields.push('nazwa okresu')
+  }
+
+  if (!newPeriodDemandModelId.value) {
+    fields.push('model zapotrzebowania')
+  }
+
+  if (!newPeriodDateFrom.value) {
+    fields.push('data od')
+  }
+
+  if (!newPeriodDateTo.value) {
+    fields.push('data do')
+  }
+
+  if (!newPeriodClosesOn.value) {
+    fields.push('termin wprowadzania zmian')
+  }
+
+  return fields
 })
 
 const calendarMonthLabel = computed(() => {
@@ -1026,6 +1087,10 @@ const closeCreateModal = () => {
   editingPeriodStatus.value = null
   newPeriodBlockedDates.value = []
   createError.value = ''
+}
+
+const closeRequiredFieldsModal = () => {
+  showRequiredFieldsModal.value = false
 }
 
 
@@ -1528,7 +1593,6 @@ const openCurrentPeriod = async () => {
 
 const savePeriod = async () => {
   if (
-    !canSavePeriod.value ||
     periodsStore.isSaving ||
     (
       editingPeriodId.value &&
@@ -1539,6 +1603,11 @@ const savePeriod = async () => {
   }
 
   createError.value = ''
+
+  if (missingPeriodFields.value.length > 0) {
+    showRequiredFieldsModal.value = true
+    return
+  }
 
   if (
     newPeriodDateFrom.value >
@@ -1712,7 +1781,7 @@ const getPeriodStatusLabel = (period) => {
     return 'Dyspozycje zamknięte'
   }
 
-  return 'Szkic'
+  return 'Dyspozycje nieotwarte'
 }
 
 const editingPeriod = computed(() => {

@@ -4,9 +4,14 @@ import {
   collection,
   doc,
   addDoc,
+  getDocs,
   onSnapshot,
   updateDoc,
   deleteDoc,
+  deleteField,
+  query,
+  where,
+  writeBatch,
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore'
@@ -86,24 +91,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       return Timestamp.fromDate(endOfDay)
     }
 
-    const getExpirationTimestamp = (dateKey) => {
-      const [year, month, day] =
-        dateKey.split('-').map(Number)
-
-      const expirationDate = new Date(
-        year,
-        month - 1,
-        day + 1,
-        0,
-        0,
-        0,
-        0
-      )
-
-      return Timestamp.fromDate(expirationDate)
-    }
-
-
         const formatLocalDateKey = (date) => {
       const year = date.getFullYear()
 
@@ -144,6 +131,85 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         firstDateFrom <= secondDateTo &&
         secondDateFrom <= firstDateTo
       )
+    }
+
+    const sortPeriodsByEndDateDescending = (
+      periodA,
+      periodB
+    ) => {
+      const periodAIsOpen =
+        isPeriodEffectivelyOpen(periodA)
+
+      const periodBIsOpen =
+        isPeriodEffectivelyOpen(periodB)
+
+      if (periodAIsOpen !== periodBIsOpen) {
+        return periodAIsOpen ? -1 : 1
+      }
+
+      const endDateComparison =
+        (periodB.dateTo || '').localeCompare(
+          periodA.dateTo || ''
+        )
+
+      if (endDateComparison !== 0) {
+        return endDateComparison
+      }
+
+      return (periodB.dateFrom || '').localeCompare(
+        periodA.dateFrom || ''
+      )
+    }
+
+    const getOverlappingPeriod = (
+      dateFrom,
+      dateTo,
+      excludedPeriodId = null
+    ) => {
+      return periods.value.find(period => {
+        return (
+          period.id !== excludedPeriodId &&
+          rangesOverlap(
+            dateFrom,
+            dateTo,
+            period.dateFrom,
+            period.dateTo
+          )
+        )
+      }) || null
+    }
+
+    const validatePeriodDefinition = (
+      periodData,
+      excludedPeriodId = null
+    ) => {
+      if (!periodData?.demandModelId) {
+        throw new Error(
+          'Wybierz model zapotrzebowania.'
+        )
+      }
+
+      if (
+        !periodData.dateFrom ||
+        !periodData.dateTo ||
+        periodData.dateFrom > periodData.dateTo
+      ) {
+        throw new Error(
+          'Podaj poprawny zakres dat okresu.'
+        )
+      }
+
+      const overlappingPeriod = getOverlappingPeriod(
+        periodData.dateFrom,
+        periodData.dateTo,
+        excludedPeriodId
+      )
+
+      if (overlappingPeriod) {
+        throw new Error(
+          `Ten zakres pokrywa się z okresem „${overlappingPeriod.name}” (${overlappingPeriod.dateFrom}–${overlappingPeriod.dateTo}).`
+        )
+      }
     }
 
     const normalizeBlockedDates = (
@@ -216,11 +282,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
                 id: document.id,
                 ...document.data()
               }))
-              .sort((periodA, periodB) => {
-                return (periodA.dateFrom || '').localeCompare(
-                  periodB.dateFrom || ''
-                )
-              })
+              .sort(sortPeriodsByEndDateDescending)
 
             isLoading.value = false
 
@@ -264,6 +326,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         )
       }
 
+      validatePeriodDefinition(periodData)
+
       isSaving.value = true
 
       try {
@@ -275,11 +339,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           closesAt:
             getEndOfDayTimestamp(
               periodData.closesOn
-            ),
-
-          expiresAt:
-            getExpirationTimestamp(
-              periodData.dateTo
             ),
 
           status: 'draft',
@@ -314,7 +373,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           dateFrom: dataToSave.dateFrom,
           dateTo: dataToSave.dateTo,
           closesAt: dataToSave.closesAt,
-          expiresAt: dataToSave.expiresAt,
           status: dataToSave.status,
           demandModelId: dataToSave.demandModelId,
           blockedDates: dataToSave.blockedDates,
@@ -326,11 +384,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
         periods.value.push(newPeriod)
 
-        periods.value.sort((periodA, periodB) => {
-          return (periodA.dateFrom || '').localeCompare(
-            periodB.dateFrom || ''
-          )
-        })
+        periods.value.sort(
+          sortPeriodsByEndDateDescending
+        )
 
         return newPeriod
       } catch (error) {
@@ -372,6 +428,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         )
       }
 
+      validatePeriodDefinition(
+        periodData,
+        periodId
+      )
+
 
 
       isSaving.value = true
@@ -395,10 +456,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
               periodData.closesOn
             ),
 
-            expiresAt:
-            getExpirationTimestamp(
-              periodData.dateTo
-            ),
+          expiresAt: deleteField(),
 
           demandModelId:
             periodData.demandModelId || null,
@@ -436,11 +494,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           }
         }
 
-        periods.value.sort((periodA, periodB) => {
-          return (periodA.dateFrom || '').localeCompare(
-            periodB.dateFrom || ''
-          )
-        })
+        periods.value.sort(
+          sortPeriodsByEndDateDescending
+        )
       } catch (error) {
         console.error(
           'Błąd aktualizacji okresu dyspozycji:',
@@ -559,6 +615,37 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
+        const availabilitySnapshot = await getDocs(
+          query(
+            collection(
+              db,
+              'users',
+              restaurantId,
+              'grafik_dyspozycyjnosc'
+            ),
+            where('periodId', '==', periodId)
+          )
+        )
+
+        const availabilityDocuments =
+          availabilitySnapshot.docs
+
+        for (
+          let startIndex = 0;
+          startIndex < availabilityDocuments.length;
+          startIndex += 450
+        ) {
+          const batch = writeBatch(db)
+
+          availabilityDocuments
+            .slice(startIndex, startIndex + 450)
+            .forEach(documentSnapshot => {
+              batch.delete(documentSnapshot.ref)
+            })
+
+          await batch.commit()
+        }
+
         await deleteDoc(
           doc(
             db,

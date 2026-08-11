@@ -222,7 +222,15 @@
       ]"
     >
       <template v-if="day">
-  <span class="schedule-calendar-day-number">
+  <span
+    class="schedule-calendar-day-number"
+    :class="{
+      'coverage-warning':
+        getCalendarDayCoverageStatus(day) === 'preferred',
+      'coverage-shortage':
+        getCalendarDayCoverageStatus(day) === 'shortage'
+    }"
+  >
     {{ day.getDate() }}
   </span>
 
@@ -286,11 +294,130 @@
     {{ selectedDateLabel }}
   </div>
 
-  <div
+<div
   v-if="isLoadingTeamAvailability"
   class="schedule-selected-day-hint"
 >
   Wczytywanie dyspozycyjności zespołu...
+</div>
+
+
+<div
+  v-if="
+    !isLoadingTeamAvailability &&
+    demandModelsStore.isLoading
+  "
+  class="schedule-selected-day-hint"
+>
+  Wczytywanie modelu zapotrzebowania...
+</div>
+
+
+<div
+  v-if="
+    !isLoadingTeamAvailability &&
+    !demandModelsStore.isLoading
+  "
+  class="schedule-demand-control-panel"
+  :class="{
+    'has-shortage':
+      selectedDayDemandControl.status === 'shortage',
+    'has-warning':
+      selectedDayDemandControl.status === 'preferred'
+  }"
+>
+  <div class="schedule-demand-control-header">
+    <div class="schedule-demand-control-title">
+      Kontrola zapotrzebowania
+    </div>
+
+    <div
+      v-if="selectedDayDemandControl.modelName"
+      class="schedule-demand-control-model"
+    >
+      {{ selectedDayDemandControl.periodName }}
+      •
+      {{ selectedDayDemandControl.modelName }}
+    </div>
+  </div>
+
+  <div
+    v-if="!selectedDayDemandControl.message"
+    class="schedule-demand-control-day-status"
+    :class="selectedDayDemandControl.status"
+  >
+    <template
+      v-if="selectedDayDemandControl.status === 'shortage'"
+    >
+      Nie można zapewnić pełnej obsady.
+      Brakujące miejsca:
+      {{ selectedDayDemandControl.shortageCount }}.
+      <template
+        v-if="selectedDayDemandControl.affectedPositionNames?.length"
+      >
+        Zagrożone stanowiska:
+        {{ selectedDayDemandControl.affectedPositionNames.join(', ') }}.
+      </template>
+    </template>
+
+    <template
+      v-else-if="selectedDayDemandControl.status === 'preferred'"
+    >
+      Obsada możliwa tylko przy nieuwzględnieniu
+      {{ selectedDayDemandControl.preferredOffUsedCount }}
+      {{ selectedDayDemandControl.preferredOffUsedCount === 1 ? 'prośby' : 'próśb' }}
+      o wolne.
+    </template>
+
+    <template v-else>
+      Obsada możliwa
+    </template>
+  </div>
+
+  <div
+    v-if="selectedDayDemandControl.message"
+    class="schedule-demand-control-message"
+  >
+    {{ selectedDayDemandControl.message }}
+  </div>
+
+  <div
+    v-else
+    class="schedule-demand-control-list"
+  >
+    <section
+      v-for="group in selectedDayDemandControl.groups"
+      :key="group.positionId"
+      class="schedule-demand-control-group"
+    >
+      <div class="schedule-demand-control-group-title">
+        {{ group.positionName }}
+      </div>
+
+      <div class="schedule-demand-control-group-rows">
+        <div
+          v-for="(slot, slotIndex) in group.slots"
+          :key="slot.id"
+          class="schedule-demand-control-row"
+        >
+          <span class="schedule-demand-control-slot-number">
+            {{ slotIndex + 1 }}.
+          </span>
+
+          <span class="schedule-demand-control-time">
+            {{ slot.from }}–{{ slot.to }}
+          </span>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="schedule-demand-control-note">
+      Kontrola uwzględnia stanowiska, pełne godziny wakatów oraz
+      dyspozycje „mogę w godzinach”. Każdy pracownik jest liczony
+      maksymalnie do jednej zmiany dziennie.
+    </div>
+  </div>
 </div>
 
 
@@ -992,7 +1119,7 @@
       {{
         saveResultModal.type === 'success'
           ? 'Gotowe'
-          : 'Błąd zapisu'
+          : 'Nie można zapisać'
       }}
     </div>
 
@@ -1011,6 +1138,45 @@
     OK
   </button>
 </div>
+  </div>
+</div>
+
+
+<div
+  v-if="managerCoverageWarningModal.visible"
+  class="app-dialog-overlay"
+  @click.self="closeManagerCoverageWarning"
+>
+  <div class="app-dialog-card">
+    <div class="app-dialog-icon">
+      ⚠️
+    </div>
+
+    <div class="app-dialog-title">
+      Ostrzeżenie o obsadzie
+    </div>
+
+    <div class="app-dialog-message">
+      {{ managerCoverageWarningModal.message }}
+    </div>
+
+    <div class="app-dialog-actions">
+      <button
+        type="button"
+        class="app-dialog-button app-dialog-cancel"
+        @click="closeManagerCoverageWarning"
+      >
+        Wróć
+      </button>
+
+      <button
+        type="button"
+        class="app-dialog-button app-dialog-delete"
+        @click="confirmManagerAvailabilitySave"
+      >
+        Zapisz mimo ostrzeżenia
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1188,7 +1354,7 @@
   class="schedule-availability-save-button"
   :disabled="isSavingTeamAvailability"
   :class="{ disabled: isSavingTeamAvailability }"
-  @click="saveTeamAvailability"
+  @click="saveTeamAvailability()"
 >
   {{
     isSavingTeamAvailability
@@ -1228,7 +1394,7 @@ import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.j
 import { useAuthStore } from '../../stores/authStore.js'
 import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
-import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
+import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
 import { db } from '../../firebase.js'
 
 const router = useRouter()
@@ -1259,6 +1425,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   periodsStore.stopPeriodsListener()
+  stopAvailabilityListener()
+  stopTeamAvailabilityListener()
+  stopMonthAvailabilityListener()
 
   if (periodsClockInterval) {
     window.clearInterval(periodsClockInterval)
@@ -1292,6 +1461,14 @@ const selectedViewMode = ref('mine')
 
 const setViewMode = async (mode) => {
   selectedViewMode.value = mode
+
+  if (mode !== 'all') {
+    stopTeamAvailabilityListener()
+    stopMonthAvailabilityListener()
+  } else {
+    stopAvailabilityListener()
+    loadMonthAvailability()
+  }
 
   if (mode === 'mine') {
     selectedEmployeeId.value = loggedEmployeeId.value
@@ -1427,8 +1604,11 @@ const availabilityEmployeeId = computed(() => {
 const isManagerEditingEmployee = computed(() => {
   return (
     canManageSchedule.value &&
-    selectedViewMode.value === 'employee' &&
-    selectedEmployeeId.value
+    Boolean(availabilityEmployeeId.value) &&
+    (
+      selectedViewMode.value === 'mine' ||
+      selectedViewMode.value === 'employee'
+    )
   )
 })
 
@@ -1551,8 +1731,12 @@ const showSaveResultModal = (
 }
 const availabilityRecords = ref({})
 const isLoadingAvailability = ref(false)
+let unsubscribeAvailability = null
 const teamAvailabilityRecords = ref({})
 const isLoadingTeamAvailability = ref(false)
+let unsubscribeTeamAvailability = null
+const monthAvailabilityRecords = ref({})
+let unsubscribeMonthAvailability = null
 const expandedTeamEmployeeId = ref(null)
 const selectedPositionFilter = ref('')
 const editingTeamEmployee = ref(null)
@@ -1562,6 +1746,11 @@ const teamEditTimeFrom = ref('00:00')
 const teamEditTimeTo = ref('00:00')
 const teamEditNote = ref('')
 const isSavingTeamAvailability = ref(false)
+const managerCoverageWarningModal = ref({
+  visible: false,
+  message: '',
+  saveSource: null
+})
 const hasTeamAvailabilityChanges = computed(() => {
   const availability = editingTeamEmployee.value?.availability
 
@@ -1751,8 +1940,150 @@ const closeTeamAvailabilityEdit = () => {
   isTeamAvailabilityEditOpen.value = false
 }
 
+const closeManagerCoverageWarning = () => {
+  managerCoverageWarningModal.value = {
+    visible: false,
+    message: '',
+    saveSource: null
+  }
+}
 
-const saveTeamAvailability = async () => {
+const buildManagerCoverageWarningMessage = (
+  currentCoverage,
+  proposedCoverage,
+  dateKey = ''
+) => {
+  const datePrefix = dateKey
+    ? `Dzień ${formatCompactDateKey(dateKey)}: `
+    : ''
+
+  if (proposedCoverage.status === 'shortage') {
+    const shortageCount =
+      proposedCoverage.shortageCount || 0
+
+    const shortageLabel = shortageCount === 1
+      ? '1 wakat pozostanie nieobsadzony'
+      : (
+          shortageCount % 10 >= 2 &&
+          shortageCount % 10 <= 4 &&
+          (
+            shortageCount % 100 < 12 ||
+            shortageCount % 100 > 14
+          )
+        )
+        ? `${shortageCount} wakaty pozostaną nieobsadzone`
+        : `${shortageCount} wakatów pozostanie nieobsadzonych`
+
+    const affectedPositions =
+      proposedCoverage.affectedPositionNames || []
+
+    const positionsMessage = affectedPositions.length > 0
+      ? ` Problem dotyczy stanowisk: ${affectedPositions.join(', ')}.`
+      : ''
+
+    const warningBeginning =
+      currentCoverage.status === 'shortage'
+        ? 'po zapisaniu dzień nadal będzie miał problem z obsadą. '
+        : 'ta zmiana spowoduje problem z obsadą. '
+
+    return (
+      `${datePrefix}${warningBeginning}` +
+      `${shortageLabel}.${positionsMessage}`
+    )
+  }
+
+  if (proposedCoverage.status === 'preferred') {
+    return (
+      `${datePrefix}po tej zmianie pełna obsada będzie możliwa ` +
+      'tylko z wykorzystaniem pracownika mającego prośbę o wolne.'
+    )
+  }
+
+  return ''
+}
+
+const getManagerCoverageWarning = (
+  employee,
+  dateKey
+) => {
+  const currentAvailability =
+    teamAvailabilityRecords.value[employee.id] || null
+
+  const currentType =
+    currentAvailability?.type || 'full'
+
+  const currentTimeFrom = currentType === 'partial'
+    ? currentAvailability?.timeFrom || '00:00'
+    : null
+
+  const currentTimeTo = currentType === 'partial'
+    ? currentAvailability?.timeTo || '00:00'
+    : null
+
+  const proposedType =
+    teamEditAvailabilityType.value
+
+  const proposedTimeFrom = proposedType === 'partial'
+    ? teamEditTimeFrom.value
+    : null
+
+  const proposedTimeTo = proposedType === 'partial'
+    ? teamEditTimeTo.value
+    : null
+
+  const changesAvailabilityRules =
+    proposedType !== currentType ||
+    proposedTimeFrom !== currentTimeFrom ||
+    proposedTimeTo !== currentTimeTo
+
+  if (!changesAvailabilityRules) {
+    return ''
+  }
+
+  const currentCoverage = evaluateDayCoverage(
+    dateKey,
+    teamAvailabilityRecords.value
+  )
+
+  const proposedAvailability = {
+    type: proposedType,
+    timeFrom: proposedTimeFrom,
+    timeTo: proposedTimeTo,
+    note: teamEditNote.value.trim()
+  }
+
+  const proposedCoverage = evaluateDayCoverage(
+    dateKey,
+    {
+      ...teamAvailabilityRecords.value,
+      [employee.id]: proposedAvailability
+    }
+  )
+
+  return buildManagerCoverageWarningMessage(
+    currentCoverage,
+    proposedCoverage
+  )
+}
+
+const confirmManagerAvailabilitySave = async () => {
+  const saveSource =
+    managerCoverageWarningModal.value.saveSource
+
+  closeManagerCoverageWarning()
+
+  if (saveSource === 'employee') {
+    await saveEmployeeViewAsManager(true)
+    return
+  }
+
+  await saveTeamAvailability(true)
+}
+
+
+const saveTeamAvailability = async (
+  ignoreCoverageWarning = false
+) => {
   if (isSavingTeamAvailability.value) return
 
     if (!hasTeamAvailabilityChanges.value) {
@@ -1790,11 +2121,28 @@ const saveTeamAvailability = async () => {
     return
   }
 
+  if (!ignoreCoverageWarning) {
+    const warningMessage = getManagerCoverageWarning(
+      employee,
+      dateKey
+    )
+
+    if (warningMessage) {
+      managerCoverageWarningModal.value = {
+        visible: true,
+        message: warningMessage,
+        saveSource: 'team'
+      }
+
+      return
+    }
+  }
+
   isSavingTeamAvailability.value = true
 
   try {
     const availabilityPeriod =
-      getOpenPeriodForDateKey(dateKey)
+      getPeriodForDateKey(dateKey)
 
     const documentId = `${employee.id}_${dateKey}`
 
@@ -1985,7 +2333,84 @@ const restoreEmployeeAvailability = async (
 }
 
 
-const saveEmployeeViewAsManager = async () => {
+const getEmployeeViewManagerCoverageWarning = async (
+  employee,
+  selectedDates
+) => {
+  for (const dateKey of selectedDates) {
+    const currentTeamAvailability =
+      await fetchTeamAvailabilityRecordsForDay(dateKey)
+
+    const currentAvailability =
+      currentTeamAvailability[employee.id] || null
+
+    const currentType =
+      currentAvailability?.type || 'full'
+
+    const currentTimeFrom = currentType === 'partial'
+      ? currentAvailability?.timeFrom || '00:00'
+      : null
+
+    const currentTimeTo = currentType === 'partial'
+      ? currentAvailability?.timeTo || '00:00'
+      : null
+
+    const proposedType =
+      selectedAvailabilityType.value
+
+    const proposedTimeFrom = proposedType === 'partial'
+      ? availabilityTimeFrom.value
+      : null
+
+    const proposedTimeTo = proposedType === 'partial'
+      ? availabilityTimeTo.value
+      : null
+
+    const changesAvailabilityRules =
+      proposedType !== currentType ||
+      proposedTimeFrom !== currentTimeFrom ||
+      proposedTimeTo !== currentTimeTo
+
+    if (!changesAvailabilityRules) {
+      continue
+    }
+
+    const currentCoverage = evaluateDayCoverage(
+      dateKey,
+      currentTeamAvailability
+    )
+
+    const proposedCoverage = evaluateDayCoverage(
+      dateKey,
+      {
+        ...currentTeamAvailability,
+        [employee.id]: {
+          type: proposedType,
+          timeFrom: proposedTimeFrom,
+          timeTo: proposedTimeTo,
+          note: availabilityNote.value.trim()
+        }
+      }
+    )
+
+    const warningMessage =
+      buildManagerCoverageWarningMessage(
+        currentCoverage,
+        proposedCoverage,
+        dateKey
+      )
+
+    if (warningMessage) {
+      return warningMessage
+    }
+  }
+
+  return ''
+}
+
+const saveEmployeeViewAsManager = async (
+  ignoreCoverageWarning = false
+) => {
   const employee = selectedAvailabilityEmployee.value
   const selectedDates = datesSelectedForAvailability.value
 
@@ -2009,6 +2434,24 @@ const saveEmployeeViewAsManager = async () => {
     return
   }
 
+  if (!ignoreCoverageWarning) {
+    const warningMessage =
+      await getEmployeeViewManagerCoverageWarning(
+        employee,
+        selectedDates
+      )
+
+    if (warningMessage) {
+      managerCoverageWarningModal.value = {
+        visible: true,
+        message: warningMessage,
+        saveSource: 'employee'
+      }
+
+      return
+    }
+  }
+
   isSavingAvailability.value = true
 
   try {
@@ -2018,7 +2461,7 @@ const saveEmployeeViewAsManager = async () => {
 
     selectedDates.forEach(dateKey => {
       const availabilityPeriod =
-        getOpenPeriodForDateKey(dateKey)
+        getPeriodForDateKey(dateKey)
 
       const currentAvailability =
         availabilityRecords.value[dateKey] || null
@@ -2174,8 +2617,143 @@ const toggleTeamEmployeeDetails = (employeeId) => {
       ? null
       : employeeId
 }
+
+const fetchTeamAvailabilityRecordsForDay = async (
+  dateKey
+) => {
+  const restaurantId = availabilityRestaurantId.value
+
+  if (!restaurantId || !dateKey) {
+    return {}
+  }
+
+  const teamQuery = query(
+    collection(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc'
+    ),
+    where('date', '==', dateKey)
+  )
+
+  const snapshot = await getDocs(teamQuery)
+
+  return snapshot.docs.reduce(
+    (records, documentSnapshot) => {
+      const data = documentSnapshot.data()
+
+      if (data.employeeId) {
+        records[data.employeeId] = {
+          id: documentSnapshot.id,
+          ...data
+        }
+      }
+
+      return records
+    },
+    {}
+  )
+}
+
+const stopTeamAvailabilityListener = () => {
+  if (!unsubscribeTeamAvailability) {
+    return
+  }
+
+  unsubscribeTeamAvailability()
+  unsubscribeTeamAvailability = null
+}
+
+const stopMonthAvailabilityListener = () => {
+  if (!unsubscribeMonthAvailability) {
+    return
+  }
+
+  unsubscribeMonthAvailability()
+  unsubscribeMonthAvailability = null
+}
+
+const loadMonthAvailability = () => {
+  const restaurantId = availabilityRestaurantId.value
+
+  stopMonthAvailabilityListener()
+  monthAvailabilityRecords.value = {}
+
+  if (
+    !restaurantId ||
+    !canManageSchedule.value ||
+    selectedViewMode.value !== 'all'
+  ) {
+    return
+  }
+
+  const monthStart = formatDateKey(
+    new Date(
+      displayedMonth.value.getFullYear(),
+      displayedMonth.value.getMonth(),
+      1
+    )
+  )
+
+  const monthEnd = formatDateKey(
+    new Date(
+      displayedMonth.value.getFullYear(),
+      displayedMonth.value.getMonth() + 1,
+      0
+    )
+  )
+
+  const monthQuery = query(
+    collection(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc'
+    ),
+    where('date', '>=', monthStart),
+    where('date', '<=', monthEnd)
+  )
+
+  unsubscribeMonthAvailability = onSnapshot(
+    monthQuery,
+    snapshot => {
+      const recordsByDate = {}
+
+      snapshot.docs.forEach(documentSnapshot => {
+        const data = documentSnapshot.data()
+
+        if (!data.date || !data.employeeId) {
+          return
+        }
+
+        if (!recordsByDate[data.date]) {
+          recordsByDate[data.date] = {}
+        }
+
+        recordsByDate[data.date][data.employeeId] = {
+          id: documentSnapshot.id,
+          ...data
+        }
+      })
+
+      monthAvailabilityRecords.value = recordsByDate
+    },
+    error => {
+      console.error(
+        'Błąd pobierania statusów obsady miesiąca:',
+        error
+      )
+
+      monthAvailabilityRecords.value = {}
+    }
+  )
+}
+
 const loadTeamAvailabilityForDay = async (dateKey) => {
   const restaurantId = availabilityRestaurantId.value
+
+  stopTeamAvailabilityListener()
 
   if (!restaurantId || !dateKey) {
     teamAvailabilityRecords.value = {}
@@ -2184,48 +2762,77 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
 
   isLoadingTeamAvailability.value = true
 
-  try {
-    const teamQuery = query(
-      collection(
-        db,
-        'users',
-        restaurantId,
-        'grafik_dyspozycyjnosc'
-      ),
-      where('date', '==', dateKey)
-    )
+  const teamQuery = query(
+    collection(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc'
+    ),
+    where('date', '==', dateKey)
+  )
 
-    const snapshot = await getDocs(teamQuery)
+  return new Promise((resolve, reject) => {
+    let isFirstSnapshot = true
 
-    teamAvailabilityRecords.value = snapshot.docs.reduce(
-      (records, documentSnapshot) => {
-        const data = documentSnapshot.data()
+    unsubscribeTeamAvailability = onSnapshot(
+      teamQuery,
+      snapshot => {
+        teamAvailabilityRecords.value =
+          snapshot.docs.reduce(
+            (records, documentSnapshot) => {
+              const data = documentSnapshot.data()
 
-        if (data.employeeId) {
-          records[data.employeeId] = {
-            id: documentSnapshot.id,
-            ...data
-          }
+              if (data.employeeId) {
+                records[data.employeeId] = {
+                  id: documentSnapshot.id,
+                  ...data
+                }
+              }
+
+              return records
+            },
+            {}
+          )
+
+        isLoadingTeamAvailability.value = false
+
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false
+          resolve()
         }
-
-        return records
       },
-      {}
-    )
-  } catch (error) {
-    console.error(
-      'Błąd pobierania dyspozycyjności zespołu:',
-      error
-    )
+      error => {
+        console.error(
+          'Błąd pobierania dyspozycyjności zespołu:',
+          error
+        )
 
-    teamAvailabilityRecords.value = {}
-  } finally {
-    isLoadingTeamAvailability.value = false
-  }
+        teamAvailabilityRecords.value = {}
+        isLoadingTeamAvailability.value = false
+
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false
+          reject(error)
+        }
+      }
+    )
+  })
 }
+const stopAvailabilityListener = () => {
+  if (!unsubscribeAvailability) {
+    return
+  }
+
+  unsubscribeAvailability()
+  unsubscribeAvailability = null
+}
+
 const loadAvailability = async () => {
   const restaurantId = availabilityRestaurantId.value
   const employeeId = availabilityEmployeeId.value
+
+  stopAvailabilityListener()
 
   if (!restaurantId || !employeeId) {
     availabilityRecords.value = {}
@@ -2234,44 +2841,62 @@ const loadAvailability = async () => {
 
   isLoadingAvailability.value = true
 
-  try {
-    const availabilityQuery = query(
-      collection(
-        db,
-        'users',
-        restaurantId,
-        'grafik_dyspozycyjnosc'
-      ),
-      where('employeeId', '==', employeeId)
-    )
+  const availabilityQuery = query(
+    collection(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc'
+    ),
+    where('employeeId', '==', employeeId)
+  )
 
-    const snapshot = await getDocs(availabilityQuery)
+  return new Promise(resolve => {
+    let isFirstSnapshot = true
 
-    availabilityRecords.value = snapshot.docs.reduce(
-      (records, documentSnapshot) => {
-        const data = documentSnapshot.data()
+    unsubscribeAvailability = onSnapshot(
+      availabilityQuery,
+      snapshot => {
+        availabilityRecords.value =
+          snapshot.docs.reduce(
+            (records, documentSnapshot) => {
+              const data = documentSnapshot.data()
 
-        if (data.date) {
-          records[data.date] = {
-            id: documentSnapshot.id,
-            ...data
-          }
+              if (data.date) {
+                records[data.date] = {
+                  id: documentSnapshot.id,
+                  ...data
+                }
+              }
+
+              return records
+            },
+            {}
+          )
+
+        isLoadingAvailability.value = false
+
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false
+          resolve()
         }
-
-        return records
       },
-      {}
-    )
-  } catch (error) {
-    console.error(
-      'Błąd pobierania dyspozycyjności:',
-      error
-    )
+      error => {
+        console.error(
+          'Błąd nasłuchiwania dyspozycyjności:',
+          error
+        )
 
-    availabilityRecords.value = {}
-  } finally {
-    isLoadingAvailability.value = false
-  }
+        availabilityRecords.value = {}
+        isLoadingAvailability.value = false
+
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false
+          resolve()
+        }
+      }
+    )
+  })
 }
 
 
@@ -2318,6 +2943,105 @@ watch(
   },
   { immediate: true }
 )
+
+const getProposedEmployeeAvailability = (
+  currentAvailability
+) => {
+  if (currentAvailability?.managerEntry) {
+    return currentAvailability
+  }
+
+  return {
+    type: selectedAvailabilityType.value,
+    timeFrom:
+      selectedAvailabilityType.value === 'partial'
+        ? availabilityTimeFrom.value
+        : null,
+    timeTo:
+      selectedAvailabilityType.value === 'partial'
+        ? availabilityTimeTo.value
+        : null,
+    note: availabilityNote.value.trim()
+  }
+}
+
+const validateEmployeeAvailabilityCoverage = async (
+  employeeId,
+  selectedDates
+) => {
+  const blockedChanges = []
+  const warningDates = []
+
+  for (const dateKey of selectedDates) {
+    const currentTeamAvailability =
+      await fetchTeamAvailabilityRecordsForDay(dateKey)
+
+    const currentCoverage = evaluateDayCoverage(
+      dateKey,
+      currentTeamAvailability
+    )
+
+    const proposedAvailability =
+      getProposedEmployeeAvailability(
+        currentTeamAvailability[employeeId] || null
+      )
+
+    const proposedTeamAvailability = {
+      ...currentTeamAvailability,
+      [employeeId]: proposedAvailability
+    }
+
+    const proposedCoverage = evaluateDayCoverage(
+      dateKey,
+      proposedTeamAvailability
+    )
+
+    const currentMatchedCount =
+      Number(currentCoverage.matchedCount || 0)
+
+    const proposedMatchedCount =
+      Number(proposedCoverage.matchedCount || 0)
+
+    const currentAffectedPositions = new Set(
+      currentCoverage.affectedPositionNames || []
+    )
+
+    const introducesNewAffectedPosition =
+      (proposedCoverage.affectedPositionNames || [])
+        .some(positionName => {
+          return !currentAffectedPositions.has(positionName)
+        })
+
+    const worsensCoverage =
+      proposedMatchedCount < currentMatchedCount ||
+      (
+        proposedCoverage.shortageCount > 0 &&
+        introducesNewAffectedPosition
+      )
+
+    if (
+      selectedAvailabilityType.value !== 'preferred_off' &&
+      worsensCoverage
+    ) {
+      blockedChanges.push({
+        dateKey,
+        affectedPositionNames:
+          proposedCoverage.affectedPositionNames || []
+      })
+
+      continue
+    }
+
+    if (proposedCoverage.status === 'preferred') {
+      warningDates.push(dateKey)
+    }
+  }
+
+  return {
+    blockedChanges,
+    warningDates
+  }
+}
 
 
 
@@ -2386,9 +3110,37 @@ const saveAvailability = async () => {
     `${employee?.imie || ''} ${employee?.nazwisko || ''}`.trim() ||
     'Pracownik'
 
+  const submittedAvailabilityType =
+    selectedAvailabilityType.value
+
   isSavingAvailability.value = true
 
   try {
+    const coverageValidation =
+      await validateEmployeeAvailabilityCoverage(
+        employeeId,
+        selectedDates
+      )
+
+    if (coverageValidation.blockedChanges.length > 0) {
+      const firstBlockedChange =
+        coverageValidation.blockedChanges[0]
+
+      const positionsText =
+        firstBlockedChange.affectedPositionNames.length > 0
+          ? ` Zagrożone stanowiska: ${firstBlockedChange.affectedPositionNames.join(', ')}.`
+          : ''
+
+      showSaveResultModal(
+        'error',
+        `Nie możesz zapisać tej dyspozycji dla ${formatCompactDateKey(firstBlockedChange.dateKey)}. Po tej zmianie pogorszyłaby się możliwość zapewnienia pełnej obsady.${positionsText} Skontaktuj się z managerem.`,
+        5000,
+        true
+      )
+
+      return
+    }
+
     const batch = writeBatch(db)
     const managerEditorNames = new Set()
 
@@ -2518,6 +3270,17 @@ const saveAvailability = async () => {
         5000,
         true
       )
+    } else if (
+      coverageValidation.warningDates.length > 0
+    ) {
+      showSaveResultModal(
+        'success',
+        submittedAvailabilityType === 'preferred_off'
+          ? 'Prośba została zapisana, ale zapewnienie pełnej obsady może wymagać jej nieuwzględnienia.'
+          : 'Dyspozycja została zapisana, ale pełna obsada może wymagać wykorzystania osoby z prośbą o wolne.',
+        5000,
+        true
+      )
     } else {
       showSaveResultModal(
         'success',
@@ -2633,6 +3396,54 @@ const selectedAvailabilityRecord = computed(() => {
   return availabilityRecords.value[selectedDateKey.value] || null
 })
 
+const doesAvailabilityFormMatchRecord = (record) => {
+  const recordType = record?.type || 'full'
+
+  const recordTimeFrom = recordType === 'partial'
+    ? record?.timeFrom || '00:00'
+    : null
+
+  const recordTimeTo = recordType === 'partial'
+    ? record?.timeTo || '00:00'
+    : null
+
+  const formTimeFrom =
+    selectedAvailabilityType.value === 'partial'
+      ? availabilityTimeFrom.value
+      : null
+
+  const formTimeTo =
+    selectedAvailabilityType.value === 'partial'
+      ? availabilityTimeTo.value
+      : null
+
+  return (
+    selectedAvailabilityType.value === recordType &&
+    formTimeFrom === recordTimeFrom &&
+    formTimeTo === recordTimeTo &&
+    availabilityNote.value.trim() ===
+      (record?.note || '').trim()
+  )
+}
+
+watch(
+  selectedAvailabilityRecord,
+  (newRecord, previousRecord) => {
+    if (
+      selectedViewMode.value === 'all' ||
+      !selectedDateKey.value ||
+      isMultiSelectMode.value ||
+      !doesAvailabilityFormMatchRecord(previousRecord)
+    ) {
+      return
+    }
+
+    loadAvailabilityIntoForm(
+      selectedDateKey.value
+    )
+  }
+)
+
 
 watch(
   [
@@ -2721,6 +3532,12 @@ watch(
     showAvailabilityAdditionalInfo.value = false
     selectedDateKey.value = null
     expandedTeamEmployeeId.value = null
+    stopTeamAvailabilityListener()
+    teamAvailabilityRecords.value = {}
+
+    if (selectedViewMode.value === 'all') {
+      loadMonthAvailability()
+    }
   }
 )
 
@@ -2878,6 +3695,7 @@ const visibleAvailabilityPeriods = computed(() => {
       return {
         id: period.id,
         dateFrom: period.dateFrom,
+        dateTo: period.dateTo,
         isCurrentMonth:
           period.dateFrom <= monthEnd &&
           period.dateTo >= monthStart,
@@ -2896,8 +3714,15 @@ const visibleAvailabilityPeriods = computed(() => {
       }
     })
     .sort((periodA, periodB) => {
-      return periodA.dateFrom.localeCompare(
-        periodB.dateFrom
+      const endDateComparison =
+        periodB.dateTo.localeCompare(periodA.dateTo)
+
+      if (endDateComparison !== 0) {
+        return endDateComparison
+      }
+
+      return periodB.dateFrom.localeCompare(
+        periodA.dateFrom
       )
     })
 })
@@ -2970,6 +3795,19 @@ const getOpenPeriodForDateKey = (dateKey) => {
   }) || null
 }
 
+const getPeriodForDateKey = (dateKey) => {
+  if (!dateKey) {
+    return null
+  }
+
+  return periodsStore.periods.find(period => {
+    return (
+      period.dateFrom <= dateKey &&
+      period.dateTo >= dateKey
+    )
+  }) || null
+}
+
 const isDateBlockedInPeriod = (period, dateKey) => {
   return Boolean(
     period?.blockedDates?.includes(dateKey)
@@ -3008,7 +3846,11 @@ const getAvailabilityPeriodClasses = (
   }
 
   const dateKey = formatDateKey(day)
-  const period = getOpenPeriodForDateKey(dateKey)
+  const getCalendarPeriod = canManageSchedule.value
+    ? getPeriodForDateKey
+    : getOpenPeriodForDateKey
+
+  const period = getCalendarPeriod(dateKey)
 
   if (!period) {
     return {
@@ -3022,14 +3864,14 @@ const getAvailabilityPeriodClasses = (
 
   const previousPeriod =
     columnIndex > 0
-      ? getOpenPeriodForDateKey(
+      ? getCalendarPeriod(
           getShiftedDateKey(dateKey, -1)
         )
       : null
 
   const nextPeriod =
     columnIndex < 6
-      ? getOpenPeriodForDateKey(
+      ? getCalendarPeriod(
           getShiftedDateKey(dateKey, 1)
         )
       : null
@@ -3041,7 +3883,11 @@ const getAvailabilityPeriodClasses = (
     nextPeriod?.id !== period.id
 
   return {
-    'availability-period-open': true,
+    'availability-period-open':
+      isPeriodEffectivelyOpen(period),
+    'availability-period-assigned':
+      canManageSchedule.value &&
+      !isPeriodEffectivelyOpen(period),
     'availability-period-start': startsRange,
     'availability-period-end': endsRange,
     'availability-period-blocked':
@@ -3127,6 +3973,606 @@ const activeEmployees = computed(() => {
       )
     })
 })
+
+
+const demandDayKeys = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday'
+]
+
+const getDemandDayKey = (dateKey) => {
+  if (!dateKey) {
+    return null
+  }
+
+  const [year, month, day] = dateKey
+    .split('-')
+    .map(Number)
+
+  const date = new Date(year, month - 1, day)
+
+  return demandDayKeys[date.getDay()] || null
+}
+
+const getTimeMinutes = (timeValue) => {
+  if (!timeValue) {
+    return null
+  }
+
+  const [hours, minutes] = timeValue
+    .split(':')
+    .map(Number)
+
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
+  ) {
+    return null
+  }
+
+  return hours * 60 + minutes
+}
+
+const getTimeRange = (timeFrom, timeTo) => {
+  const start = getTimeMinutes(timeFrom)
+  let end = getTimeMinutes(timeTo)
+
+  if (start === null || end === null || start === end) {
+    return null
+  }
+
+  if (end < start) {
+    end += 24 * 60
+  }
+
+  return { start, end }
+}
+
+const doesAvailabilityCoverDemand = (
+  availability,
+  demandFrom,
+  demandTo
+) => {
+  const availabilityType = availability?.type || 'full'
+
+  if (availabilityType === 'unavailable') {
+    return false
+  }
+
+  if (
+    availabilityType === 'full' ||
+    availabilityType === 'preferred_off'
+  ) {
+    return true
+  }
+
+  if (availabilityType !== 'partial') {
+    return true
+  }
+
+  const demandRange = getTimeRange(
+    demandFrom,
+    demandTo
+  )
+
+  const availabilityRange = getTimeRange(
+    availability.timeFrom,
+    availability.timeTo
+  )
+
+  if (!demandRange || !availabilityRange) {
+    return false
+  }
+
+  return (
+    availabilityRange.start <= demandRange.start &&
+    availabilityRange.end >= demandRange.end
+  )
+}
+
+const getRequiredPeople = (vacancy) => {
+  const requiredPeople = Math.trunc(
+    Number(vacancy?.requiredPeople)
+  )
+
+  return Number.isFinite(requiredPeople) &&
+    requiredPeople >= 1
+    ? requiredPeople
+    : 1
+}
+
+const evaluateDayCoverage = (
+  dateKey,
+  availabilityByEmployee = teamAvailabilityRecords.value
+) => {
+
+  if (!dateKey) {
+    return {
+      periodName: '',
+      modelName: '',
+      message: 'Wybierz dzień w kalendarzu.',
+      shortageCount: 0,
+      groups: []
+    }
+  }
+
+  const period = getPeriodForDateKey(dateKey)
+
+  if (!period) {
+    return {
+      periodName: '',
+      modelName: '',
+      message:
+        'Ten dzień nie ma przypisanego okresu i modelu zapotrzebowania.',
+      shortageCount: 0,
+      groups: []
+    }
+  }
+
+  if (isDateBlockedInPeriod(period, dateKey)) {
+    return {
+      periodName: period.name || 'Okres bez nazwy',
+      modelName: '',
+      message:
+        'Ten dzień został wyłączony z okresu dyspozycji.',
+      status: 'empty',
+      matchedCount: 0,
+      hardMatchedCount: 0,
+      shortageCount: 0,
+      preferredOffUsedCount: 0,
+      affectedPositionNames: [],
+      groups: []
+    }
+  }
+
+  if (!period.demandModelId) {
+    return {
+      periodName: period.name || 'Okres bez nazwy',
+      modelName: '',
+      message:
+        'Do tego okresu nie przypisano modelu zapotrzebowania.',
+      shortageCount: 0,
+      groups: []
+    }
+  }
+
+  const demandModel = demandModelsStore.models.find(
+    model => model.id === period.demandModelId
+  )
+
+  if (!demandModel) {
+    return {
+      periodName: period.name || 'Okres bez nazwy',
+      modelName: '',
+      message:
+        'Nie znaleziono modelu przypisanego do tego okresu.',
+      shortageCount: 0,
+      groups: []
+    }
+  }
+
+  const dayKey = getDemandDayKey(dateKey)
+  const vacancies = Array.isArray(
+    demandModel.days?.[dayKey]
+  )
+    ? demandModel.days[dayKey]
+    : []
+
+  const slots = []
+
+  vacancies.forEach((vacancy, vacancyIndex) => {
+    if (
+      !vacancy?.positionId ||
+      !vacancy?.from ||
+      !vacancy?.to ||
+      vacancy.from === vacancy.to
+    ) {
+      return
+    }
+
+    const requiredPeople = getRequiredPeople(vacancy)
+    const demandRange = getTimeRange(
+      vacancy.from,
+      vacancy.to
+    )
+
+    for (
+      let slotIndex = 0;
+      slotIndex < requiredPeople;
+      slotIndex += 1
+    ) {
+      slots.push({
+        id:
+          `${vacancy.id || `vacancy-${vacancyIndex}`}` +
+          `-slot-${slotIndex + 1}`,
+        positionId: vacancy.positionId,
+        positionName: getSchedulePositionName(
+          vacancy.positionId
+        ),
+        from: vacancy.from,
+        to: vacancy.to,
+        duration:
+          demandRange
+            ? demandRange.end - demandRange.start
+            : 0
+      })
+    }
+  })
+
+  const getEmployeeCompetencyCount = (employee) => {
+    return Object.values(employee.kompetencje || {})
+      .filter(value => Number(value) >= 1)
+      .length
+  }
+
+  slots.forEach(slot => {
+    const candidates = activeEmployees.value
+      .filter(
+        employee => {
+          const competency = Number(
+            employee.kompetencje?.[slot.positionId]
+          )
+
+          if (!Number.isFinite(competency) || competency < 1) {
+            return false
+          }
+
+          const availability =
+            availabilityByEmployee[employee.id] || null
+
+          return doesAvailabilityCoverDemand(
+            availability,
+            slot.from,
+            slot.to
+          )
+        }
+      )
+      .map(employee => {
+        const availability =
+          availabilityByEmployee[employee.id] || null
+
+        return {
+          employeeId: employee.id,
+          isPreferredOff:
+            availability?.type === 'preferred_off',
+          competencyCount:
+            getEmployeeCompetencyCount(employee),
+          sortName:
+            `${employee.nazwisko || ''} ` +
+            `${employee.imie || ''}`
+        }
+      }
+      )
+      .sort((candidateA, candidateB) => {
+        if (
+          candidateA.isPreferredOff !==
+          candidateB.isPreferredOff
+        ) {
+          return candidateA.isPreferredOff ? 1 : -1
+        }
+
+        if (
+          candidateA.competencyCount !==
+          candidateB.competencyCount
+        ) {
+          return (
+            candidateA.competencyCount -
+            candidateB.competencyCount
+          )
+        }
+
+        return candidateA.sortName.localeCompare(
+          candidateB.sortName,
+          'pl'
+        )
+      })
+
+    slot.candidates = candidates
+    slot.candidateIds = candidates.map(
+      candidate => candidate.employeeId
+    )
+    slot.hardCandidateIds = candidates
+      .filter(candidate => !candidate.isPreferredOff)
+      .map(candidate => candidate.employeeId)
+  })
+
+  const orderedSlots = [...slots].sort(
+    (slotA, slotB) => {
+      if (
+        slotA.hardCandidateIds.length !==
+        slotB.hardCandidateIds.length
+      ) {
+        return (
+          slotA.hardCandidateIds.length -
+          slotB.hardCandidateIds.length
+        )
+      }
+
+      if (
+        slotA.candidateIds.length !==
+        slotB.candidateIds.length
+      ) {
+        return (
+          slotA.candidateIds.length -
+          slotB.candidateIds.length
+        )
+      }
+
+      if (slotA.duration !== slotB.duration) {
+        return slotB.duration - slotA.duration
+      }
+
+      if (slotA.from !== slotB.from) {
+        return slotA.from.localeCompare(slotB.from)
+      }
+
+      return slotA.positionName.localeCompare(
+        slotB.positionName,
+        'pl'
+      )
+    }
+  )
+
+  const slotById = new Map(
+    slots.map(slot => [slot.id, slot])
+  )
+
+  const employeeToSlot = new Map()
+
+  const tryAssignSlot = (
+    slotId,
+    allowPreferredOff,
+    visitedEmployeeIds
+  ) => {
+    const slot = slotById.get(slotId)
+
+    if (!slot) {
+      return false
+    }
+
+    const candidateIds = allowPreferredOff
+      ? slot.candidateIds
+      : slot.hardCandidateIds
+
+    for (const employeeId of candidateIds) {
+      if (visitedEmployeeIds.has(employeeId)) {
+        continue
+      }
+
+      visitedEmployeeIds.add(employeeId)
+
+      const previousSlotId =
+        employeeToSlot.get(employeeId)
+
+      if (
+        !previousSlotId ||
+        tryAssignSlot(
+          previousSlotId,
+          allowPreferredOff,
+          visitedEmployeeIds
+        )
+      ) {
+        employeeToSlot.set(employeeId, slotId)
+        return true
+      }
+    }
+
+    return false
+  }
+
+  orderedSlots.forEach(slot => {
+    tryAssignSlot(slot.id, false, new Set())
+  })
+
+  const hardAssignedSlotCount = new Set(
+    employeeToSlot.values()
+  ).size
+
+  let assignedSlotIds = new Set(
+    employeeToSlot.values()
+  )
+
+  orderedSlots.forEach(slot => {
+    if (assignedSlotIds.has(slot.id)) {
+      return
+    }
+
+    tryAssignSlot(slot.id, true, new Set())
+
+    assignedSlotIds = new Set(
+      employeeToSlot.values()
+    )
+  })
+
+  const slotToEmployee = new Map()
+
+  employeeToSlot.forEach((slotId, employeeId) => {
+    slotToEmployee.set(slotId, employeeId)
+  })
+
+  slots.forEach(slot => {
+    slot.assignedEmployeeId =
+      slotToEmployee.get(slot.id) || null
+  })
+
+  const groupsMap = new Map()
+
+  slots.forEach(slot => {
+    if (!groupsMap.has(slot.positionId)) {
+      groupsMap.set(slot.positionId, {
+        positionId: slot.positionId,
+        positionName: slot.positionName,
+        slots: []
+      })
+    }
+
+    groupsMap.get(slot.positionId).slots.push(slot)
+  })
+
+  const groups = [...groupsMap.values()]
+    .map(group => ({
+      ...group,
+      slots: group.slots.sort((slotA, slotB) => {
+        if (slotA.from !== slotB.from) {
+          return slotA.from.localeCompare(slotB.from)
+        }
+
+        if (slotA.to !== slotB.to) {
+          return slotA.to.localeCompare(slotB.to)
+        }
+
+        return slotA.id.localeCompare(slotB.id)
+      })
+    }))
+    .sort((groupA, groupB) => {
+      return groupA.positionName.localeCompare(
+        groupB.positionName,
+        'pl'
+      )
+    })
+
+  const shortageCount = slots.filter(
+    slot => !slot.assignedEmployeeId
+  ).length
+
+  const matchedCount =
+    employeeToSlot.size
+
+  const preferredOffUsedCount =
+    [...employeeToSlot.keys()].filter(employeeId => {
+      return (
+        availabilityByEmployee[employeeId]?.type ===
+        'preferred_off'
+      )
+    }).length
+
+  const affectedSlotIds = new Set(
+    slots
+      .filter(slot => !slot.assignedEmployeeId)
+      .map(slot => slot.id)
+  )
+
+  const visitedEmployeeIds = new Set()
+  const pendingSlotIds = [...affectedSlotIds]
+
+  while (pendingSlotIds.length > 0) {
+    const currentSlotId = pendingSlotIds.shift()
+    const currentSlot = slotById.get(currentSlotId)
+
+    if (!currentSlot) {
+      continue
+    }
+
+    currentSlot.candidateIds.forEach(employeeId => {
+      if (visitedEmployeeIds.has(employeeId)) {
+        return
+      }
+
+      visitedEmployeeIds.add(employeeId)
+
+      const assignedSlotId =
+        employeeToSlot.get(employeeId)
+
+      if (
+        assignedSlotId &&
+        !affectedSlotIds.has(assignedSlotId)
+      ) {
+        affectedSlotIds.add(assignedSlotId)
+        pendingSlotIds.push(assignedSlotId)
+      }
+    })
+  }
+
+  const affectedPositionNames = [
+    ...new Set(
+      [...affectedSlotIds]
+        .map(slotId => slotById.get(slotId)?.positionName)
+        .filter(Boolean)
+    )
+  ].sort((nameA, nameB) =>
+    nameA.localeCompare(nameB, 'pl')
+  )
+
+  const status = slots.length === 0
+    ? 'empty'
+    : shortageCount > 0
+      ? 'shortage'
+      : preferredOffUsedCount > 0
+        ? 'preferred'
+        : 'complete'
+
+  return {
+    periodName: period.name || 'Okres bez nazwy',
+    modelName: demandModel.name || 'Model bez nazwy',
+    message:
+      slots.length === 0
+        ? 'Model nie przewiduje zapotrzebowania na ten dzień.'
+        : '',
+    status,
+    matchedCount,
+    hardMatchedCount: hardAssignedSlotCount,
+    shortageCount,
+    preferredOffUsedCount,
+    affectedPositionNames,
+    groups
+  }
+}
+
+const selectedDayDemandControl = computed(() => {
+  return evaluateDayCoverage(
+    selectedDateKey.value,
+    teamAvailabilityRecords.value
+  )
+})
+
+const calendarDayCoverageByDate = computed(() => {
+  if (
+    !canManageSchedule.value ||
+    selectedViewMode.value !== 'all'
+  ) {
+    return {}
+  }
+
+  return calendarDays.value.reduce((statuses, day) => {
+    if (!day) {
+      return statuses
+    }
+
+    const dateKey = formatDateKey(day)
+    const period = getPeriodForDateKey(dateKey)
+
+    if (
+      !period ||
+      isDateBlockedInPeriod(period, dateKey)
+    ) {
+      return statuses
+    }
+
+    statuses[dateKey] = evaluateDayCoverage(
+      dateKey,
+      monthAvailabilityRecords.value[dateKey] || {}
+    ).status || 'empty'
+
+    return statuses
+  }, {})
+})
+
+const getCalendarDayCoverageStatus = (day) => {
+  if (!day) {
+    return 'empty'
+  }
+
+  return (
+    calendarDayCoverageByDate.value[
+      formatDateKey(day)
+    ] || 'empty'
+  )
+}
 
 
 const teamAvailabilityForSelectedDay = computed(() => {

@@ -1659,6 +1659,16 @@ button {
   cursor: default;
 }
 
+.schedule-calendar-day-number.coverage-warning {
+  color: #ca8a04;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.schedule-calendar-day-number.coverage-shortage {
+  color: #dc2626;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
 .schedule-calendar-cell:nth-child(7n),
 .schedule-calendar-cell:nth-child(7n - 1) {
   background: #f1f5f9;
@@ -3666,4 +3676,199 @@ button {
     gap: 2px;
     font-size: 9px;
   }
+}
+
+
+/* KONTROLA MOŻLIWOŚCI OBSADY W WIDOKU MANAGERA — WERSJA 3 */
+
+.schedule-demand-control-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.schedule-demand-control-panel.has-shortage {
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.08);
+}
+
+.schedule-demand-control-panel.has-warning {
+  border-color: #eab308;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.08);
+}
+
+.schedule-demand-control-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.schedule-demand-control-title {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.schedule-demand-control-model {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-demand-control-message {
+  margin-top: 9px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.schedule-demand-control-day-status {
+  margin-top: 9px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.schedule-demand-control-day-status.shortage {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.schedule-demand-control-day-status.complete {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.schedule-demand-control-day-status.preferred {
+  background: #fef9c3;
+  color: #713f12;
+}
+
+.schedule-demand-control-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.schedule-demand-control-group {
+  overflow: hidden;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.schedule-demand-control-group-title {
+  padding: 7px 9px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.schedule-demand-control-group-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+}
+
+.schedule-demand-control-row {
+  min-height: 36px;
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 24px auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #334155;
+}
+
+.schedule-demand-control-slot-number {
+  font-size: 12px;
+  font-weight: 950;
+  text-align: right;
+}
+
+.schedule-demand-control-time {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.schedule-demand-control-note {
+  padding: 2px 2px 0;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+@media (max-width: 390px) {
+  .schedule-demand-control-panel {
+    padding: 10px;
+  }
+
+  .schedule-demand-control-header {
+    display: block;
+  }
+
+  .schedule-demand-control-model {
+    margin-top: 3px;
+    text-align: left;
+  }
+
+  .schedule-demand-control-row {
+    grid-template-columns: 21px auto;
+    gap: 5px;
+  }
+}
+
+/* ZAPISANY OKRES Z MODELEM, ALE BEZ OTWARTEJ EDYCJI */
+
+.schedule-calendar-cell.availability-period-assigned {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #475569;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.schedule-calendar-cell.availability-period-assigned.availability-period-start:not(.availability-period-end) {
+  border-radius: 12px 0 0 12px;
+  box-shadow: 6px 0 0 #e2e8f0;
+}
+
+.schedule-calendar-cell.availability-period-assigned.availability-period-end:not(.availability-period-start) {
+  border-radius: 0 12px 12px 0;
+  box-shadow: -6px 0 0 #e2e8f0;
+}
+
+.schedule-calendar-cell.availability-period-assigned:not(.availability-period-start):not(.availability-period-end) {
+  border-radius: 0;
+  box-shadow:
+    -6px 0 0 #e2e8f0,
+    6px 0 0 #e2e8f0;
+}
+
+.schedule-calendar-cell.availability-period-assigned.availability-period-start.availability-period-end {
+  border-radius: 12px;
+}
+
+.schedule-calendar-cell.availability-period-assigned.selected {
+  outline: 2px solid #2563eb;
+  outline-offset: -3px;
 }
