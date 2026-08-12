@@ -982,7 +982,7 @@
       isSavingAvailability ||
       !canEditSelectedAvailability
   }"
-  @click="saveAvailability"
+  @click="saveAvailability()"
 >
   {{
     isSavingAvailability
@@ -1394,7 +1394,7 @@ import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.j
 import { useAuthStore } from '../../stores/authStore.js'
 import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
-import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, where } from 'firebase/firestore'
 import { db } from '../../firebase.js'
 
 const router = useRouter()
@@ -2082,7 +2082,8 @@ const confirmManagerAvailabilitySave = async () => {
 
 
 const saveTeamAvailability = async (
-  ignoreCoverageWarning = false
+  ignoreCoverageWarning = false,
+  retryCount = 0
 ) => {
   if (isSavingTeamAvailability.value) return
 
@@ -2141,6 +2142,15 @@ const saveTeamAvailability = async (
   isSavingTeamAvailability.value = true
 
   try {
+    const expectedVersions =
+      await fetchAvailabilityDayVersions(
+        restaurantId,
+        [dateKey]
+      )
+
+    const currentTeamAvailability =
+      await fetchTeamAvailabilityRecordsForDay(dateKey)
+
     const availabilityPeriod =
       getPeriodForDateKey(dateKey)
 
@@ -2155,7 +2165,7 @@ const saveTeamAvailability = async (
     )
 
     const currentAvailability =
-      employee.availability || null
+      currentTeamAvailability[employee.id] || null
 
     const employeeEntry =
   currentAvailability?.employeeEntry || null
@@ -2206,14 +2216,19 @@ const saveTeamAvailability = async (
       availabilityData.employeeEntry = employeeEntry
     }
 
-    const batch = writeBatch(db)
+    await commitAvailabilityMutations({
+      restaurantId,
+      dateKeys: [dateKey],
+      expectedVersions,
+      mutations: [
+        {
+          type: 'set',
+          ref: availabilityRef,
+          data: availabilityData
+        }
+      ]
+    })
 
-    batch.set(
-      availabilityRef,
-      availabilityData
-    )
-
-    await batch.commit()
     await loadTeamAvailabilityForDay(dateKey)
 
     closeTeamAvailabilityEdit()
@@ -2223,6 +2238,17 @@ const saveTeamAvailability = async (
       'Zapisano zmianę dyspozycyjności'
     )
   } catch (error) {
+    if (
+      isAvailabilityDayConflict(error) &&
+      retryCount < 1
+    ) {
+      isSavingTeamAvailability.value = false
+
+      await loadTeamAvailabilityForDay(dateKey)
+      await saveTeamAvailability(false, retryCount + 1)
+      return
+    }
+
     console.error(
       'Błąd zapisu edycji dyspozycyjności:',
       error
@@ -2230,7 +2256,9 @@ const saveTeamAvailability = async (
 
     showSaveResultModal(
       'error',
-      'Nie udało się zapisać zmiany'
+      isAvailabilityDayConflict(error)
+        ? 'Dane tego dnia zmieniły się ponownie. Spróbuj zapisać jeszcze raz.'
+        : 'Nie udało się zapisać zmiany'
     )
   } finally {
     isSavingTeamAvailability.value = false
@@ -2241,7 +2269,8 @@ const saveTeamAvailability = async (
 const restoreEmployeeAvailability = async (
   employeeId,
   dateKey,
-  employeeEntry
+  employeeEntry,
+  retryCount = 0
 ) => {
   if (
     isSavingTeamAvailability.value ||
@@ -2266,6 +2295,19 @@ const restoreEmployeeAvailability = async (
   isSavingTeamAvailability.value = true
 
   try {
+    const expectedVersions =
+      await fetchAvailabilityDayVersions(
+        restaurantId,
+        [dateKey]
+      )
+
+    const currentTeamAvailability =
+      await fetchTeamAvailabilityRecordsForDay(dateKey)
+
+    const restoredEmployeeEntry =
+      currentTeamAvailability[employeeId]
+        ?.employeeEntry || employeeEntry
+
     const availabilityRef = doc(
       db,
       'users',
@@ -2278,31 +2320,36 @@ const restoreEmployeeAvailability = async (
       employeeId,
       date: dateKey,
 
-      type: employeeEntry.type,
+      type: restoredEmployeeEntry.type,
       timeFrom:
-        employeeEntry.type === 'partial'
-          ? employeeEntry.timeFrom
+        restoredEmployeeEntry.type === 'partial'
+          ? restoredEmployeeEntry.timeFrom
           : null,
       timeTo:
-        employeeEntry.type === 'partial'
-          ? employeeEntry.timeTo
+        restoredEmployeeEntry.type === 'partial'
+          ? restoredEmployeeEntry.timeTo
           : null,
-      note: employeeEntry.note || '',
+      note: restoredEmployeeEntry.note || '',
 
       effectiveSource: 'employee',
-      employeeEntry,
+      employeeEntry: restoredEmployeeEntry,
 
       updatedAt: serverTimestamp()
     }
 
-    const batch = writeBatch(db)
+    await commitAvailabilityMutations({
+      restaurantId,
+      dateKeys: [dateKey],
+      expectedVersions,
+      mutations: [
+        {
+          type: 'set',
+          ref: availabilityRef,
+          data: availabilityData
+        }
+      ]
+    })
 
-    batch.set(
-      availabilityRef,
-      availabilityData
-    )
-
-    await batch.commit()
     showAvailabilityAdditionalInfo.value = false
 
     if (selectedViewMode.value === 'all') {
@@ -2317,6 +2364,28 @@ const restoreEmployeeAvailability = async (
       'Przywrócono wersję pracownika'
     )
   } catch (error) {
+    if (
+      isAvailabilityDayConflict(error) &&
+      retryCount < 1
+    ) {
+      isSavingTeamAvailability.value = false
+
+      if (selectedViewMode.value === 'all') {
+        await loadTeamAvailabilityForDay(dateKey)
+      } else {
+        await loadAvailability()
+      }
+
+      await restoreEmployeeAvailability(
+        employeeId,
+        dateKey,
+        employeeEntry,
+        retryCount + 1
+      )
+
+      return
+    }
+
     console.error(
       'Błąd przywracania wersji pracownika:',
       error
@@ -2324,7 +2393,9 @@ const restoreEmployeeAvailability = async (
 
     showSaveResultModal(
       'error',
-      'Nie udało się przywrócić wersji pracownika',
+      isAvailabilityDayConflict(error)
+        ? 'Dane tego dnia zmieniły się ponownie. Spróbuj przywrócić wersję jeszcze raz.'
+        : 'Nie udało się przywrócić wersji pracownika',
       2000
     )
   } finally {
@@ -2409,7 +2480,8 @@ const getEmployeeViewManagerCoverageWarning = async (
 }
 
 const saveEmployeeViewAsManager = async (
-  ignoreCoverageWarning = false
+  ignoreCoverageWarning = false,
+  retryCount = 0
 ) => {
   const employee = selectedAvailabilityEmployee.value
   const selectedDates = datesSelectedForAvailability.value
@@ -2456,7 +2528,26 @@ const saveEmployeeViewAsManager = async (
 
   try {
     const restaurantId = availabilityRestaurantId.value
-    const batch = writeBatch(db)
+    const expectedVersions =
+      await fetchAvailabilityDayVersions(
+        restaurantId,
+        selectedDates
+      )
+
+    const currentTeamSnapshots = await Promise.all(
+      selectedDates.map(dateKey => {
+        return fetchTeamAvailabilityRecordsForDay(dateKey)
+      })
+    )
+
+    const currentTeamAvailabilityByDate =
+      selectedDates.reduce((records, dateKey, index) => {
+        records[dateKey] = currentTeamSnapshots[index]
+        return records
+      }, {})
+
+    const mutations = []
+    const changedDateKeys = []
     let changedDatesCount = 0
 
     selectedDates.forEach(dateKey => {
@@ -2464,7 +2555,9 @@ const saveEmployeeViewAsManager = async (
         getPeriodForDateKey(dateKey)
 
       const currentAvailability =
-        availabilityRecords.value[dateKey] || null
+        (
+          currentTeamAvailabilityByDate[dateKey] || {}
+        )[employee.id] || null
 
         const currentType =
   currentAvailability?.type || 'full'
@@ -2501,6 +2594,7 @@ if (!hasChanges) {
 }
 
 changedDatesCount += 1
+changedDateKeys.push(dateKey)
 
       const employeeEntry =
   currentAvailability?.employeeEntry || null
@@ -2559,10 +2653,11 @@ changedDatesCount += 1
         `${employee.id}_${dateKey}`
       )
 
-      batch.set(
-        availabilityRef,
-        availabilityData
-      )
+      mutations.push({
+        type: 'set',
+        ref: availabilityRef,
+        data: availabilityData
+      })
     })
 
     if (changedDatesCount === 0) {
@@ -2574,7 +2669,13 @@ changedDatesCount += 1
   return
 }
 
-    await batch.commit()
+    await commitAvailabilityMutations({
+      restaurantId,
+      dateKeys: changedDateKeys,
+      expectedVersions,
+      mutations
+    })
+
     await loadAvailability()
 
     if (selectedDateKey.value) {
@@ -2595,6 +2696,21 @@ changedDatesCount += 1
         : `Zapisano zmiany dla ${selectedDates.length} dni`
     )
   } catch (error) {
+    if (
+      isAvailabilityDayConflict(error) &&
+      retryCount < 1
+    ) {
+      isSavingAvailability.value = false
+
+      await loadAvailability()
+      await saveEmployeeViewAsManager(
+        false,
+        retryCount + 1
+      )
+
+      return
+    }
+
     console.error(
       'Błąd zapisu dyspozycyjności przez managera:',
       error
@@ -2602,7 +2718,9 @@ changedDatesCount += 1
 
     showSaveResultModal(
       'error',
-      'Nie udało się zapisać zmiany'
+      isAvailabilityDayConflict(error)
+        ? 'Dane jednego z dni zmieniły się ponownie. Spróbuj zapisać jeszcze raz.'
+        : 'Nie udało się zapisać zmiany'
     )
   } finally {
     isSavingAvailability.value = false
@@ -2971,10 +3089,14 @@ const validateEmployeeAvailabilityCoverage = async (
 ) => {
   const blockedChanges = []
   const warningDates = []
+  const teamAvailabilityByDate = {}
 
   for (const dateKey of selectedDates) {
     const currentTeamAvailability =
       await fetchTeamAvailabilityRecordsForDay(dateKey)
+
+    teamAvailabilityByDate[dateKey] =
+      currentTeamAvailability
 
     const currentCoverage = evaluateDayCoverage(
       dateKey,
@@ -3039,14 +3161,15 @@ const validateEmployeeAvailabilityCoverage = async (
 
   return {
     blockedChanges,
-    warningDates
+    warningDates,
+    teamAvailabilityByDate
   }
 }
 
 
 
 
-const saveAvailability = async () => {
+const saveAvailability = async (retryCount = 0) => {
   if (isSavingAvailability.value) return
 
   if (isManagerEditingEmployee.value) {
@@ -3116,6 +3239,12 @@ const saveAvailability = async () => {
   isSavingAvailability.value = true
 
   try {
+    const expectedVersions =
+      await fetchAvailabilityDayVersions(
+        restaurantId,
+        selectedDates
+      )
+
     const coverageValidation =
       await validateEmployeeAvailabilityCoverage(
         employeeId,
@@ -3141,7 +3270,7 @@ const saveAvailability = async () => {
       return
     }
 
-    const batch = writeBatch(db)
+    const mutations = []
     const managerEditorNames = new Set()
 
     selectedDates.forEach(dateKey => {
@@ -3149,7 +3278,10 @@ const saveAvailability = async () => {
         getEditablePeriodForDateKey(dateKey)
 
       const currentAvailability =
-        availabilityRecords.value[dateKey] || null
+        (
+          coverageValidation
+            .teamAvailabilityByDate[dateKey] || {}
+        )[employeeId] || null
 
       const existingManagerEntry =
         currentAvailability?.managerEntry || null
@@ -3190,22 +3322,26 @@ const saveAvailability = async () => {
             existingManagerEntry.enteredByName
           )
         }
-        batch.set(availabilityRef, {
-          employeeId,
-          date: dateKey,
-          periodId: availabilityPeriod?.id || null,
+        mutations.push({
+          type: 'set',
+          ref: availabilityRef,
+          data: {
+            employeeId,
+            date: dateKey,
+            periodId: availabilityPeriod?.id || null,
 
-          type: existingManagerEntry.type,
-          timeFrom: existingManagerEntry.timeFrom ?? null,
-          timeTo: existingManagerEntry.timeTo ?? null,
-          note: existingManagerEntry.note || '',
+            type: existingManagerEntry.type,
+            timeFrom: existingManagerEntry.timeFrom ?? null,
+            timeTo: existingManagerEntry.timeTo ?? null,
+            note: existingManagerEntry.note || '',
 
-          effectiveSource: 'manager',
+            effectiveSource: 'manager',
 
-          employeeEntry,
-          managerEntry: existingManagerEntry,
+            employeeEntry,
+            managerEntry: existingManagerEntry,
 
-          updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp()
+          }
         })
 
         return
@@ -3215,28 +3351,41 @@ const saveAvailability = async () => {
         employeeEntry.type === 'full' &&
         !employeeEntry.note
       ) {
-        batch.delete(availabilityRef)
+        mutations.push({
+          type: 'delete',
+          ref: availabilityRef
+        })
         return
       }
 
-      batch.set(availabilityRef, {
-        employeeId,
-        date: dateKey,
-        periodId: availabilityPeriod?.id || null,
+      mutations.push({
+        type: 'set',
+        ref: availabilityRef,
+        data: {
+          employeeId,
+          date: dateKey,
+          periodId: availabilityPeriod?.id || null,
 
-        type: employeeEntry.type,
-        timeFrom: employeeEntry.timeFrom,
-        timeTo: employeeEntry.timeTo,
-        note: employeeEntry.note,
+          type: employeeEntry.type,
+          timeFrom: employeeEntry.timeFrom,
+          timeTo: employeeEntry.timeTo,
+          note: employeeEntry.note,
 
-        effectiveSource: 'employee',
-        employeeEntry,
+          effectiveSource: 'employee',
+          employeeEntry,
 
-        updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp()
+        }
       })
     })
 
-    await batch.commit()
+    await commitAvailabilityMutations({
+      restaurantId,
+      dateKeys: selectedDates,
+      expectedVersions,
+      mutations
+    })
+
     await loadAvailability()
 
     if (
@@ -3290,6 +3439,17 @@ const saveAvailability = async () => {
       )
     }
   } catch (error) {
+    if (
+      isAvailabilityDayConflict(error) &&
+      retryCount < 1
+    ) {
+      isSavingAvailability.value = false
+
+      await loadAvailability()
+      await saveAvailability(retryCount + 1)
+      return
+    }
+
     console.error(
       'Błąd zapisu dyspozycyjności:',
       error
@@ -3297,7 +3457,9 @@ const saveAvailability = async () => {
 
     showSaveResultModal(
       'error',
-      'Nie udało się zapisać dyspozycyjności'
+      isAvailabilityDayConflict(error)
+        ? 'Dane jednego z dni zmieniły się ponownie. Spróbuj zapisać jeszcze raz.'
+        : 'Nie udało się zapisać dyspozycyjności'
     )
   } finally {
     isSavingAvailability.value = false
@@ -4529,6 +4691,135 @@ const selectedDayDemandControl = computed(() => {
     teamAvailabilityRecords.value
   )
 })
+
+const AVAILABILITY_DAY_CHANGED_ERROR =
+  'availability-day-version-changed'
+
+const getAvailabilityDayVersionRef = (
+  restaurantId,
+  dateKey
+) => {
+  return doc(
+    db,
+    'users',
+    restaurantId,
+    'grafik_dyspozycyjnosc_wersje',
+    dateKey
+  )
+}
+
+const fetchAvailabilityDayVersions = async (
+  restaurantId,
+  dateKeys
+) => {
+  const uniqueDateKeys = [...new Set(dateKeys)]
+
+  const snapshots = await Promise.all(
+    uniqueDateKeys.map(dateKey => {
+      return getDoc(
+        getAvailabilityDayVersionRef(
+          restaurantId,
+          dateKey
+        )
+      )
+    })
+  )
+
+  return uniqueDateKeys.reduce(
+    (versions, dateKey, index) => {
+      const snapshot = snapshots[index]
+
+      versions[dateKey] = snapshot.exists()
+        ? Number(snapshot.data()?.version || 0)
+        : 0
+
+      return versions
+    },
+    {}
+  )
+}
+
+const commitAvailabilityMutations = async ({
+  restaurantId,
+  dateKeys,
+  expectedVersions,
+  mutations
+}) => {
+  const uniqueDateKeys = [...new Set(dateKeys)]
+
+  if (uniqueDateKeys.length === 0) {
+    return
+  }
+
+  await runTransaction(db, async transaction => {
+    const versionRefs = uniqueDateKeys.map(
+      dateKey => {
+        return getAvailabilityDayVersionRef(
+          restaurantId,
+          dateKey
+        )
+      }
+    )
+
+    const versionSnapshots = await Promise.all(
+      versionRefs.map(versionRef => {
+        return transaction.get(versionRef)
+      })
+    )
+
+    uniqueDateKeys.forEach((dateKey, index) => {
+      const snapshot = versionSnapshots[index]
+
+      const currentVersion = snapshot.exists()
+        ? Number(snapshot.data()?.version || 0)
+        : 0
+
+      if (
+        currentVersion !==
+        Number(expectedVersions[dateKey] || 0)
+      ) {
+        const conflictError = new Error(
+          AVAILABILITY_DAY_CHANGED_ERROR
+        )
+
+        conflictError.code =
+          AVAILABILITY_DAY_CHANGED_ERROR
+
+        throw conflictError
+      }
+    })
+
+    mutations.forEach(mutation => {
+      if (mutation.type === 'delete') {
+        transaction.delete(mutation.ref)
+        return
+      }
+
+      transaction.set(
+        mutation.ref,
+        mutation.data
+      )
+    })
+
+    uniqueDateKeys.forEach((dateKey, index) => {
+      const currentVersion =
+        Number(expectedVersions[dateKey] || 0)
+
+      transaction.set(versionRefs[index], {
+        date: dateKey,
+        version: currentVersion + 1,
+        updatedAt: serverTimestamp()
+      })
+    })
+  })
+}
+
+const isAvailabilityDayConflict = error => {
+  return (
+    error?.code === AVAILABILITY_DAY_CHANGED_ERROR ||
+    error?.message === AVAILABILITY_DAY_CHANGED_ERROR
+  )
+}
 
 const calendarDayCoverageByDate = computed(() => {
   if (

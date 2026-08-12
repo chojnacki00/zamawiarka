@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- KOLEKCJE GLOBALNE ---
+
+    // Kody parowania pozostają bez zmian na obecnym etapie.
+    match /pairing_codes/{codeId} {
+      allow read, write: if true;
+    }
+
+    // --- KOLEKCJE WŁAŚCICIELA (RESTAURACJI) ---
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        request.auth.uid == userId;
+
+      // 1. Zespół i pracownicy
+      match /employees/{empId} {
+        allow read, write: if true;
+      }
+
+      // 2. Profile uprawnień
+      match /permissionProfiles/{profileId} {
+        allow read, write: if true;
+      }
+
+      // 3. Stanowiska do grafiku
+      match /positions/{positionId} {
+        allow read, write: if true;
+      }
+
+      // 4. Dyspozycyjność pracowników
+      // Dostęp pozostaje zgodny z obecną aplikacją kod + PIN.
+      match /grafik_dyspozycyjnosc/{availabilityId} {
+        allow read, write: if true;
+      }
+
+      // Wersja stanu dyspozycji dla konkretnego dnia.
+      // Każdy prawidłowy zapis aplikacji zwiększa ją dokładnie o 1.
+      match /grafik_dyspozycyjnosc_wersje/{dateKey} {
+        allow read: if true;
+
+        allow create: if
+          request.resource.data.keys().hasOnly([
+            'date',
+            'version',
+            'updatedAt'
+          ]) &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.version == 1 &&
+          request.resource.data.updatedAt is timestamp;
+
+        allow update: if
+          request.resource.data.keys().hasOnly([
+            'date',
+            'version',
+            'updatedAt'
+          ]) &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.date == resource.data.date &&
+          request.resource.data.version ==
+            resource.data.version + 1 &&
+          request.resource.data.updatedAt is timestamp;
+      }
+
+      // 5. Okresy dyspozycji
+      match /grafik_okresy_dyspozycji/{periodId} {
+        allow read, write: if true;
+      }
+
+      // --- POZOSTAŁE MODUŁY ZAMAWIARKI ---
+
+      match /cartItems/{itemId} {
+        allow read, write: if true;
+      }
+
+      match /orders/{orderId} {
+        allow read, write: if true;
+      }
+
+      match /towary/{towarId} {
+        allow read, write: if true;
+      }
+
+      match /app/state {
+        allow read, write: if true;
+      }
+
+      match /menuItems/{dishId} {
+        allow read, write: if true;
+      }
+
+      // Reguła przejściowa dla pozostałych ścieżek.
+      match /{allPaths=**} {
+        allow read: if true;
+        allow write: if request.auth != null &&
+          request.auth.uid == userId;
+      }
+    }
+  }
+}

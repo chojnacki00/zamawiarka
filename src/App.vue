@@ -1179,10 +1179,21 @@ const resetInactivityTimer = () => {
 watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
   resetInactivityTimer()
 
-  // Jeśli był pracownik (oldEmployee), a nagle zniknął (bo zabił go Kill Switch)
+  // Sesja pracownika została zakończona:
+  // ręcznie, po bezczynności albo zdalnie przez Managera.
   if (oldEmployee && !newEmployee) {
-    console.log('Wykryto aktywację Kill Switcha. Czyszczę całą aplikację...')
-    handleLogout() // Odpalamy pełne czyszczenie z kroku 2!
+    console.log('Sesja pracownika zakończona. Czyszczę dane aplikacji...')
+
+    isDataLoaded.value = false
+    resetCompanyDataState()
+
+    if (!auth.currentUser) {
+      isLoggedIn.value = false
+    }
+
+    if (router.currentRoute.value.path !== '/logowanie') {
+      router.replace('/logowanie')
+    }
   }
 })
 
