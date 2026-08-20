@@ -4,13 +4,14 @@ import {
   collection,
   doc,
   addDoc,
-  getDocs,
   onSnapshot,
   updateDoc,
   deleteDoc,
-  deleteField,
+  getDocs,
   query,
   where,
+  deleteField,
+  increment,
   writeBatch,
   Timestamp,
   serverTimestamp
@@ -91,6 +92,24 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       return Timestamp.fromDate(endOfDay)
     }
 
+    const getExpirationTimestamp = (dateKey) => {
+      const [year, month, day] =
+        dateKey.split('-').map(Number)
+
+      const expirationDate = new Date(
+        year,
+        month - 1,
+        day + 1,
+        0,
+        0,
+        0,
+        0
+      )
+
+      return Timestamp.fromDate(expirationDate)
+    }
+
+
         const formatLocalDateKey = (date) => {
       const year = date.getFullYear()
 
@@ -133,85 +152,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       )
     }
 
-    const sortPeriodsByEndDateDescending = (
-      periodA,
-      periodB
-    ) => {
-      const periodAIsOpen =
-        isPeriodEffectivelyOpen(periodA)
-
-      const periodBIsOpen =
-        isPeriodEffectivelyOpen(periodB)
-
-      if (periodAIsOpen !== periodBIsOpen) {
-        return periodAIsOpen ? -1 : 1
-      }
-
-      const endDateComparison =
-        (periodB.dateTo || '').localeCompare(
-          periodA.dateTo || ''
-        )
-
-      if (endDateComparison !== 0) {
-        return endDateComparison
-      }
-
-      return (periodB.dateFrom || '').localeCompare(
-        periodA.dateFrom || ''
-      )
-    }
-
-    const getOverlappingPeriod = (
-      dateFrom,
-      dateTo,
-      excludedPeriodId = null
-    ) => {
-      return periods.value.find(period => {
-        return (
-          period.id !== excludedPeriodId &&
-          rangesOverlap(
-            dateFrom,
-            dateTo,
-            period.dateFrom,
-            period.dateTo
-          )
-        )
-      }) || null
-    }
-
-    const validatePeriodDefinition = (
-      periodData,
-      excludedPeriodId = null
-    ) => {
-      if (!periodData?.demandModelId) {
-        throw new Error(
-          'Wybierz model zapotrzebowania.'
-        )
-      }
-
-      if (
-        !periodData.dateFrom ||
-        !periodData.dateTo ||
-        periodData.dateFrom > periodData.dateTo
-      ) {
-        throw new Error(
-          'Podaj poprawny zakres dat okresu.'
-        )
-      }
-
-      const overlappingPeriod = getOverlappingPeriod(
-        periodData.dateFrom,
-        periodData.dateTo,
-        excludedPeriodId
-      )
-
-      if (overlappingPeriod) {
-        throw new Error(
-          `Ten zakres pokrywa się z okresem „${overlappingPeriod.name}” (${overlappingPeriod.dateFrom}–${overlappingPeriod.dateTo}).`
-        )
-      }
-    }
-
     const normalizeBlockedDates = (
       blockedDates,
       dateFrom,
@@ -230,6 +170,92 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           )
         })
         .sort()
+    }
+
+    // Dokument dnia jest trwałym źródłem informacji dla przyszłego grafiku.
+    // Okres dyspozycji tylko zbiorczo aktualizuje dokumenty z wybranego zakresu.
+    const getDateKeysInRange = (dateFrom, dateTo) => {
+      if (!dateFrom || !dateTo || dateFrom > dateTo) {
+        return []
+      }
+
+      const [fromYear, fromMonth, fromDay] =
+        dateFrom.split('-').map(Number)
+      const [toYear, toMonth, toDay] =
+        dateTo.split('-').map(Number)
+
+      const cursor = new Date(Date.UTC(
+        fromYear,
+        fromMonth - 1,
+        fromDay
+      ))
+      const rangeEnd = new Date(Date.UTC(
+        toYear,
+        toMonth - 1,
+        toDay
+      ))
+
+      const dateKeys = []
+
+      while (cursor <= rangeEnd) {
+        dateKeys.push(cursor.toISOString().slice(0, 10))
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
+      }
+
+      // Jeden batch Firestore może zawierać najwyżej 500 operacji.
+      // Jedną operację rezerwujemy dla dokumentu okresu.
+      if (dateKeys.length > 499) {
+        throw new Error(
+          'Okres może obejmować maksymalnie 499 dni.'
+        )
+      }
+
+      return dateKeys
+    }
+
+    const addAvailabilityDaysToBatch = ({
+      batch,
+      restaurantId,
+      period,
+      availabilityStatus,
+      closesAt,
+      blockedDates,
+      editorData
+    }) => {
+      const dateKeys = getDateKeysInRange(
+        period.dateFrom,
+        period.dateTo
+      )
+      const blockedDateSet = new Set(
+        Array.isArray(blockedDates)
+          ? blockedDates
+          : period.blockedDates || []
+      )
+
+      dateKeys.forEach((dateKey) => {
+        batch.set(
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'dyspozycje_dni',
+            dateKey
+          ),
+          {
+            date: dateKey,
+            demandModelId: period.demandModelId,
+            availabilityStatus,
+            availabilityClosesAt: closesAt,
+            availabilityDisabled:
+              blockedDateSet.has(dateKey),
+            sourcePeriodId: period.id,
+            updatedById: editorData?.id || null,
+            updatedByName: editorData?.name || '',
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
+      })
     }
 
     const isPeriodEffectivelyOpen = (period) => {
@@ -282,7 +308,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
                 id: document.id,
                 ...document.data()
               }))
-              .sort(sortPeriodsByEndDateDescending)
+              .sort((periodA, periodB) => {
+                return (periodA.dateFrom || '').localeCompare(
+                  periodB.dateFrom || ''
+                )
+              })
 
             isLoading.value = false
 
@@ -326,8 +356,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         )
       }
 
-      validatePeriodDefinition(periodData)
-
       isSaving.value = true
 
       try {
@@ -339,6 +367,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           closesAt:
             getEndOfDayTimestamp(
               periodData.closesOn
+            ),
+
+          expiresAt:
+            getExpirationTimestamp(
+              periodData.dateTo
             ),
 
           status: 'draft',
@@ -373,6 +406,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           dateFrom: dataToSave.dateFrom,
           dateTo: dataToSave.dateTo,
           closesAt: dataToSave.closesAt,
+          expiresAt: dataToSave.expiresAt,
           status: dataToSave.status,
           demandModelId: dataToSave.demandModelId,
           blockedDates: dataToSave.blockedDates,
@@ -384,9 +418,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
         periods.value.push(newPeriod)
 
-        periods.value.sort(
-          sortPeriodsByEndDateDescending
-        )
+        periods.value.sort((periodA, periodB) => {
+          return (periodA.dateFrom || '').localeCompare(
+            periodB.dateFrom || ''
+          )
+        })
 
         return newPeriod
       } catch (error) {
@@ -428,11 +464,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         )
       }
 
-      validatePeriodDefinition(
-        periodData,
-        periodId
-      )
-
 
 
       isSaving.value = true
@@ -456,7 +487,10 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
               periodData.closesOn
             ),
 
-          expiresAt: deleteField(),
+            expiresAt:
+            getExpirationTimestamp(
+              periodData.dateTo
+            ),
 
           demandModelId:
             periodData.demandModelId || null,
@@ -494,9 +528,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           }
         }
 
-        periods.value.sort(
-          sortPeriodsByEndDateDescending
-        )
+        periods.value.sort((periodA, periodB) => {
+          return (periodA.dateFrom || '').localeCompare(
+            periodB.dateFrom || ''
+          )
+        })
       } catch (error) {
         console.error(
           'Błąd aktualizacji okresu dyspozycji:',
@@ -552,7 +588,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
-        await updateDoc(
+        const batch = writeBatch(db)
+
+        batch.update(
           doc(
             db,
             'users',
@@ -573,6 +611,20 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
             updatedAt: serverTimestamp()
           }
         )
+
+        if (isPeriodEffectivelyOpen(period)) {
+          addAvailabilityDaysToBatch({
+            batch,
+            restaurantId,
+            period,
+            availabilityStatus: 'open',
+            closesAt: period.closesAt,
+            blockedDates: normalizedBlockedDates,
+            editorData
+          })
+        }
+
+        await batch.commit()
 
         return normalizedBlockedDates
       } catch (error) {
@@ -615,37 +667,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
-        const availabilitySnapshot = await getDocs(
-          query(
-            collection(
-              db,
-              'users',
-              restaurantId,
-              'grafik_dyspozycyjnosc'
-            ),
-            where('periodId', '==', periodId)
-          )
-        )
-
-        const availabilityDocuments =
-          availabilitySnapshot.docs
-
-        for (
-          let startIndex = 0;
-          startIndex < availabilityDocuments.length;
-          startIndex += 450
-        ) {
-          const batch = writeBatch(db)
-
-          availabilityDocuments
-            .slice(startIndex, startIndex + 450)
-            .forEach(documentSnapshot => {
-              batch.delete(documentSnapshot.ref)
-            })
-
-          await batch.commit()
-        }
-
         await deleteDoc(
           doc(
             db,
@@ -662,6 +683,284 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       } catch (error) {
         console.error(
           'Błąd usuwania okresu dyspozycji:',
+          error
+        )
+
+        throw error
+      } finally {
+        isSaving.value = false
+      }
+    }
+
+    const commitCleanupOperations = async (
+      operations,
+      chunkSize = 400
+    ) => {
+      for (
+        let startIndex = 0;
+        startIndex < operations.length;
+        startIndex += chunkSize
+      ) {
+        const batch = writeBatch(db)
+
+        operations
+          .slice(startIndex, startIndex + chunkSize)
+          .forEach(operation => {
+            if (operation.type === 'delete') {
+              batch.delete(operation.ref)
+              return
+            }
+
+            if (operation.type === 'set') {
+              batch.set(
+                operation.ref,
+                operation.data,
+                operation.options || {}
+              )
+              return
+            }
+
+            batch.update(
+              operation.ref,
+              operation.data
+            )
+          })
+
+        await batch.commit()
+      }
+    }
+
+    const clearAvailabilityDataRange = async ({
+      dateFrom,
+      dateTo,
+      clearEmployeeEntries = false,
+      clearManagerEntries = false,
+      clearDemandModels = false
+    }) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId) {
+        throw new Error(
+          'Nie udało się rozpoznać restauracji.'
+        )
+      }
+
+      if (!dateFrom || !dateTo || dateFrom > dateTo) {
+        throw new Error(
+          'Wybierz prawidłowy zakres dat do wyczyszczenia.'
+        )
+      }
+
+      if (
+        !clearEmployeeEntries &&
+        !clearManagerEntries &&
+        !clearDemandModels
+      ) {
+        throw new Error(
+          'Zaznacz przynajmniej jeden rodzaj danych do usunięcia.'
+        )
+      }
+
+      isSaving.value = true
+
+      try {
+        const periodsRef = collection(
+          db,
+          'users',
+          restaurantId,
+          'grafik_okresy_dyspozycji'
+        )
+
+        const periodsSnapshot = await getDocs(periodsRef)
+
+        const overlappingPeriods = periodsSnapshot.docs
+          .map(documentSnapshot => ({
+            id: documentSnapshot.id,
+            ref: documentSnapshot.ref,
+            ...documentSnapshot.data()
+          }))
+          .filter(period => {
+            return rangesOverlap(
+              dateFrom,
+              dateTo,
+              period.dateFrom,
+              period.dateTo
+            )
+          })
+
+        const openPeriod = overlappingPeriods.find(
+          period => isPeriodEffectivelyOpen(period)
+        )
+
+        if (openPeriod) {
+          throw new Error(
+            `Najpierw wstrzymaj otwarty okres „${openPeriod.name}”.`
+          )
+        }
+
+        const getRangeSnapshot = collectionName => {
+          return getDocs(
+            query(
+              collection(
+                db,
+                'users',
+                restaurantId,
+                collectionName
+              ),
+              where('date', '>=', dateFrom),
+              where('date', '<=', dateTo)
+            )
+          )
+        }
+
+        const [
+          availabilityEntriesSnapshot,
+          availabilityDaysSnapshot
+        ] = await Promise.all([
+          clearEmployeeEntries || clearManagerEntries
+            ? getRangeSnapshot('grafik_dyspozycyjnosc')
+            : Promise.resolve(null),
+          clearDemandModels
+            ? getRangeSnapshot('dyspozycje_dni')
+            : Promise.resolve(null)
+        ])
+
+        const operations = []
+        const changedAvailabilityDates = new Set()
+        let changedEntriesCount = 0
+
+        if (availabilityEntriesSnapshot) {
+          availabilityEntriesSnapshot.docs.forEach(
+            documentSnapshot => {
+              const data = documentSnapshot.data()
+              const employeeEntry = data.employeeEntry || null
+              const managerEntry = data.managerEntry || null
+
+              if (
+                clearEmployeeEntries &&
+                clearManagerEntries
+              ) {
+                operations.push({
+                  type: 'delete',
+                  ref: documentSnapshot.ref
+                })
+              } else if (clearEmployeeEntries) {
+                if (!employeeEntry) {
+                  return
+                }
+
+                if (!managerEntry) {
+                  operations.push({
+                    type: 'delete',
+                    ref: documentSnapshot.ref
+                  })
+                } else {
+                  operations.push({
+                    type: 'update',
+                    ref: documentSnapshot.ref,
+                    data: {
+                      periodId: managerEntry.periodId || null,
+                      type: managerEntry.type,
+                      timeFrom: managerEntry.timeFrom ?? null,
+                      timeTo: managerEntry.timeTo ?? null,
+                      note: managerEntry.note || '',
+                      effectiveSource: 'manager',
+                      employeeEntry: deleteField(),
+                      updatedAt: serverTimestamp()
+                    }
+                  })
+                }
+              } else if (clearManagerEntries) {
+                if (!managerEntry) {
+                  return
+                }
+
+                if (!employeeEntry) {
+                  operations.push({
+                    type: 'delete',
+                    ref: documentSnapshot.ref
+                  })
+                } else {
+                  operations.push({
+                    type: 'update',
+                    ref: documentSnapshot.ref,
+                    data: {
+                      periodId: employeeEntry.periodId || null,
+                      type: employeeEntry.type,
+                      timeFrom: employeeEntry.timeFrom ?? null,
+                      timeTo: employeeEntry.timeTo ?? null,
+                      note: employeeEntry.note || '',
+                      effectiveSource: 'employee',
+                      managerEntry: deleteField(),
+                      updatedAt: serverTimestamp()
+                    }
+                  })
+                }
+              }
+
+              changedEntriesCount += 1
+
+              if (data.date) {
+                changedAvailabilityDates.add(data.date)
+              }
+            }
+          )
+        }
+
+        changedAvailabilityDates.forEach(dateKey => {
+          operations.push({
+            type: 'set',
+            ref: doc(
+              db,
+              'users',
+              restaurantId,
+              'grafik_dyspozycyjnosc_wersje',
+              dateKey
+            ),
+            data: {
+              date: dateKey,
+              version: increment(1),
+              updatedAt: serverTimestamp()
+            },
+            options: { merge: true }
+          })
+        })
+
+        let clearedModelsCount = 0
+
+        if (availabilityDaysSnapshot) {
+          availabilityDaysSnapshot.docs.forEach(
+            documentSnapshot => {
+              const data = documentSnapshot.data()
+
+              if (!data.demandModelId) {
+                return
+              }
+
+              operations.push({
+                type: 'update',
+                ref: documentSnapshot.ref,
+                data: {
+                  demandModelId: null,
+                  sourcePeriodId: null,
+                  updatedAt: serverTimestamp()
+                }
+              })
+
+              clearedModelsCount += 1
+            }
+          )
+        }
+
+        await commitCleanupOperations(operations)
+
+        return {
+          entriesCount: changedEntriesCount,
+          modelsCount: clearedModelsCount
+        }
+      } catch (error) {
+        console.error(
+          'Błąd czyszczenia danych dyspozycji:',
           error
         )
 
@@ -761,7 +1060,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           periodId
         )
 
-        await updateDoc(periodRef, {
+        const batch = writeBatch(db)
+
+        batch.update(periodRef, {
           status: 'open',
 
           openedById:
@@ -780,6 +1081,18 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
           updatedAt: serverTimestamp()
         })
+
+        addAvailabilityDaysToBatch({
+          batch,
+          restaurantId,
+          period,
+          availabilityStatus: 'open',
+          closesAt: period.closesAt,
+          blockedDates: period.blockedDates,
+          editorData
+        })
+
+        await batch.commit()
       } catch (error) {
         console.error(
           'Błąd otwierania okresu dyspozycji:',
@@ -817,7 +1130,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
-        await updateDoc(
+        const batch = writeBatch(db)
+
+        batch.update(
           doc(
             db,
             'users',
@@ -835,6 +1150,18 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
             updatedAt: serverTimestamp()
           }
         )
+
+        addAvailabilityDaysToBatch({
+          batch,
+          restaurantId,
+          period,
+          availabilityStatus: 'closed',
+          closesAt: period.closesAt,
+          blockedDates: period.blockedDates,
+          editorData
+        })
+
+        await batch.commit()
       } catch (error) {
         console.error(
           'Błąd zamykania okresu dyspozycji:',
@@ -887,7 +1214,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
-        await updateDoc(
+        const batch = writeBatch(db)
+
+        batch.update(
           doc(
             db,
             'users',
@@ -905,6 +1234,18 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
             updatedAt: serverTimestamp()
           }
         )
+
+        addAvailabilityDaysToBatch({
+          batch,
+          restaurantId,
+          period,
+          availabilityStatus: 'open',
+          closesAt: newClosesAt,
+          blockedDates: period.blockedDates,
+          editorData
+        })
+
+        await batch.commit()
       } catch (error) {
         console.error(
           'Błąd przedłużania terminu okresu dyspozycji:',
@@ -999,7 +1340,10 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
-        await updateDoc(
+        const newClosesAt = getEndOfDayTimestamp(closesOn)
+        const batch = writeBatch(db)
+
+        batch.update(
           doc(
             db,
             'users',
@@ -1009,7 +1353,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
           ),
           {
             status: 'open',
-            closesAt: getEndOfDayTimestamp(closesOn),
+            closesAt: newClosesAt,
             reopenedById: editorData?.id || null,
             reopenedByName: editorData?.name || '',
             reopenedAt: serverTimestamp(),
@@ -1018,6 +1362,18 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
             updatedAt: serverTimestamp()
           }
         )
+
+        addAvailabilityDaysToBatch({
+          batch,
+          restaurantId,
+          period,
+          availabilityStatus: 'open',
+          closesAt: newClosesAt,
+          blockedDates: period.blockedDates,
+          editorData
+        })
+
+        await batch.commit()
       } catch (error) {
         console.error(
           'Błąd ponownego otwierania okresu dyspozycji:',
@@ -1043,6 +1399,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       updatePeriod,
       updateBlockedDates,
       deletePeriod,
+      clearAvailabilityDataRange,
       openPeriod,
       closePeriod,
       extendPeriodDeadline,
