@@ -199,13 +199,6 @@
           wstrzymać.
         </div>
 
-        <div
-          v-if="cleanupError"
-          class="schedule-employee-newer-entry-warning"
-        >
-          {{ cleanupError }}
-        </div>
-
         <div class="app-dialog-actions">
           <button
             class="app-dialog-button app-dialog-cancel"
@@ -385,6 +378,35 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="showCleanupErrorModal"
+      class="app-dialog-overlay"
+    >
+      <div class="app-dialog-card">
+        <div class="app-dialog-icon schedule-delete-dialog-icon">
+          !
+        </div>
+
+        <div class="app-dialog-title">
+          Nie można wyczyścić danych
+        </div>
+
+        <div class="app-dialog-message">
+          {{ cleanupError }}
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="closeCleanupErrorModal"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
@@ -401,6 +423,7 @@ const periodsStore = useScheduleAvailabilityPeriodsStore()
 const showCleanupModal = ref(false)
 const showCleanupConfirmationModal = ref(false)
 const showCleanupResultModal = ref(false)
+const showCleanupErrorModal = ref(false)
 const showDatePickerModal = ref(false)
 
 const cleanupDateFrom = ref('')
@@ -633,6 +656,8 @@ const openCleanupConfirmationModal = () => {
   if (cleanupDateFrom.value > cleanupDateTo.value) {
     cleanupError.value =
       'Data końcowa nie może być wcześniejsza od daty początkowej.'
+    showCleanupModal.value = false
+    showCleanupErrorModal.value = true
     return
   }
 
@@ -671,16 +696,22 @@ const confirmCleanup = async () => {
     showCleanupResultModal.value = true
   } catch (error) {
     showCleanupConfirmationModal.value = false
-    showCleanupModal.value = true
     cleanupError.value =
       error?.message ||
       'Nie udało się wyczyścić danych dyspozycji.'
+    showCleanupErrorModal.value = true
   }
 }
 
 const closeCleanupResultModal = () => {
   showCleanupResultModal.value = false
   cleanupResult.value = null
+}
+
+const closeCleanupErrorModal = () => {
+  showCleanupErrorModal.value = false
+  cleanupError.value = ''
+  showCleanupModal.value = true
 }
 
 const openDatePicker = target => {

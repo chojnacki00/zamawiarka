@@ -22,6 +22,7 @@ const routes = [
   { path: '/logowanie', name: 'LogowaniePIN', component: () => import('./views/PinLoginView.vue') },
   { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
   { path: '/grafik', name: 'GrafikHome', component: () => import('./views/grafik/GrafikHomeView.vue') },
+  { path: '/grafik/tworzenie', name: 'GrafikTworzenie', component: () => import('./views/grafik/GrafikTworzenieView.vue') },
   { path: '/grafik/dyspozycyjnosc', name: 'GrafikDyspozycyjnosc', component: () => import('./views/grafik/GrafikDyspozycyjnoscView.vue') },
   {
   path: '/grafik/dyspozycyjnosc/kalendarz',
@@ -87,11 +88,13 @@ router.beforeEach(async (to, from, next) => {
 
 
 
-    // Okresy dyspozycji:
+  // Zarządzanie grafikiem:
   // administrator albo pracownik z uprawnieniem
   if (
-    to.path ===
-    '/grafik/dyspozycyjnosc/okresy'
+    [
+      '/grafik/dyspozycyjnosc/okresy',
+      '/grafik/tworzenie'
+    ].includes(to.path)
   ) {
     if (hasEmployeeSession) {
       if (
@@ -100,12 +103,10 @@ router.beforeEach(async (to, from, next) => {
         )
       ) {
         console.warn(
-          'Strażnik: Brak uprawnienia do zarządzania okresami dyspozycji!'
+          'Strażnik: Brak uprawnienia do zarządzania grafikiem!'
         )
 
-        return next(
-          '/grafik/dyspozycyjnosc'
-        )
+        return next('/grafik')
       }
     } else {
       const firebaseUser =
@@ -113,7 +114,7 @@ router.beforeEach(async (to, from, next) => {
 
       if (!firebaseUser) {
         console.warn(
-          'Strażnik: Próba wejścia na okresy bez logowania!'
+          'Strażnik: Próba wejścia do zarządzania grafikiem bez logowania!'
         )
 
         return next('/login')
