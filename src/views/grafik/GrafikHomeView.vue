@@ -43,6 +43,33 @@
         <div class="ios-menu-title">Utwórz grafik</div>
         <div class="ios-menu-subtitle">Zakres i kontrola danych</div>
       </button>
+
+      <!-- ZAPISANE GRAFIKI -->
+      <button
+        v-if="isManagerOrHasPermission"
+        @click="goTo('grafiki')"
+        class="ios-menu-tile efekt-kliku"
+      >
+        <div class="ios-menu-icon ios-menu-icon-teal">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="8" y1="9" x2="8" y2="20"></line>
+            <line x1="13" y1="9" x2="13" y2="20"></line>
+          </svg>
+        </div>
+
+        <div class="ios-menu-title">Grafiki</div>
+        <div class="ios-menu-subtitle">Robocze i opublikowane</div>
+      </button>
       
       <!-- KAFELEK 1: KALENDARZ ZMIAN -->
       <button @click="goTo('kalendarz')" class="ios-menu-tile efekt-kliku">
@@ -155,5 +182,7 @@ const goTo = (sekcja) => {
 </script>
 
 <style scoped>
-/* Puste, ponieważ cały wygląd jest teraz zaczytywany z Twojego globalnego CSS (jak w ZamawiarkaView.vue) */
+.ios-menu-icon-teal {
+  background: linear-gradient(145deg, #14b8a6, #0f766e);
+}
 </style>

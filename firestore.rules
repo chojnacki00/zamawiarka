@@ -76,6 +76,30 @@ service cloud.firestore {
         allow read, write: if true;
       }
 
+      // 6. Ustawienia generatora grafiku
+      // Manager logujący się kodem i PIN-em korzysta z tej ścieżki
+      // bez osobnej sesji Firebase Auth.
+      match /grafik_ustawienia/{settingsId} {
+        allow read, write: if true;
+      }
+
+      // 7. Nagłówki grafików roboczych i opublikowanych.
+      // Manager logujący się kodem i PIN-em zapisuje tu także kolejne wersje.
+      match /grafiki/{scheduleId} {
+        allow read, write: if true;
+      }
+
+      // Każdy dzień grafiku jest osobnym dokumentem.
+      // Dokument przechowuje osobno wersję roboczą i ostatnią publikację.
+      match /grafik_dni/{scheduleDayId} {
+        allow read, write: if true;
+      }
+
+      // Rejestr przyszłych publikacji i aktualizacji grafiku.
+      match /grafik_aktualizacje/{updateId} {
+        allow read, write: if true;
+      }
+
       // --- POZOSTAŁE MODUŁY ZAMAWIARKI ---
 
       match /cartItems/{itemId} {

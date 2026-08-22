@@ -23,6 +23,10 @@ const routes = [
   { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
   { path: '/grafik', name: 'GrafikHome', component: () => import('./views/grafik/GrafikHomeView.vue') },
   { path: '/grafik/tworzenie', name: 'GrafikTworzenie', component: () => import('./views/grafik/GrafikTworzenieView.vue') },
+  { path: '/grafik/grafiki', name: 'GrafikiLista', component: () => import('./views/grafik/GrafikiListaView.vue') },
+  { path: '/grafik/grafiki/:id', name: 'GrafikRoboczy', component: () => import('./views/grafik/GrafikRoboczyView.vue') },
+  { path: '/grafik/ustawienia', name: 'GrafikUstawienia', component: () => import('./views/grafik/GrafikUstawieniaView.vue') },
+  { path: '/grafik/ustawienia/reguly', name: 'GrafikRegulyGeneratora', component: () => import('./views/grafik/GrafikRegulyGeneratoraView.vue') },
   { path: '/grafik/dyspozycyjnosc', name: 'GrafikDyspozycyjnosc', component: () => import('./views/grafik/GrafikDyspozycyjnoscView.vue') },
   {
   path: '/grafik/dyspozycyjnosc/kalendarz',
@@ -93,8 +97,11 @@ router.beforeEach(async (to, from, next) => {
   if (
     [
       '/grafik/dyspozycyjnosc/okresy',
-      '/grafik/tworzenie'
-    ].includes(to.path)
+      '/grafik/tworzenie',
+      '/grafik/grafiki',
+      '/grafik/ustawienia',
+      '/grafik/ustawienia/reguly'
+    ].includes(to.path) || to.path.startsWith('/grafik/grafiki/')
   ) {
     if (hasEmployeeSession) {
       if (

@@ -434,6 +434,57 @@
             </div>
           </article>
         </div>
+
+        <div class="schedule-draft-create-card">
+          <div class="schedule-create-step">
+            KROK 3
+          </div>
+
+          <h3 class="schedule-create-heading">
+            Utwórz grafik roboczy
+          </h3>
+
+          <p class="schedule-create-description">
+            Zapisz szkielet grafiku w Firebase. Powstanie osobny dokument
+            każdego dnia, a wszystkie wakaty pozostaną na razie
+            nieobsadzone.
+          </p>
+
+          <div class="supplier-form-group">
+            <label class="supplier-form-label" for="schedule-draft-name">
+              Nazwa grafiku
+            </label>
+
+            <input
+              id="schedule-draft-name"
+              v-model.trim="draftName"
+              class="supplier-form-input"
+              type="text"
+              maxlength="80"
+              :disabled="scheduleDraftsStore.isCreating"
+            >
+          </div>
+
+          <div
+            v-if="draftCreateError"
+            class="schedule-create-error schedule-draft-create-error"
+          >
+            {{ draftCreateError }}
+          </div>
+
+          <button
+            class="schedule-create-primary-button schedule-draft-create-button"
+            type="button"
+            :disabled="scheduleDraftsStore.isCreating || !draftName"
+            @click="createScheduleDraft"
+          >
+            {{
+              scheduleDraftsStore.isCreating
+                ? 'Zapisywanie grafiku...'
+                : 'Utwórz grafik roboczy'
+            }}
+          </button>
+        </div>
       </section>
     </div>
 
@@ -521,6 +572,34 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="showDraftCreatedModal"
+      class="app-dialog-overlay"
+    >
+      <div class="app-dialog-card schedule-draft-created-dialog">
+        <div class="app-dialog-icon">✓</div>
+
+        <div class="app-dialog-title">
+          Grafik roboczy został utworzony
+        </div>
+
+        <div class="app-dialog-message">
+          Zapisano nagłówek grafiku i {{ generatorInputResult?.daysCount || 0 }}
+          dokumentów dni. Grafik nie jest jeszcze widoczny dla pracowników.
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="openCreatedDraft"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
@@ -543,6 +622,7 @@ import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
+import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -550,6 +630,7 @@ const employeeAuthStore = useEmployeeAuthStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const demandModelsStore = useScheduleDemandModelsStore()
+const scheduleDraftsStore = useScheduleDraftsStore()
 
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -561,6 +642,10 @@ const generatorInputError = ref('')
 const generatorInputResult = ref(null)
 const showDayControlList = ref(false)
 const expandedDayKeys = ref([])
+const draftName = ref('')
+const draftCreateError = ref('')
+const createdDraftId = ref(null)
+const showDraftCreatedModal = ref(false)
 
 let analyzedDayDocumentsByDate = new Map()
 
@@ -1286,6 +1371,10 @@ const prepareGeneratorInput = async () => {
       managerOverridesCount,
       daySummaries
     }
+
+    draftName.value = getDefaultDraftName()
+    draftCreateError.value = ''
+    createdDraftId.value = null
   } catch (error) {
     console.error(
       'Błąd przygotowania danych generatora:',
@@ -1371,7 +1460,60 @@ const invalidateAnalysis = () => {
   generatorInputError.value = ''
   showDayControlList.value = false
   expandedDayKeys.value = []
+  draftName.value = ''
+  draftCreateError.value = ''
+  createdDraftId.value = null
   analyzedDayDocumentsByDate = new Map()
+}
+
+const getDefaultDraftName = () => {
+  if (!dateFrom.value || !dateTo.value) {
+    return 'Grafik roboczy'
+  }
+
+  return `Grafik ${formatShortDate(dateFrom.value)} – ${formatShortDate(dateTo.value)}`
+}
+
+const createScheduleDraft = async () => {
+  if (
+    scheduleDraftsStore.isCreating ||
+    !generatorInputResult.value ||
+    !draftName.value
+  ) {
+    return
+  }
+
+  draftCreateError.value = ''
+
+  try {
+    createdDraftId.value = await scheduleDraftsStore.createDraft({
+      name: draftName.value,
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value,
+      daySummaries: generatorInputResult.value.daySummaries
+    })
+
+    if (!createdDraftId.value) {
+      throw new Error('Nie udało się utworzyć grafiku roboczego.')
+    }
+
+    showDraftCreatedModal.value = true
+  } catch (error) {
+    console.error('Błąd tworzenia grafiku roboczego:', error)
+
+    draftCreateError.value =
+      error?.message ||
+      'Nie udało się zapisać grafiku roboczego.'
+  }
+}
+
+const openCreatedDraft = () => {
+  if (!createdDraftId.value) {
+    return
+  }
+
+  showDraftCreatedModal.value = false
+  router.push(`/grafik/grafiki/${createdDraftId.value}`)
 }
 
 const toggleDayControlList = () => {
@@ -2242,5 +2384,31 @@ const isSelectedCalendarDay = day => {
   .schedule-generator-shift-row {
     align-items: flex-start;
   }
+}
+.schedule-draft-create-card {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: #f8fbff;
+}
+
+.schedule-draft-create-error {
+  margin-top: 12px;
+}
+
+.schedule-draft-create-button {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.schedule-draft-created-dialog .app-dialog-icon {
+  color: #ffffff;
+  background: #34c759;
+}
+
+.schedule-draft-created-dialog .app-dialog-title,
+.schedule-draft-created-dialog .app-dialog-message {
+  text-align: center;
 }
 </style>
