@@ -37,6 +37,16 @@
         👨‍🍳 Zespół i Pracownicy
       </button>
 
+      <!-- Profile warunków pracy przypisywane później pracownikom -->
+      <button
+        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_employees')"
+        @click="router.push('/ustawienia/profile-zatrudnienia')"
+        class="item-card"
+        style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+      >
+        🧾 Profile zatrudnienia
+      </button>
+
       <!-- SEKCJA KOPII ZAPASOWEJ (Tylko Główny Właściciel, brak dostępu dla jakiegokolwiek pracownika) -->
       <div v-if="!employeeAuthStore.currentEmployee">
         <button 

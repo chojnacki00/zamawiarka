@@ -16,7 +16,6 @@
     <div class="scroll-area schedule-list-scroll">
       <section class="schedule-list-header-card">
         <div>
-          <div class="schedule-list-kicker">ZAPISANE W FIREBASE</div>
           <h3>Grafiki robocze i opublikowane</h3>
           <p>
             Tutaj wrócisz do rozpoczętej pracy. Wersje robocze nie są
@@ -53,44 +52,106 @@
       </div>
 
       <div v-else class="schedule-list-items">
-        <button
+        <article
           v-for="schedule in scheduleDraftsStore.schedules"
           :key="schedule.id"
           class="schedule-list-item"
-          type="button"
-          @click="openSchedule(schedule.id)"
         >
-          <div class="schedule-list-item-top">
-            <div class="schedule-list-item-name">
-              {{ schedule.name || 'Grafik bez nazwy' }}
+          <button
+            class="schedule-list-open-area"
+            type="button"
+            @click="openSchedule(schedule.id)"
+          >
+            <div class="schedule-list-item-top">
+              <div class="schedule-list-item-name">
+                {{ schedule.name || 'Grafik bez nazwy' }}
+              </div>
+
+              <span
+                class="schedule-list-status"
+                :class="getStatusClass(schedule.status)"
+              >
+                {{ getStatusLabel(schedule.status) }}
+              </span>
             </div>
 
-            <span
-              class="schedule-list-status"
-              :class="getStatusClass(schedule.status)"
-            >
-              {{ getStatusLabel(schedule.status) }}
-            </span>
-          </div>
+            <div class="schedule-list-range">
+              {{ formatDate(schedule.dateFrom) }} –
+              {{ formatDate(schedule.dateTo) }}
+            </div>
 
-          <div class="schedule-list-range">
-            {{ formatDate(schedule.dateFrom) }} –
-            {{ formatDate(schedule.dateTo) }}
-          </div>
-
-          <div class="schedule-list-counts">
-            <span>{{ schedule.daysCount || 0 }} dni</span>
-            <span>{{ schedule.assignedCount || 0 }} obsadzonych</span>
-            <span>{{ schedule.unfilledCount || 0 }} nieobsadzonych</span>
-          </div>
+            <div class="schedule-list-counts">
+              <span>{{ schedule.daysCount || 0 }} dni</span>
+              <span>{{ schedule.assignedCount || 0 }} obsadzonych</span>
+              <span
+                :class="{
+                  'unfilled-alert': Number(schedule.unfilledCount) > 0
+                }"
+              >
+                {{ schedule.unfilledCount || 0 }} nieobsadzonych
+              </span>
+            </div>
+          </button>
 
           <div class="schedule-list-item-bottom">
             <span>
               Ostatni zapis: {{ formatUpdatedAt(schedule.updatedAt) }}
             </span>
-            <strong>Otwórz ›</strong>
+            <div class="schedule-list-actions">
+              <button
+                v-if="canDeleteSchedule(schedule)"
+                class="schedule-list-delete-button"
+                type="button"
+                @click="openDeleteConfirm(schedule)"
+              >
+                Usuń
+              </button>
+              <button
+                class="schedule-list-open-button"
+                type="button"
+                @click="openSchedule(schedule.id)"
+              >
+                Otwórz ›
+              </button>
+            </div>
           </div>
-        </button>
+        </article>
+      </div>
+    </div>
+
+    <div
+      v-if="scheduleToDelete"
+      class="app-dialog-overlay schedule-delete-overlay"
+      @click.self="closeDeleteConfirm"
+    >
+      <div class="app-dialog-card schedule-delete-dialog">
+        <div class="app-dialog-icon schedule-delete-icon">−</div>
+        <div class="app-dialog-title">Usunąć grafik roboczy?</div>
+        <div class="app-dialog-message">
+          Grafik „{{ scheduleToDelete.name || 'Grafik bez nazwy' }}” oraz
+          wszystkie jego dni zostaną trwale usunięte.
+        </div>
+        <div v-if="deleteError" class="schedule-delete-error">
+          {{ deleteError }}
+        </div>
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            :disabled="isDeleting"
+            @click="closeDeleteConfirm"
+          >
+            Anuluj
+          </button>
+          <button
+            class="app-dialog-button app-dialog-delete"
+            type="button"
+            :disabled="isDeleting"
+            @click="confirmDeleteSchedule"
+          >
+            {{ isDeleting ? 'Usuwanie...' : 'Usuń' }}
+          </button>
+        </div>
       </div>
     </div>
   </main>
@@ -105,6 +166,9 @@ const router = useRouter()
 const scheduleDraftsStore = useScheduleDraftsStore()
 const isLoading = ref(false)
 const loadError = ref('')
+const scheduleToDelete = ref(null)
+const isDeleting = ref(false)
+const deleteError = ref('')
 
 onMounted(async () => {
   isLoading.value = true
@@ -123,6 +187,42 @@ onMounted(async () => {
 
 const openSchedule = scheduleId => {
   router.push(`/grafik/grafiki/${scheduleId}`)
+}
+
+const canDeleteSchedule = schedule => {
+  return ['draft', 'creation_error'].includes(schedule?.status)
+}
+
+const openDeleteConfirm = schedule => {
+  scheduleToDelete.value = schedule
+  deleteError.value = ''
+}
+
+const closeDeleteConfirm = () => {
+  if (isDeleting.value) return
+
+  scheduleToDelete.value = null
+  deleteError.value = ''
+}
+
+const confirmDeleteSchedule = async () => {
+  if (!scheduleToDelete.value || isDeleting.value) return
+
+  isDeleting.value = true
+  deleteError.value = ''
+
+  try {
+    await scheduleDraftsStore.deleteSchedule(
+      scheduleToDelete.value.id
+    )
+    scheduleToDelete.value = null
+  } catch (error) {
+    console.error('Błąd usuwania grafiku:', error)
+    deleteError.value =
+      error?.message || 'Nie udało się usunąć grafiku.'
+  } finally {
+    isDeleting.value = false
+  }
 }
 
 const getDateFromKey = dateKey => {
@@ -376,6 +476,81 @@ const getStatusClass = status => {
   line-height: 1.45;
 }
 
+.schedule-list-item {
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+}
+
+.schedule-list-open-area {
+  width: 100%;
+  padding: 18px 18px 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-list-counts span.unfilled-alert {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.schedule-list-item-bottom {
+  margin: 15px 18px 0;
+  padding: 12px 0 15px;
+}
+
+.schedule-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-list-actions button {
+  min-height: 35px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.schedule-list-delete-button {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.schedule-list-open-button {
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+.schedule-delete-overlay {
+  z-index: 4000;
+}
+
+.schedule-delete-dialog {
+  width: min(92vw, 430px);
+}
+
+.schedule-delete-icon {
+  color: #ffffff;
+  background: #ef4444;
+}
+
+.schedule-delete-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  color: #b91c1c;
+  background: #fee2e2;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 @media (max-width: 620px) {
   .schedule-list-header-card {
     align-items: stretch;
@@ -394,6 +569,14 @@ const getStatusClass = status => {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .schedule-list-actions {
+    width: 100%;
+  }
+
+  .schedule-list-actions button {
+    flex: 1;
   }
 }
 </style>

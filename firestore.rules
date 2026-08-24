@@ -83,6 +83,12 @@ service cloud.firestore {
         allow read, write: if true;
       }
 
+      // Profile zatrudnienia tworzone samodzielnie przez managera.
+      // Zawierają parametry i reguły przyszłego generatora grafiku.
+      match /grafik_profile_zatrudnienia/{profileId} {
+        allow read, write: if true;
+      }
+
       // 7. Nagłówki grafików roboczych i opublikowanych.
       // Manager logujący się kodem i PIN-em zapisuje tu także kolejne wersje.
       match /grafiki/{scheduleId} {

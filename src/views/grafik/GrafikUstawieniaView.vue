@@ -69,11 +69,8 @@
             ›
           </span>
         </button>
-      </section>
 
-      <div class="schedule-settings-future">
-        W tym miejscu będzie można później dodać kolejne ustawienia grafiku.
-      </div>
+      </section>
     </div>
   </main>
 </template>
@@ -94,6 +91,7 @@ const goToRules = () => {
     router.push('/grafik/ustawienia/reguly')
   }, 40)
 }
+
 </script>
 
 <style scoped>
@@ -159,6 +157,10 @@ const goToRules = () => {
 .schedule-settings-row:active {
   background: #f8fafc;
   transform: scale(0.993);
+}
+
+.schedule-settings-row + .schedule-settings-row {
+  border-top: 1px solid #e2e8f0;
 }
 
 .schedule-settings-icon {

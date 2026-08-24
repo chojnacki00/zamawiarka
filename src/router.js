@@ -16,6 +16,7 @@ const routes = [
   { path: '/zamawiarka', name: 'Zamawiarka', component: ZamawiarkaView },
   { path: '/rentownosc', name: 'Rentownosc', component: RentownoscView },
   { path: '/ustawienia', name: 'Ustawienia', component: () => import('./views/UstawieniaView.vue') },
+  { path: '/ustawienia/profile-zatrudnienia', name: 'ProfileZatrudnienia', component: () => import('./views/grafik/GrafikProfileZatrudnieniaView.vue') },
   { path: '/profile-uprawnien', name: 'ProfileUprawnien', component: () => import('./views/UstawieniaProfiliView.vue') },
   { path: '/stanowiska-grafik', name: 'StanowiskaGrafikowe', component: () => import('./views/StanowiskaGrafikoweView.vue') },
   { path: '/zespol', name: 'Zespol', component: () => import('./views/UstawieniaZespoluView.vue') },
@@ -133,7 +134,13 @@ router.beforeEach(async (to, from, next) => {
 
 
   // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami bez uprawnień!
-  const isManagerRoute = ['/ustawienia', '/profile-uprawnien', '/stanowiska-grafik', '/zespol'].includes(to.path)
+  const isManagerRoute = [
+    '/ustawienia',
+    '/ustawienia/profile-zatrudnienia',
+    '/profile-uprawnien',
+    '/stanowiska-grafik',
+    '/zespol'
+  ].includes(to.path)
 
   if (hasEmployeeSession && isManagerRoute) {
     // Odpytujemy nasz system o uprawnienia pracownika
