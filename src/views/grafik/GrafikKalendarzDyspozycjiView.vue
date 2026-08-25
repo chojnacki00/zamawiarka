@@ -118,7 +118,7 @@
           •
         </span>
 
-        <template v-if="canManageSchedule">
+        <template v-if="canManageSchedule && period.modelName">
           <span
             class="schedule-calendar-period-model"
             :title="period.modelName"
@@ -548,30 +548,27 @@
   </div>
 
   <div
-    v-if="
-      employee.kompetencje &&
-      Object.keys(employee.kompetencje).length > 0
-    "
+    v-if="employee.positionAssignments?.length"
     class="schedule-team-competency-list"
   >
     <div
-      v-for="positionId in Object.keys(employee.kompetencje)"
-      :key="positionId"
+      v-for="assignment in employee.positionAssignments"
+      :key="assignment.positionId"
       class="schedule-team-competency-row"
     >
       <span class="schedule-team-competency-name">
-        {{ getSchedulePositionName(positionId) }}
+        {{ getSchedulePositionName(assignment.positionId) }}
       </span>
 
       <span
         class="schedule-team-competency-stars"
-        :title="`${employee.kompetencje[positionId]} z 5`"
+        :title="`${assignment.competencyStars} z 5`"
       >
         <span
           v-for="star in 5"
           :key="star"
           :class="{
-            active: employee.kompetencje[positionId] >= star
+            active: assignment.competencyStars >= star
           }"
         >
           ★
@@ -669,6 +666,19 @@
   "
 >
   Przywróć wersję pracownika i zdejmij blokadę
+</button>
+
+<button
+  v-if="
+    employee.availability?.managerEntry &&
+    !employee.availability?.employeeEntry
+  "
+  type="button"
+  class="schedule-restore-employee-button"
+  :disabled="isSavingTeamAvailability"
+  @click.stop="removeManagerAvailability(employee.id, selectedDateKey)"
+>
+  Usuń dyspozycję managera i zdejmij blokadę
 </button>
 </div>
 
@@ -961,6 +971,20 @@
   "
 >
   Przywróć wersję pracownika i zdejmij blokadę
+</button>
+
+<button
+  v-if="
+    selectedViewMode === 'employee' &&
+    selectedAvailabilityRecord?.managerEntry &&
+    !selectedAvailabilityRecord?.employeeEntry
+  "
+  type="button"
+  class="schedule-restore-employee-button"
+  :disabled="isSavingTeamAvailability"
+  @click="removeManagerAvailability(availabilityEmployeeId, selectedDateKey)"
+>
+  Usuń dyspozycję managera i zdejmij blokadę
 </button>
 
 
@@ -1396,6 +1420,7 @@ import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvaila
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
 import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, where } from 'firebase/firestore'
 import { db } from '../../firebase.js'
+import { getCompetencyStars } from '../../utils/employeeAssignments.js'
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
@@ -2221,11 +2246,17 @@ const saveTeamAvailability = async (
       dateKeys: [dateKey],
       expectedVersions,
       mutations: [
-        {
-          type: 'set',
-          ref: availabilityRef,
-          data: availabilityData
-        }
+        restoredEmployeeEntry.type === 'full' &&
+        !restoredEmployeeEntry.note
+          ? {
+              type: 'delete',
+              ref: availabilityRef
+            }
+          : {
+              type: 'set',
+              ref: availabilityRef,
+              data: availabilityData
+            }
       ]
     })
 
@@ -3794,15 +3825,129 @@ const getDaysBetweenDateKeys = (
 }
 
 const getDemandModelName = (modelId) => {
-  if (!modelId) {
-    return 'bez modelu'
-  }
+  if (!modelId) return ''
 
   const model = demandModelsStore.models.find(
     item => item.id === modelId
   )
 
-  return model?.name || 'model usunięty'
+  return model?.name || ''
+}
+
+const removeManagerAvailability = async (
+  employeeId,
+  dateKey,
+  retryCount = 0
+) => {
+  if (
+    isSavingTeamAvailability.value ||
+    !employeeId ||
+    !dateKey
+  ) {
+    return
+  }
+
+  const restaurantId = availabilityRestaurantId.value
+
+  if (!restaurantId) {
+    showSaveResultModal(
+      'error',
+      'Nie udało się rozpoznać restauracji.',
+      2000
+    )
+    return
+  }
+
+  try {
+    const expectedVersions =
+      await fetchAvailabilityDayVersions(
+        restaurantId,
+        [dateKey]
+      )
+
+    const currentTeamAvailability =
+      await fetchTeamAvailabilityRecordsForDay(dateKey)
+
+    const currentAvailability =
+      currentTeamAvailability[employeeId] || null
+
+    if (currentAvailability?.employeeEntry) {
+      await restoreEmployeeAvailability(
+        employeeId,
+        dateKey,
+        currentAvailability.employeeEntry
+      )
+      return
+    }
+
+    if (!currentAvailability?.managerEntry) {
+      showSaveResultModal(
+        'success',
+        'Blokada jest już zdjęta',
+        1800
+      )
+      return
+    }
+
+    isSavingTeamAvailability.value = true
+
+    const availabilityRef = doc(
+      db,
+      'users',
+      restaurantId,
+      'grafik_dyspozycyjnosc',
+      `${employeeId}_${dateKey}`
+    )
+
+    await commitAvailabilityMutations({
+      restaurantId,
+      dateKeys: [dateKey],
+      expectedVersions,
+      mutations: [{ type: 'delete', ref: availabilityRef }]
+    })
+
+    showAvailabilityAdditionalInfo.value = false
+
+    if (selectedViewMode.value === 'all') {
+      await loadTeamAvailabilityForDay(dateKey)
+    } else {
+      await loadAvailability()
+      loadAvailabilityIntoForm(dateKey)
+    }
+
+    showSaveResultModal(
+      'success',
+      'Usunięto dyspozycję managera i zdjęto blokadę'
+    )
+  } catch (error) {
+    if (
+      isAvailabilityDayConflict(error) &&
+      retryCount < 1
+    ) {
+      isSavingTeamAvailability.value = false
+      await removeManagerAvailability(
+        employeeId,
+        dateKey,
+        retryCount + 1
+      )
+      return
+    }
+
+    console.error(
+      'Błąd usuwania dyspozycji managera:',
+      error
+    )
+
+    showSaveResultModal(
+      'error',
+      isAvailabilityDayConflict(error)
+        ? 'Dane tego dnia zmieniły się ponownie. Spróbuj zdjąć blokadę jeszcze raz.'
+        : 'Nie udało się usunąć dyspozycji managera',
+      2500
+    )
+  } finally {
+    isSavingTeamAvailability.value = false
+  }
 }
 
 const formatDaysRemaining = (days) => {
@@ -4367,8 +4512,8 @@ const evaluateDayCoverage = (
   })
 
   const getEmployeeCompetencyCount = (employee) => {
-    return Object.values(employee.kompetencje || {})
-      .filter(value => Number(value) >= 1)
+    return (employee.positionAssignments || [])
+      .filter(assignment => Number(assignment.competencyStars) >= 1)
       .length
   }
 
@@ -4376,9 +4521,7 @@ const evaluateDayCoverage = (
     const candidates = activeEmployees.value
       .filter(
         employee => {
-          const competency = Number(
-            employee.kompetencje?.[slot.positionId]
-          )
+          const competency = getCompetencyStars(employee, slot.positionId)
 
           if (!Number.isFinite(competency) || competency < 1) {
             return false
@@ -4881,16 +5024,14 @@ const teamAvailabilityForSelectedDay = computed(() => {
 
   employees = employees.filter(employee => {
     return Boolean(
-      employee.kompetencje?.[selectedPositionFilter.value]
+      getCompetencyStars(employee, selectedPositionFilter.value)
     )
   })
 
   return employees.sort((employeeA, employeeB) => {
-    const starsA =
-      employeeA.kompetencje?.[selectedPositionFilter.value] || 0
+    const starsA = getCompetencyStars(employeeA, selectedPositionFilter.value)
 
-    const starsB =
-      employeeB.kompetencje?.[selectedPositionFilter.value] || 0
+    const starsB = getCompetencyStars(employeeB, selectedPositionFilter.value)
 
     return starsB - starsA
   })

@@ -472,18 +472,18 @@
             {{ draftCreateError }}
           </div>
 
-          <button
-            class="schedule-create-primary-button schedule-draft-create-button"
-            type="button"
-            :disabled="scheduleDraftsStore.isCreating || !draftName"
-            @click="createScheduleDraft"
-          >
-            {{
-              scheduleDraftsStore.isCreating
-                ? 'Zapisywanie grafiku...'
-                : 'Utwórz grafik roboczy'
-            }}
-          </button>
+          <div class="floating-form-actions">
+            <button
+              class="schedule-create-primary-button schedule-draft-create-button floating-form-action save"
+              type="button"
+              aria-label="Utwórz grafik roboczy"
+              title="Utwórz grafik roboczy"
+              :disabled="scheduleDraftsStore.isCreating || !draftName"
+              @click="createScheduleDraft"
+            >
+              {{ scheduleDraftsStore.isCreating ? '…' : '✓' }}
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -623,6 +623,7 @@ import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
+import { getCompetencyStars } from '../../utils/employeeAssignments.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -1055,9 +1056,7 @@ const buildDayInputSummary = ({
   slots.forEach(slot => {
     const candidates = activeEmployees
       .filter(employee => {
-        const competency = Number(
-          employee.kompetencje?.[slot.positionId]
-        )
+        const competency = getCompetencyStars(employee, slot.positionId)
 
         if (!Number.isFinite(competency) || competency < 1) {
           return false
@@ -1084,9 +1083,7 @@ const buildDayInputSummary = ({
           employeeId: employee.id,
           isPreferredOff:
             effectiveAvailability?.type === 'preferred_off',
-          competency: Number(
-            employee.kompetencje?.[slot.positionId]
-          ) || 0,
+          competency: getCompetencyStars(employee, slot.positionId),
           sortName:
             `${employee.nazwisko || ''} ${employee.imie || ''}`.trim()
         }

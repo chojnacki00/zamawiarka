@@ -31,6 +31,16 @@ service cloud.firestore {
         allow read, write: if true;
       }
 
+      // 4. Niezależny słownik grup pracowniczych.
+      match /employeeGroups/{groupId} {
+        allow read, write: if true;
+      }
+
+      // Modele zapotrzebowania są edytowane również przez managera z sesją PIN.
+      match /scheduleDemandModels/{modelId} {
+        allow read, write: if true;
+      }
+
       // 4. Dyspozycyjność pracowników
       // Dostęp pozostaje zgodny z obecną aplikacją kod + PIN.
       match /grafik_dyspozycyjnosc/{availabilityId} {

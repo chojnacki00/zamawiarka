@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
@@ -9,6 +9,9 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   // ZMIANA 1: Zamiast ról, trzymamy "profiles"
   const profiles = ref([])
   const isLoading = ref(false)
+  let unsubscribeProfiles = null
+  let listenerUid = null
+  let listenerReadyPromise = null
 
   // Ta funkcja teraz CIERPLIWIE czeka, aż Firebase potwierdzi sesję
   const getUid = () => {
@@ -35,19 +38,39 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
 
   const fetchProfiles = async () => {
     const uid = await getUid()
-    if (!uid) return
-    
+    if (!uid) return []
+    if (unsubscribeProfiles && listenerUid === uid) return listenerReadyPromise || profiles.value
+
+    if (unsubscribeProfiles) unsubscribeProfiles()
+    listenerUid = uid
     isLoading.value = true
-    try {
-      // ZMIANA 2: Odpytujemy kolekcję 'permissionProfiles' zamiast 'stanowiska'
-      const profilesRef = collection(db, 'users', uid, 'permissionProfiles')
-      const snapshot = await getDocs(profilesRef)
-      profiles.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-    } catch (error) {
-      console.error('Błąd pobierania profili:', error)
-    } finally {
-      isLoading.value = false
-    }
+    listenerReadyPromise = new Promise(resolve => {
+      let firstSnapshot = true
+      unsubscribeProfiles = onSnapshot(
+        collection(db, 'users', uid, 'permissionProfiles'),
+        snapshot => {
+          profiles.value = snapshot.docs
+            .map(profileSnapshot => ({ id: profileSnapshot.id, ...profileSnapshot.data() }))
+            .sort((first, second) => String(first.nazwa || '').localeCompare(String(second.nazwa || ''), 'pl'))
+          if (firstSnapshot) {
+            firstSnapshot = false
+            isLoading.value = false
+            resolve(profiles.value)
+          }
+        },
+        error => {
+          console.error('Błąd pobierania profili:', error)
+          unsubscribeProfiles = null
+          listenerUid = null
+          isLoading.value = false
+          if (firstSnapshot) {
+            firstSnapshot = false
+            resolve(profiles.value)
+          }
+        }
+      )
+    })
+    return listenerReadyPromise
   }
 
   const addProfile = async (profileData) => {
@@ -57,7 +80,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
       // ZMIANA 2: Zapis do kolekcji 'permissionProfiles'
       const docRef = await addDoc(collection(db, 'users', uid, 'permissionProfiles'), profileData)
       const newProfile = { id: docRef.id, ...profileData }
-      profiles.value.push(newProfile)
+      if (!unsubscribeProfiles && !profiles.value.some(profile => profile.id === newProfile.id)) profiles.value.push(newProfile)
       return newProfile
     } catch (error) { throw error }
   }
@@ -67,8 +90,10 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
     if (!uid) return
     try {
       await updateDoc(doc(db, 'users', uid, 'permissionProfiles', profileId), updatedData)
-      const index = profiles.value.findIndex(p => p.id === profileId)
-      if (index !== -1) profiles.value[index] = { id: profileId, ...updatedData }
+      if (!unsubscribeProfiles) {
+        const index = profiles.value.findIndex(p => p.id === profileId)
+        if (index !== -1) profiles.value[index] = { id: profileId, ...updatedData }
+      }
     } catch (error) { throw error }
   }
 
@@ -77,7 +102,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
     if (!uid) return
     try {
       await deleteDoc(doc(db, 'users', uid, 'permissionProfiles', profileId))
-      profiles.value = profiles.value.filter(p => p.id !== profileId)
+      if (!unsubscribeProfiles) profiles.value = profiles.value.filter(p => p.id !== profileId)
     } catch (error) { throw error }
   }
 

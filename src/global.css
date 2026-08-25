@@ -1079,6 +1079,80 @@ textarea {
   transform: scale(0.96);
 }
 
+/* Stałe akcje długich formularzy */
+.floating-form-actions {
+  position: fixed !important;
+  right: max(18px, calc((100vw - 840px) / 2 + 18px));
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 850;
+  display: flex !important;
+  width: auto !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.floating-form-action {
+  display: grid !important;
+  width: 58px !important;
+  min-width: 58px !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  flex: 0 0 58px !important;
+  place-items: center;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 50% !important;
+  color: #fff !important;
+  font-size: 29px !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  box-shadow: 0 11px 28px rgba(15, 23, 42, .24) !important;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.floating-form-action.cancel {
+  background: linear-gradient(145deg, #f87171, #dc2626) !important;
+}
+
+.floating-form-action.save {
+  background: linear-gradient(145deg, #4ade80, #16a34a) !important;
+}
+
+.floating-form-action:active {
+  transform: scale(.94);
+}
+
+.floating-form-action:disabled {
+  opacity: .45 !important;
+  cursor: default;
+  transform: none;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, .12) !important;
+}
+
+.floating-actions-content {
+  padding-bottom: 110px !important;
+  box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+  .floating-form-actions {
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .floating-form-action {
+    width: 54px !important;
+    min-width: 54px !important;
+    height: 54px !important;
+    min-height: 54px !important;
+    flex-basis: 54px !important;
+  }
+}
+
 .supplier-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1095,7 +1169,7 @@ textarea {
   width: 100%;
   max-width: 420px;
   border-radius: 18px;
-  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  padding: 20px 20px calc(100px + env(safe-area-inset-bottom));
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
   max-height: 100%;
   overflow-y: auto;
@@ -1132,9 +1206,22 @@ textarea {
 }
 
 .supplier-modal-actions {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 850;
   display: flex;
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
   gap: 10px;
-  margin-top: 20px;
+  margin: 0;
+  padding: 10px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(209, 213, 219, .8);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .18);
+  backdrop-filter: blur(14px);
 }
 
 .supplier-cancel-button,
@@ -2101,10 +2188,15 @@ button {
 /* PRZYCISK ZAPISU DYSPOZYCYJNOŚCI */
 
 .schedule-availability-save-button {
-  width: 100%;
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 850;
+  width: min(420px, calc(100vw - 32px));
   min-height: 50px;
-  margin-top: 16px;
+  margin: 0;
   padding: 12px 16px;
+  transform: translateX(-50%);
 
   border: none;
   border-radius: 15px;
@@ -2125,7 +2217,7 @@ button {
 
 .schedule-availability-save-button:active {
   background: #1d4ed8;
-  transform: scale(0.98);
+  transform: translateX(-50%) scale(0.98);
   box-shadow: 0 3px 9px rgba(37, 99, 235, 0.22);
 }
 
@@ -2134,7 +2226,7 @@ button {
 .schedule-availability-save-button:disabled {
   opacity: 0.6;
   cursor: default;
-  transform: none;
+  transform: translateX(-50%);
   box-shadow: none;
 }
 

@@ -1525,11 +1525,20 @@ const COLLECTIONS_TO_BACKUP = [
   // Pracownicy i uprawnienia
   'employees',
   'permissionProfiles',
+  'employeeGroups',
 
   // Moduł grafiku
   'positions',
   'scheduleDemandModels',
-  'grafik_dyspozycyjnosc'
+  'grafik_profile_zatrudnienia',
+  'grafik_ustawienia',
+  'grafik_okresy_dyspozycji',
+  'dyspozycje_dni',
+  'grafik_dyspozycyjnosc',
+  'grafik_dyspozycyjnosc_wersje',
+  'grafiki',
+  'grafik_dni',
+  'grafik_aktualizacje'
 ]
 
 // --- FUNKCJA EKSPORTU ---

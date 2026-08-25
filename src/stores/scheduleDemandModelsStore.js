@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import {
   collection,
   doc,
-  getDocs,
+  onSnapshot,
   getDoc,
   addDoc,
   updateDoc,
@@ -20,6 +20,9 @@ export const useScheduleDemandModelsStore = defineStore(
     const models = ref([])
     const isLoading = ref(false)
     const isSaving = ref(false)
+    let unsubscribeModels = null
+    let listenerRestaurantId = null
+    let listenerReadyPromise = null
 
     const getRestaurantId = () => {
       return new Promise((resolve) => {
@@ -58,25 +61,41 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const fetchModels = async () => {
-      const modelsRef = await getModelsCollectionRef()
+      const restaurantId = await getRestaurantId()
+      if (!restaurantId) return []
+      if (unsubscribeModels && listenerRestaurantId === restaurantId) return listenerReadyPromise || models.value
 
-      if (!modelsRef) return
-
+      if (unsubscribeModels) unsubscribeModels()
+      listenerRestaurantId = restaurantId
       isLoading.value = true
-
-      try {
-        const snapshot = await getDocs(modelsRef)
-
-        models.value = snapshot.docs.map((document) => ({
-          id: document.id,
-          ...document.data()
-        }))
-      } catch (error) {
-        console.error('Błąd pobierania szablonów grafiku:', error)
-        throw error
-      } finally {
-        isLoading.value = false
-      }
+      listenerReadyPromise = new Promise(resolve => {
+        let firstSnapshot = true
+        unsubscribeModels = onSnapshot(
+          collection(db, 'users', restaurantId, 'scheduleDemandModels'),
+          snapshot => {
+            models.value = snapshot.docs.map(document => ({
+              id: document.id,
+              ...document.data()
+            }))
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(models.value)
+            }
+          },
+          error => {
+            console.error('Błąd pobierania szablonów grafiku:', error)
+            unsubscribeModels = null
+            listenerRestaurantId = null
+            isLoading.value = false
+            if (firstSnapshot) {
+              firstSnapshot = false
+              resolve(models.value)
+            }
+          }
+        )
+      })
+      return listenerReadyPromise
     }
 
     const fetchModelById = async (modelId) => {
@@ -125,7 +144,7 @@ export const useScheduleDemandModelsStore = defineStore(
           active: modelData.active ?? true
         }
 
-        models.value.push(newModel)
+        if (!unsubscribeModels && !models.value.some(model => model.id === newModel.id)) models.value.push(newModel)
 
         return newModel
       } catch (error) {
@@ -159,15 +178,17 @@ export const useScheduleDemandModelsStore = defineStore(
 
         await updateDoc(modelRef, dataToSave)
 
-        const index = models.value.findIndex(
-          model => model.id === modelId
-        )
+        if (!unsubscribeModels) {
+          const index = models.value.findIndex(
+            model => model.id === modelId
+          )
 
-        if (index !== -1) {
-          models.value[index] = {
-            ...models.value[index],
-            ...modelData,
-            id: modelId
+          if (index !== -1) {
+            models.value[index] = {
+              ...models.value[index],
+              ...modelData,
+              id: modelId
+            }
           }
         }
       } catch (error) {
@@ -196,9 +217,11 @@ export const useScheduleDemandModelsStore = defineStore(
           )
         )
 
-        models.value = models.value.filter(
-          model => model.id !== modelId
-        )
+        if (!unsubscribeModels) {
+          models.value = models.value.filter(
+            model => model.id !== modelId
+          )
+        }
       } catch (error) {
         console.error('Błąd usuwania szablonu grafiku:', error)
         throw error

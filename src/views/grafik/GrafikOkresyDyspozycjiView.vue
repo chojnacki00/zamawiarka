@@ -150,7 +150,7 @@
       @click.self="closeCreateModal"
     >
       <div
-        class="app-dialog-card availability-period-form-dialog"
+        class="app-dialog-card availability-period-form-dialog floating-actions-content"
       >
         <div class="app-dialog-icon">
           📅
@@ -347,30 +347,28 @@
             !editingPeriodId ||
             editingPeriodStatus === 'draft'
           "
-          class="app-dialog-actions"
+          class="app-dialog-actions floating-form-actions"
         >
           <button
-            class="app-dialog-button app-dialog-cancel"
+            class="app-dialog-button app-dialog-cancel floating-form-action cancel"
             type="button"
+            aria-label="Anuluj"
+            title="Anuluj"
             :disabled="periodsStore.isSaving"
             @click="closeCreateModal"
           >
-            Anuluj
+            ×
           </button>
 
           <button
-            class="app-dialog-button app-dialog-ok"
+            class="app-dialog-button app-dialog-ok floating-form-action save"
             type="button"
+            aria-label="Zapisz okres"
+            title="Zapisz okres"
             :disabled="!canSavePeriod || periodsStore.isSaving"
             @click="savePeriod"
           >
-            {{
-              periodsStore.isSaving
-                ? 'Zapisywanie...'
-                : editingPeriodId
-                  ? 'Zapisz zmiany'
-                  : 'Zapisz szkic'
-            }}
+            {{ periodsStore.isSaving ? '…' : '✓' }}
           </button>
         </div>
 

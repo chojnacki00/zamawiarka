@@ -1,171 +1,114 @@
 <template>
-  <div class="screen-with-topbar">
+  <main class="screen-with-topbar positions-screen">
     <div class="zamawiarka-menu-topbar">
-      <button @click="handleBack" class="zamawiarka-menu-back">←</button>
-      <h2 class="zamawiarka-menu-title">STANOWISKA (GRAFIK)</h2>
+      <button class="zamawiarka-menu-back" type="button" @click="handleBack">←</button>
+      <h2 class="zamawiarka-menu-title">STANOWISKA</h2>
     </div>
 
-    <div class="scroll-area" style="padding: 20px;">
-      
-      <!-- WIDOK 1: LISTA STANOWISK -->
-      <div v-if="!isFormOpen">
-        <button 
-          @click="openForm()" 
-          class="item-card" 
-          style="width: 100%; text-align: center; margin-bottom: 25px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; display: block;"
-        >
-          ➕ Dodaj stanowisko do grafiku
-        </button>
+    <div class="scroll-area positions-scroll">
+      <template v-if="!isFormOpen">
+        <button class="primary-card-button" type="button" @click="openForm()">＋ Dodaj stanowisko</button>
+        <p class="screen-copy">Domyślna stawka stanowiska jest używana przez pracownika, dopóki nie ustawisz mu stawki indywidualnej.</p>
 
-        <h3 style="font-size: 13px; color: #6b7280; margin-bottom: 10px; text-transform: uppercase; font-weight: 600;">Skonfigurowane role</h3>
-        
-        <div v-if="positionsStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-          ⏳ Pobieranie stanowisk...
-        </div>
+        <div v-if="positionsStore.isLoading || employeesStore.isLoading" class="empty-state">Pobieranie stanowisk…</div>
+        <div v-else-if="!positionsStore.positions.length" class="empty-state">Nie ma jeszcze stanowisk.</div>
 
-        <div v-else-if="positionsStore.positions.length === 0" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-          Brak stanowisk. Dodaj pierwsze, by móc układać grafik.
-        </div>
-
-        <div v-else>
-          <div 
-            v-for="stanowisko in positionsStore.positions" 
-            :key="stanowisko.id"
-            class="item-card"
-            style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"
-          >
-            <span translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px;">
-              {{ stanowisko.nazwa }}
-            </span>
-            
-            <div style="display: flex; gap: 10px;">
-              <button 
-                @click="openForm(stanowisko)" 
-                style="background: white; border: 1px solid #d1d5db; border-radius: 8px; color: #374151; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-              </button>
-
-              <button 
-                @click="confirmDelete(stanowisko)" 
-                style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  <line x1="10" y1="11" x2="10" y2="17"></line>
-                  <line x1="14" y1="11" x2="14" y2="17"></line>
-                </svg>
-              </button>
+        <section v-else class="positions-list">
+          <article v-for="position in positionsStore.positions" :key="position.id" class="position-card" :class="{ inactive: position.active === false }">
+            <button class="position-main" type="button" @click="openForm(position)">
+              <span class="position-name">{{ position.nazwa }}</span>
+              <span class="position-rate">{{ formatRate(position.defaultHourlyRate) }}</span>
+              <small>{{ position.active === false ? 'Nieaktywne' : 'Aktywne' }}</small>
+            </button>
+            <div class="position-actions">
+              <button class="secondary-action" type="button" @click="toggleActive(position)">{{ position.active === false ? 'Aktywuj' : 'Dezaktywuj' }}</button>
+              <button class="danger-action" type="button" :disabled="isPositionUsed(position.id)" :title="isPositionUsed(position.id) ? 'Stanowisko jest przypisane do pracownika' : 'Usuń stanowisko'" @click="confirmDelete(position)">Usuń</button>
             </div>
+          </article>
+        </section>
+      </template>
+
+      <form v-else class="editor-card floating-actions-content" @submit.prevent="savePosition">
+        <div class="editor-heading">
+          <span>USTAWIENIA STANOWISKA</span>
+          <h3>{{ editingPositionId ? 'Edytuj stanowisko' : 'Nowe stanowisko' }}</h3>
+        </div>
+        <label class="form-field">
+          <span>Nazwa stanowiska *</span>
+          <div class="locked-placeholder position-placeholder" :class="{ filled: form.nazwa }"><input v-model="form.nazwa" class="notranslate" type="text" autocomplete="off" translate="no" aria-label="Nazwa stanowiska"></div>
+        </label>
+        <label class="form-field">
+          <span>Domyślna stawka godzinowa *</span>
+          <div class="input-suffix">
+            <input v-model.number="form.defaultHourlyRate" type="number" min="0" step="0.01" inputmode="decimal">
+            <b>zł/h</b>
           </div>
+        </label>
+        <label class="switch-row">
+          <span><strong>Stanowisko aktywne</strong><small>Nieaktywnego stanowiska nie można przypisywać w nowych miejscach.</small></span>
+          <input v-model="form.active" type="checkbox">
+        </label>
+        <div class="form-actions floating-form-actions">
+          <button class="cancel-button floating-form-action cancel" type="button" aria-label="Anuluj" title="Anuluj" @click="cancelForm">×</button>
+          <button class="save-button floating-form-action save" type="submit" aria-label="Zapisz" title="Zapisz" :disabled="!isFormValid || isSaving">{{ isSaving ? '…' : '✓' }}</button>
         </div>
-      </div>
-
-      <!-- WIDOK 2: FORMULARZ DODAWANIA/EDYCJI -->
-      <div v-else>
-        <div style="margin-bottom: 25px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
-            Nazwa stanowiska (np. Kucharz, Kierowca)
-          </label>
-          <input 
-            v-model="newPositionName" 
-            type="text" 
-            placeholder="Wpisz nazwę..." 
-            translate="no"
-            class="notranslate"
-            style="width: 100%; padding: 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"
-          />
-        </div>
-
-        <div style="display: flex; gap: 12px; margin-top: 30px; padding-bottom: 40px;">
-          <button 
-            @click="cancelForm"
-            style="flex: 1; padding: 15px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;"
-          >
-            Anuluj
-          </button>
-          <button 
-            @click="savePosition"
-            style="flex: 1; padding: 15px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; transition: opacity 0.2s;"
-            :disabled="!newPositionName.trim() || isSaving"
-            :style="{ opacity: (!newPositionName.trim() || isSaving) ? 0.5 : 1 }"
-          >
-            {{ isSaving ? 'Zapisywanie...' : 'Zapisz' }}
-          </button>
-        </div>
-      </div>
-
+      </form>
     </div>
 
-    <!-- MODAL POTWIERDZENIA USUNIĘCIA -->
-    <div v-if="showDeleteModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
-      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
-        <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            <line x1="10" y1="11" x2="10" y2="17"></line>
-            <line x1="14" y1="11" x2="14" y2="17"></line>
-          </svg>
-        </div>
-        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń stanowisko</h3>
-        <p style="color: #6b7280; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">
-          Czy na pewno chcesz usunąć: <br>
-          <strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ positionToDelete?.nazwa }}</strong>?
-        </p>
-        <div style="display: flex; gap: 12px;">
-          <button @click="showDeleteModal = false" :disabled="isSaving" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">
-            Anuluj
-          </button>
-          <button @click="executeDelete" :disabled="isSaving" style="flex: 1; padding: 14px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">
-            {{ isSaving ? 'Usuwanie...' : 'Usuń' }}
-          </button>
+    <div v-if="positionToDelete" class="app-dialog-overlay">
+      <div class="app-dialog-card confirm-card">
+        <div class="app-dialog-title">Usunąć stanowisko?</div>
+        <p>{{ positionToDelete.nazwa }}</p>
+        <div class="form-actions">
+          <button class="cancel-button" type="button" @click="positionToDelete = null">Anuluj</button>
+          <button class="delete-button" type="button" :disabled="isSaving" @click="executeDelete">Usuń</button>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
+import { useEmployeesStore } from '../stores/employeesStore.js'
+import { useScheduleDemandModelsStore } from '../stores/scheduleDemandModelsStore.js'
 
 const router = useRouter()
 const positionsStore = useSchedulePositionsStore()
+const employeesStore = useEmployeesStore()
+const demandModelsStore = useScheduleDemandModelsStore()
+const isFormOpen = ref(false)
+const editingPositionId = ref(null)
+const isSaving = ref(false)
+const positionToDelete = ref(null)
+const form = ref({ nazwa: '', defaultHourlyRate: 0, active: true, displayOrder: 1 })
 
-onMounted(() => {
-  positionsStore.fetchPositions()
+const isFormValid = computed(() => form.value.nazwa.trim().length > 0 && Number.isFinite(Number(form.value.defaultHourlyRate)) && Number(form.value.defaultHourlyRate) >= 0)
+
+onMounted(async () => {
+  await Promise.all([positionsStore.fetchPositions(), employeesStore.fetchEmployees(), demandModelsStore.fetchModels()])
 })
 
+const formatRate = value => `${Number(value || 0).toFixed(2).replace('.', ',')} zł/h`
+const isPositionUsed = positionId => (
+  employeesStore.employees.some(employee => employee.positionAssignments?.some(assignment => assignment.positionId === positionId))
+  || demandModelsStore.models.some(model => Object.values(model.days || {}).some(vacancies => (
+    (Array.isArray(vacancies) ? vacancies : []).some(vacancy => vacancy?.positionId === positionId)
+  )))
+)
+
 const handleBack = () => {
-  if (isFormOpen.value) {
-    cancelForm()
-  } else {
-    router.push('/ustawienia')
-  }
+  if (isFormOpen.value) cancelForm()
+  else router.push('/ustawienia')
 }
 
-const isFormOpen = ref(false)
-const editingPositionId = ref(null) 
-const newPositionName = ref('')
-const isSaving = ref(false)
-
-const showDeleteModal = ref(false)
-const positionToDelete = ref(null)
-
 const openForm = (position = null) => {
-  if (position) {
-    editingPositionId.value = position.id
-    newPositionName.value = position.nazwa
-  } else {
-    editingPositionId.value = null
-    newPositionName.value = ''
-  }
+  editingPositionId.value = position?.id || null
+  form.value = position
+    ? { nazwa: position.nazwa || '', defaultHourlyRate: Number(position.defaultHourlyRate) || 0, active: position.active !== false, displayOrder: Number(position.displayOrder) || 1 }
+    : { nazwa: '', defaultHourlyRate: 0, active: true, displayOrder: positionsStore.positions.length + 1 }
   isFormOpen.value = true
 }
 
@@ -175,46 +118,77 @@ const cancelForm = () => {
 }
 
 const savePosition = async () => {
-  if (!newPositionName.value.trim() || isSaving.value) return
-
+  if (!isFormValid.value || isSaving.value) return
   isSaving.value = true
   try {
-    const positionData = {
-      nazwa: newPositionName.value
-    }
-
-    if (editingPositionId.value) {
-      await positionsStore.updatePosition(editingPositionId.value, positionData)
-    } else {
-      await positionsStore.addPosition(positionData)
-    }
-    
-    isFormOpen.value = false
-    editingPositionId.value = null
+    if (editingPositionId.value) await positionsStore.updatePosition(editingPositionId.value, form.value)
+    else await positionsStore.addPosition(form.value)
+    cancelForm()
   } catch (error) {
-    alert('Wystąpił błąd podczas zapisu do bazy.')
+    alert('Nie udało się zapisać stanowiska.')
   } finally {
     isSaving.value = false
   }
 }
 
-const confirmDelete = (position) => {
-  positionToDelete.value = position
-  showDeleteModal.value = true
+const toggleActive = async position => {
+  try {
+    await positionsStore.setPositionActive(position.id, position.active === false)
+  } catch (error) {
+    alert('Nie udało się zmienić aktywności stanowiska.')
+  }
+}
+
+const confirmDelete = position => {
+  if (!isPositionUsed(position.id)) positionToDelete.value = position
 }
 
 const executeDelete = async () => {
-  if (positionToDelete.value && !isSaving.value) {
-    isSaving.value = true
-    try {
-      await positionsStore.deletePosition(positionToDelete.value.id)
-      showDeleteModal.value = false
-      positionToDelete.value = null
-    } catch (error) {
-      alert('Wystąpił błąd podczas usuwania.')
-    } finally {
-      isSaving.value = false
-    }
+  if (!positionToDelete.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    await positionsStore.deletePosition(positionToDelete.value.id)
+    positionToDelete.value = null
+  } catch (error) {
+    alert('Nie udało się usunąć stanowiska.')
+  } finally {
+    isSaving.value = false
   }
 }
 </script>
+
+<style scoped>
+.positions-scroll { padding: 18px; }
+.primary-card-button { width: 100%; padding: 15px; border: 1px solid #bae6fd; border-radius: 14px; background: #e0f2fe; color: #0369a1; font-size: 16px; font-weight: 700; }
+.screen-copy { margin: 14px 2px 20px; color: #6b7280; font-size: 13px; line-height: 1.5; }
+.empty-state { padding: 32px 16px; color: #9ca3af; text-align: center; }
+.positions-list { display: grid; gap: 12px; }
+.position-card, .editor-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 16px; background: white; box-shadow: 0 4px 15px rgba(15, 23, 42, .05); }
+.position-card.inactive { opacity: .62; }
+.position-main { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
+.position-name { display: block; color: #111827; font-size: 17px; font-weight: 700; }
+.position-rate { display: block; margin-top: 5px; color: #0369a1; font-size: 14px; font-weight: 700; }
+.position-main small { display: block; margin-top: 4px; color: #6b7280; }
+.position-actions, .form-actions { display: flex; gap: 10px; margin-top: 16px; }
+.position-actions button, .form-actions button { flex: 1; min-height: 42px; border-radius: 11px; font-weight: 700; }
+.secondary-action, .cancel-button { border: 1px solid #d1d5db; background: white; color: #374151; }
+.danger-action, .delete-button { border: 1px solid #fecaca; background: #fef2f2; color: #dc2626; }
+.danger-action:disabled { opacity: .4; }
+.editor-heading span { color: #0ea5e9; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.editor-heading h3 { margin: 5px 0 22px; font-size: 22px; }
+.form-field { display: grid; gap: 7px; margin-bottom: 18px; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.form-field input { width: 100%; box-sizing: border-box; padding: 13px; border: 1px solid #d1d5db; border-radius: 11px; font-size: 16px; }
+.locked-placeholder { position: relative; border-radius: 11px; background: #fff; }.locked-placeholder input { position: relative; z-index: 1; background: transparent; }.locked-placeholder::after { position: absolute; z-index: 2; top: 50%; left: 13px; transform: translateY(-50%); color: #9ca3af; font-size: 16px; font-weight: 400; text-transform: none; pointer-events: none; }.position-placeholder::after { content: "Np. Pizzer"; }.locked-placeholder.filled::after { display: none; }
+.input-suffix { position: relative; }
+.input-suffix input { padding-right: 58px; }
+.input-suffix b { position: absolute; top: 50%; right: 13px; transform: translateY(-50%); color: #6b7280; font-size: 13px; text-transform: none; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border-radius: 12px; background: #f9fafb; }
+.switch-row span { display: grid; gap: 4px; }
+.switch-row small { color: #6b7280; line-height: 1.35; }
+.switch-row input { width: 22px; height: 22px; accent-color: #0ea5e9; }
+.save-button { border: 0; background: #0ea5e9; color: white; }
+.save-button:disabled { opacity: .45; }
+.confirm-card { max-width: 340px; }
+.confirm-card p { color: #6b7280; text-align: center; }
+@media (min-width: 700px) { .positions-scroll { max-width: 680px; margin: 0 auto; } }
+</style>

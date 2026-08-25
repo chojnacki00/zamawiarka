@@ -84,7 +84,7 @@
                   </td>
                 </tr>
 
-                <tr v-for="employee in activeEmployees" :key="employee.id">
+                <tr v-for="employee in displayEmployees" :key="employee.id">
                   <th class="person-cell">
                     <strong>{{ getEmployeeName(employee) }}</strong>
                     <span>{{ formatMinutes(getEmployeeMinutes(employee.id)) }}</span>
@@ -116,7 +116,7 @@
                           :aria-label="getExtraAvailabilityMarker(shift).label"
                         >!</i>
                       </button>
-                      <div class="cell-add-actions">
+                      <div v-if="canAssignEmployee(employee)" class="cell-add-actions">
                         <button
                           v-if="canEmployeeFillAnyUnfilled(employee, day)"
                           class="add-button vacancy-add"
@@ -154,7 +154,7 @@
           <template v-if="selectedShift.employeeId && !showCandidates">
             <div class="current-assignment">
               <span>Przypisany pracownik</span>
-              <strong>{{ getEmployeeNameById(selectedShift.employeeId) }}</strong>
+              <strong>{{ getShiftEmployeeName(selectedShift) }}</strong>
               <small>{{ getAssignmentSourceLabel(selectedShift.assignmentSource) }}</small>
             </div>
             <div v-if="selectedShift.warnings?.length" class="assignment-warnings">
@@ -363,12 +363,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
+import { useScheduleEmploymentProfilesStore } from '../../stores/scheduleEmploymentProfilesStore.js'
+import {
+  getCompetencyStars,
+  getEmployeeFullName,
+  resolveShiftEmployeeName
+} from '../../utils/employeeAssignments.js'
+import { getEmploymentRuleWarnings } from '../../utils/employmentRules.js'
 
 const route = useRoute()
 const router = useRouter()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const scheduleDraftsStore = useScheduleDraftsStore()
+const employmentProfilesStore = useScheduleEmploymentProfilesStore()
 
 const isLoading = ref(false)
 const loadError = ref('')
@@ -402,8 +410,52 @@ const minutes = ['00', '15', '30', '45']
 const schedule = computed(() => scheduleDraftsStore.currentSchedule)
 const days = computed(() => scheduleDraftsStore.currentDays)
 const activeEmployees = computed(() => [...(employeesStore.employees || [])].filter(e => e.aktywny !== false).sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b), 'pl')))
-const employeesById = computed(() => new Map(activeEmployees.value.map(e => [e.id, e])))
+const employeesById = computed(() => new Map((employeesStore.employees || []).map(e => [e.id, e])))
+const displayEmployees = computed(() => {
+  const employees = new Map(
+    activeEmployees.value.map(employee => [employee.id, employee])
+  )
+
+  days.value.forEach(day => {
+    const workingShifts = day.workingShifts || []
+
+    workingShifts.forEach(shift => {
+      if (!shift.employeeId) return
+
+      const currentEmployee = employeesById.value.get(shift.employeeId)
+      const existingEmployee = employees.get(shift.employeeId)
+      const displayName = resolveShiftEmployeeName(
+        shift,
+        currentEmployee
+      )
+      let displayEmployee = {
+        id: shift.employeeId,
+        displayName,
+        aktywny: false,
+        isDeleted: true
+      }
+
+      if (currentEmployee) {
+        displayEmployee = { ...currentEmployee, displayName }
+      }
+
+      if (existingEmployee) {
+        displayEmployee = { ...existingEmployee, displayName }
+      }
+
+      employees.set(
+        shift.employeeId,
+        displayEmployee
+      )
+    })
+  })
+
+  return [...employees.values()].sort((first, second) => (
+    getEmployeeName(first).localeCompare(getEmployeeName(second), 'pl')
+  ))
+})
 const positionsById = computed(() => new Map((positionsStore.positions || []).map(p => [p.id, p])))
+const employmentProfilesById = computed(() => new Map((employmentProfilesStore.profiles || []).map(profile => [profile.id, profile])))
 const availabilityByDateEmployee = computed(() => {
   const map = new Map()
   scheduleDraftsStore.availabilityEntries.forEach(entry => {
@@ -415,14 +467,14 @@ const totalUnfilled = computed(() => days.value.reduce((sum, day) => sum + getUn
 const candidateList = computed(() => {
   if (!selectedDay.value || !selectedShift.value) return []
   return activeEmployees.value
-    .filter(employee => employee.id !== selectedShift.value.employeeId && Number(employee.kompetencje?.[selectedShift.value.positionId]) >= 1)
+    .filter(employee => employee.id !== selectedShift.value.employeeId && getCompetencyStars(employee, selectedShift.value.positionId) >= 1)
     .map(employee => getCandidateInfo(employee, selectedDay.value, selectedShift.value))
     .sort(compareCandidates)
 })
 const employeeAvailableShifts = computed(() => {
   if (!selectedDay.value || !selectedEmployee.value) return []
   return getUnfilledShifts(selectedDay.value)
-    .filter(shift => Number(selectedEmployee.value.kompetencje?.[shift.positionId]) >= 1)
+    .filter(shift => getCompetencyStars(selectedEmployee.value, shift.positionId) >= 1)
     .map(shift => ({ shift, candidate: getCandidateInfo(selectedEmployee.value, selectedDay.value, shift) }))
     .sort((a, b) => compareCandidates(a.candidate, b.candidate) || a.shift.from.localeCompare(b.shift.from))
 })
@@ -443,7 +495,8 @@ const extraShiftTemplates = computed(() => {
           ...shift,
           id: `template_${templateKey}`,
           templateKey,
-          employeeId: null
+          employeeId: null,
+          employeeNameSnapshot: null
         })
       }
     })
@@ -467,7 +520,8 @@ onMounted(async () => {
       scheduleDraftsStore.fetchScheduleDays(scheduleId),
       scheduleDraftsStore.fetchAvailability(loaded.dateFrom, loaded.dateTo),
       employeesStore.fetchEmployees(),
-      positionsStore.fetchPositions()
+      positionsStore.fetchPositions(),
+      employmentProfilesStore.fetchProfiles()
     ])
   } catch (error) {
     console.error('Błąd pobierania edytora grafiku:', error)
@@ -477,8 +531,15 @@ onMounted(async () => {
   }
 })
 
-const getEmployeeName = employee => employee ? (`${employee.imie || ''} ${employee.nazwisko || ''}`.trim() || employee.name || 'Pracownik bez nazwy') : 'Nieznany pracownik'
-const getEmployeeNameById = id => getEmployeeName(employeesById.value.get(id))
+const getEmployeeName = employee => (
+  String(employee?.displayName || '').trim() ||
+  getEmployeeFullName(employee) ||
+  'Pracownik bez nazwy'
+)
+const getShiftEmployeeName = shift => resolveShiftEmployeeName(
+  shift,
+  employeesById.value.get(shift?.employeeId)
+)
 const getPositionName = shift => {
   const position = positionsById.value.get(shift?.positionId)
   return position?.nazwa || position?.name || shift?.positionNameSnapshot || 'Nieznane stanowisko'
@@ -492,7 +553,10 @@ const isExtraShift = shift => shift?.origin === 'MANUAL_EXTRA'
 const getUnfilledShifts = day => (day?.workingShifts || []).filter(shift => !shift.employeeId)
 const hasUnfilledShifts = day => getUnfilledShifts(day).length > 0
 const getEmployeeShifts = (day, employeeId) => (day?.workingShifts || []).filter(shift => shift.employeeId === employeeId)
-const canEmployeeFillAnyUnfilled = (employee, day) => getUnfilledShifts(day).some(shift => Number(employee.kompetencje?.[shift.positionId]) >= 1)
+const canAssignEmployee = employee => Boolean(
+  employee && employee.aktywny !== false && !employee.isDeleted
+)
+const canEmployeeFillAnyUnfilled = (employee, day) => getUnfilledShifts(day).some(shift => getCompetencyStars(employee, shift.positionId) >= 1)
 const getShiftClasses = shift => {
   if (isExtraShift(shift)) {
     return { extra: true }
@@ -604,7 +668,14 @@ const getCandidateInfo = (employee, day, shift) => {
   let otherShiftLabel = ''
   let rank = availability.rank
   let statusClass = availability.statusClass
-  const competency = Number(employee.kompetencje?.[shift.positionId]) || 0
+  const competency = getCompetencyStars(employee, shift.positionId)
+  warnings.push(...getEmploymentRuleWarnings({
+    employee,
+    profile: employmentProfilesById.value.get(employee.employmentProfileId),
+    days: days.value,
+    day,
+    shift
+  }))
 
   if (shift.positionId && competency < 1) {
     warnings.push('Pracownik nie ma przypisanego tego stanowiska.')
@@ -789,6 +860,9 @@ const saveAssignment = async payload => {
       dayId: payload.day.id,
       shiftId: payload.shift.id,
       employeeId: payload.candidate.employee.id,
+      employeeNameSnapshot: getEmployeeName(
+        payload.candidate.employee
+      ),
       warnings: payload.candidate.warnings,
       decision: {
         competency: payload.candidate.competency,
@@ -815,6 +889,9 @@ const saveExtraAssignment = async payload => {
       scheduleId: schedule.value.id,
       dayId: payload.day.id,
       employeeId: payload.candidate.employee.id,
+      employeeNameSnapshot: getEmployeeName(
+        payload.candidate.employee
+      ),
       positionId: payload.extraData.positionId,
       positionNameSnapshot:
         payload.extraData.positionNameSnapshot,

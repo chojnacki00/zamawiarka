@@ -10,6 +10,7 @@
 - Nie usuwaj ani nie migruj istniejących danych bez wyraźnego polecenia.
 - Nie zmieniaj plików niezwiązanych z zadaniem.
 - Nie wykonuj `git commit` ani `git push` bez wyraźnego polecenia.
+- Nie publikuj ani nie wdrażaj aplikacji na Firebase Hosting bez wyraźnego polecenia. Obecna wersja produkcyjna jest używana przez pracowników i ma pozostać bez zmian do czasu ukończenia oraz dokładnego przetestowania generatora grafiku.
 - Obiekty zapisywane w Firestore powinny mieć trwałe identyfikatory.
 - W module grafiku manager ma „God Mode”: system ostrzega o ograniczeniach, ale ręczna decyzja managera może je pominąć.
 - Grafiki robocze mają być zapisywane w Firebase i pozostawać edytowalne.

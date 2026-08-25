@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useAuthStore } from './authStore.js'
@@ -212,6 +212,10 @@ const validateProfileConsistency = profile => {
 
 const cloneProfile = profile => JSON.parse(JSON.stringify(profile))
 
+let unsubscribeEmploymentProfiles = null
+let employmentProfilesRestaurantId = null
+let employmentProfilesReadyPromise = null
+
 export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymentProfiles', {
   state: () => ({
     profiles: [],
@@ -242,33 +246,50 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
     },
 
     async fetchProfiles() {
-      if (this.isLoading) return this.profiles
+      const restaurantId = await this.getRestaurantId()
+      if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
+      if (unsubscribeEmploymentProfiles && employmentProfilesRestaurantId === restaurantId) {
+        return employmentProfilesReadyPromise || this.profiles
+      }
+
+      if (unsubscribeEmploymentProfiles) unsubscribeEmploymentProfiles()
+      employmentProfilesRestaurantId = restaurantId
       this.isLoading = true
       this.error = ''
+      const store = this
 
-      try {
-        const restaurantId = await this.getRestaurantId()
-        if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
-
-        const snapshot = await getDocs(
-          collection(db, 'users', restaurantId, 'grafik_profile_zatrudnienia')
+      employmentProfilesReadyPromise = new Promise(resolve => {
+        let firstSnapshot = true
+        unsubscribeEmploymentProfiles = onSnapshot(
+          collection(db, 'users', restaurantId, 'grafik_profile_zatrudnienia'),
+          snapshot => {
+            store.profiles = snapshot.docs
+              .map(profileSnapshot => normalizeProfile({
+                id: profileSnapshot.id,
+                ...profileSnapshot.data()
+              }))
+              .sort((first, second) => first.name.localeCompare(second.name, 'pl'))
+            if (firstSnapshot) {
+              firstSnapshot = false
+              store.isLoading = false
+              resolve(store.profiles)
+            }
+          },
+          error => {
+            console.error('Błąd pobierania profili zatrudnienia:', error)
+            unsubscribeEmploymentProfiles = null
+            employmentProfilesRestaurantId = null
+            store.error = error?.message || 'Nie udało się pobrać profili zatrudnienia.'
+            store.isLoading = false
+            if (firstSnapshot) {
+              firstSnapshot = false
+              resolve(store.profiles)
+            }
+          }
         )
+      })
 
-        this.profiles = snapshot.docs
-          .map(profileSnapshot => normalizeProfile({
-            id: profileSnapshot.id,
-            ...profileSnapshot.data()
-          }))
-          .sort((first, second) => first.name.localeCompare(second.name, 'pl'))
-
-        return this.profiles
-      } catch (error) {
-        console.error('Błąd pobierania profili zatrudnienia:', error)
-        this.error = error?.message || 'Nie udało się pobrać profili zatrudnienia.'
-        throw error
-      } finally {
-        this.isLoading = false
-      }
+      return employmentProfilesReadyPromise
     },
 
     async saveProfile(profile) {

@@ -5,7 +5,7 @@
       <h2 class="zamawiarka-menu-title">REGUŁY GRAFIKU</h2>
     </div>
 
-    <div class="scroll-area generator-settings-scroll">
+    <div class="scroll-area generator-settings-scroll floating-actions-content">
       <section class="generator-settings-intro">
         <div class="generator-settings-step">GENERATOR GRAFIKU</div>
         <h1>Reguły układania grafiku</h1>
@@ -130,14 +130,18 @@
           Masz niezapisane zmiany.
         </div>
 
-        <button
-          class="generator-settings-save"
-          type="button"
-          :disabled="settingsStore.isSaving || !hasChanges"
-          @click="saveSettings"
-        >
-          {{ settingsStore.isSaving ? 'Zapisywanie…' : 'Zapisz ustawienia' }}
-        </button>
+        <div class="floating-form-actions">
+          <button
+            class="generator-settings-save floating-form-action save"
+            type="button"
+            aria-label="Zapisz ustawienia"
+            title="Zapisz ustawienia"
+            :disabled="settingsStore.isSaving || !hasChanges"
+            @click="saveSettings"
+          >
+            {{ settingsStore.isSaving ? '…' : '✓' }}
+          </button>
+        </div>
       </template>
     </div>
 

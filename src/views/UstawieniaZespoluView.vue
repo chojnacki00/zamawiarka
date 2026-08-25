@@ -1,649 +1,294 @@
 <template>
-  <div class="screen-with-topbar">
+  <main class="screen-with-topbar team-screen">
     <div class="zamawiarka-menu-topbar">
-      <button @click="handleBack" class="zamawiarka-menu-back">←</button>
-      <h2 class="zamawiarka-menu-title">ZESPÓŁ</h2>
+      <button class="zamawiarka-menu-back" type="button" @click="handleBack">←</button>
+      <h2 class="zamawiarka-menu-title notranslate" translate="no">{{ employeeFormTitle }}</h2>
     </div>
 
-    <div class="scroll-area" ref="scrollAreaRef">
-      
-      <!-- === WIDOK 1: LISTA PRACOWNIKÓW === -->
-      <div v-if="!isFormOpen">
-        
-        <div style="position: sticky; top: 0; z-index: 10; background: #f9fafb; padding: 20px 20px 10px 20px; border-bottom: 1px solid #e5e7eb;">
-          <button 
-            @click="openForm()" 
-            class="item-card" 
-            style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; display: block;"
-          >
-            ➕ Dodaj pracownika
-          </button>
+    <div ref="scrollAreaRef" class="scroll-area team-scroll">
+      <template v-if="!isFormOpen">
+        <div class="team-toolbar">
+          <button class="add-employee" type="button" @click="openForm()">＋ Dodaj pracownika</button>
+          <label class="search-field"><span>⌕</span><input v-model="searchQuery" type="search" placeholder="Szukaj pracownika…"></label>
+        </div>
 
-          <!-- Pasek Wyszukiwania -->
-          <div style="position: relative; width: 100%;">
-            <div style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </div>
-            
-            <input 
-              v-model="searchQuery" 
-              type="text" 
-              :placeholder="searchPlaceholder"
-              @focus="searchPlaceholder = ''"
-              @blur="searchPlaceholder = 'Szukaj pracownika...'"
-              style="width: 100%; padding: 12px 45px 12px 40px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 15px; color: #111827; caret-color: #0ea5e9; box-sizing: border-box; outline: none; background: white;"
-            />
-
-            <button 
-              v-if="searchQuery.length > 0"
-              @click="searchQuery = ''"
-              style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #9ca3af; transition: color 0.2s;"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
+        <div v-if="isLoading" class="empty-state">Wczytywanie danych…</div>
+        <div v-else-if="!filteredEmployees.length" class="empty-state">Brak pracowników do wyświetlenia.</div>
+        <section v-else class="employee-list">
+          <article v-for="employee in filteredEmployees" :key="employee.id" class="employee-card" :class="{ inactive: employee.aktywny === false }">
+            <button class="employee-main" type="button" @click="openForm(employee)">
+              <strong>{{ employee.nazwisko }} {{ employee.imie }}</strong>
+              <span class="employee-badges">
+                <small>{{ employee.aktywny === false ? 'Nieaktywny' : 'Aktywny' }}</small>
+                <small>{{ getPermissionProfileName(employee.permissionProfileId) }}</small>
+                <small>{{ employee.positionAssignments.length }} stanowisk</small>
+                <small v-if="employee.employeeGroupIds.length">{{ employee.employeeGroupIds.length }} grup</small>
+              </span>
+            </button>
+            <button class="delete-icon" type="button" aria-label="Usuń pracownika" @click="employeeToDelete = employee">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
               </svg>
             </button>
-          </div>
-        </div>
+          </article>
+        </section>
+      </template>
 
-        <!-- PRZEWIJANA LISTA -->
-        <div style="padding: 10px 20px 20px 20px;">
-          
-          <div v-if="employeesStore.isLoading || profilesStore.isLoading || positionsStore.isLoading" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-            ⏳ Wczytywanie danych...
-          </div>
+      <form v-else class="employee-form floating-actions-content" @submit.prevent="saveEmployee">
+        <section class="form-status-card">
+          <span><strong>Konto aktywne</strong><small>Wyłączenie blokuje logowanie pracownika.</small></span>
+          <input v-model="form.aktywny" type="checkbox">
+        </section>
 
-          <div v-else-if="filteredAndSortedEmployees.length === 0" style="text-align: center; color: #9ca3af; padding: 20px; font-size: 14px;">
-            Brak wyników do wyświetlenia.
-          </div>
-
-          <div v-else>
-            <div 
-              v-for="pracownik in filteredAndSortedEmployees" 
-              :key="pracownik.id"
-              class="item-card"
-              :style="{ opacity: pracownik.aktywny === false ? 0.6 : 1, filter: pracownik.aktywny === false ? 'grayscale(1)' : 'none' }"
-              style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; transition: all 0.2s;"
-            >
-              <div style="flex: 1; min-width: 0;">
-                <!-- IMIĘ I NAZWISKO -->
-                <div translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  {{ pracownik.nazwisko }} {{ pracownik.imie }}
-                </div>
-                
-                <!-- JEDEN, SZTYWNY WIERSZ Z ETYKIETAMI -->
-                <div style="display: flex; gap: 6px; align-items: center; white-space: nowrap; overflow: hidden;">
-                  
-                  <!-- Odznaka Aktywny/Zablokowany -->
-                  <span v-if="pracownik.aktywny !== false" style="background: #d1fae5; color: #059669; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
-                    Aktywny
-                  </span>
-                  <span v-else style="background: #f3f4f6; color: #9ca3af; text-decoration: line-through; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
-                    Aktywny
-                  </span>
-
-                  <!-- Profil Uprawnień -->
-                  <span translate="no" class="notranslate" style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; color: #4b5563; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; display: inline-block;">
-                    {{ getProfileName(pracownik.permissionProfileId || pracownik.roleId) }}
-                  </span>
-
-                  <!-- Odznaka informująca o przypisanych stanowiskach do grafiku -->
-                  <span v-if="pracownik.kompetencje && Object.keys(pracownik.kompetencje).length > 0" translate="no" class="notranslate" style="background: #f3e8ff; color: #7e22ce; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; flex-shrink: 0;">
-                    +{{ Object.keys(pracownik.kompetencje).length }}
-                  </span>
-
-                </div>
-              </div>
-              
-              <!-- PRZYCISKI AKCJI -->
-              <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                <button @click="openForm(pracownik)" style="background: white; border: 1px solid #d1d5db; border-radius: 8px; color: #374151; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                  </button>
-
-                  <button @click="confirmDelete(pracownik)" style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                  </svg>
-                </button>
-              </div>
+        <article class="accordion-card" :class="{ open: openSections.basic }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('basic')"><span><b>1</b>Dane podstawowe</span><i>{{ openSections.basic ? '−' : '+' }}</i></button>
+          <section v-if="openSections.basic" class="accordion-content">
+            <div class="two-columns">
+              <label class="form-field"><span>Imię *</span><input v-model="form.imie" type="text" autocomplete="given-name"></label>
+              <label class="form-field"><span>Nazwisko *</span><input v-model="form.nazwisko" type="text" autocomplete="family-name"></label>
             </div>
-          </div>
-        </div>
-      </div>
+            <label class="form-field"><span>Numer telefonu</span><input v-model="form.telefon" type="tel" inputmode="tel" autocomplete="tel" placeholder="Np. +48 500 000 000"></label>
+            <label class="form-field"><span>Adres e-mail</span><input v-model="form.email" type="email" inputmode="email" autocomplete="email"></label>
+            <label class="form-field"><span>PIN do logowania *</span><div class="pin-row"><input v-model="form.pin" class="pin-input" type="text" inputmode="numeric" maxlength="4"><button class="dice-button" type="button" aria-label="Wylosuj PIN" title="Wylosuj PIN" @click="generateRandomPin">🎲</button><button type="button" :disabled="!editingEmployeeId" @click="generatePairingCode">Paruj urządzenie</button></div></label>
+          </section>
+        </article>
 
-      <!-- === WIDOK 2: FORMULARZ DODAWANIA/EDYCJI === -->
-      <div v-else style="padding: 20px;">
-        
-        <div style="margin-bottom: 25px; padding: 15px; background: #f9fafb; border-radius: 10px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <div style="font-weight: 600; color: #111827; font-size: 14px; margin-bottom: 4px;">Konto aktywne</div>
-            <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">Odznacz, aby zablokować pracownikowi dostęp.</div>
-          </div>
-          <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0;">
-            <input type="checkbox" v-model="form.aktywny" style="opacity: 0; width: 0; height: 0; position: absolute;">
-            <span :style="{ background: form.aktywny ? '#10b981' : '#d1d5db' }" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; border-radius: 24px; transition: .3s;">
-              <span :style="{ transform: form.aktywny ? 'translateX(20px)' : 'translateX(2px)' }" style="position: absolute; height: 20px; width: 20px; left: 0; bottom: 2px; background-color: white; border-radius: 50%; transition: .3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span>
-            </span>
+        <article class="accordion-card" :class="{ open: openSections.employment }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('employment')"><span><b>2</b>Forma zatrudnienia i wymiar pracy</span><i>{{ openSections.employment ? '−' : '+' }}</i></button>
+          <section v-if="openSections.employment" class="accordion-content">
+            <label class="form-field"><span>Profil zatrudnienia</span><select v-model="form.employmentProfileId"><option :value="null">Bez profilu zatrudnienia</option><option v-for="profile in employmentProfilesStore.profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select></label>
+            <label class="form-field" :class="{ disabled: !form.employmentProfileId }"><span>Wymiar pracy</span><div class="range-heading"><strong>{{ form.employmentPercentage }}%</strong><small>Zakres 5–200%, krok 5%</small></div><input v-model.number="form.employmentPercentage" type="range" min="5" max="200" step="5" :disabled="!form.employmentProfileId"></label>
+            <p v-if="!form.employmentProfileId" class="field-note">Bez profilu zatrudnienia nie obowiązują limity profilu, a wymiar pracy nie jest stosowany.</p>
+            <p v-else class="field-note">Wymiar skaluje cel godzin i tolerancję. Nie zmienia odpoczynków, przerw ani pozostałych limitów bezpieczeństwa.</p>
+            <div v-if="scaledEmploymentSummary" class="employment-summary"><strong>Przeliczone dla pracownika</strong><span>{{ scaledEmploymentSummary }}</span></div>
+          </section>
+        </article>
+
+        <article class="accordion-card" :class="{ open: openSections.groups }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('groups')"><span><b>3</b>Grupy pracownicze</span><i>{{ openSections.groups ? '−' : '+' }}</i></button>
+          <section v-if="openSections.groups" class="accordion-content">
+            <p class="field-note">Pracownik może należeć do kilku grup albo nie należeć do żadnej.</p>
+            <div v-if="!selectableGroups.length" class="inline-empty">Brak grup do wyboru.</div>
+            <label v-for="group in selectableGroups" :key="group.id" class="choice-row" :class="{ selected: form.employeeGroupIds.includes(group.id), inactive: group.active === false }"><input v-model="form.employeeGroupIds" type="checkbox" :value="group.id"><span><strong>{{ group.name }}</strong><small>{{ group.description || 'Brak opisu' }}</small></span></label>
+          </section>
+        </article>
+
+        <article class="accordion-card" :class="{ open: openSections.positions }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('positions')"><span><b>4</b>Stanowiska, kompetencje i stawki</span><i>{{ openSections.positions ? '−' : '+' }}</i></button>
+          <section v-if="openSections.positions" class="accordion-content">
+            <button class="add-position" type="button" :disabled="!positionPickerPositions.length" @click="openPositionPicker">＋ Przypisz stanowisko</button>
+            <div v-if="!form.positionAssignments.length" class="inline-empty">Brak przypisanych stanowisk.</div>
+            <article v-for="assignment in form.positionAssignments" :key="assignment.positionId" class="assignment-card">
+              <div class="assignment-heading"><span><strong>{{ getPosition(assignment.positionId)?.nazwa || 'Nieznane stanowisko' }}</strong><small v-if="getPosition(assignment.positionId)?.active === false">Stanowisko nieaktywne</small></span><button type="button" @click="removePositionAssignment(assignment.positionId)">Usuń</button></div>
+              <div class="stars-row"><span>Kompetencje</span><div><button v-for="star in 5" :key="star" type="button" :class="{ active: assignment.competencyStars >= star }" @click="assignment.competencyStars = star">★</button></div></div>
+              <label class="form-field rate-field"><span>Stawka godzinowa</span><div class="rate-input"><input :value="getDisplayedRate(assignment)" type="number" min="0" step="0.01" inputmode="decimal" @input="setAssignmentRate(assignment, $event.target.value)"><b>zł/h</b></div></label>
+              <div class="rate-footer"><small>Domyślna stawka stanowiska: {{ formatRate(getPosition(assignment.positionId)?.defaultHourlyRate) }}</small><button v-if="assignment.hourlyRateOverride !== null" type="button" @click="assignment.hourlyRateOverride = null">Przywróć stawkę stanowiska</button></div>
+            </article>
+          </section>
+        </article>
+
+        <article class="accordion-card" :class="{ open: openSections.permissions }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('permissions')"><span><b>5</b>Profil uprawnień</span><i>{{ openSections.permissions ? '−' : '+' }}</i></button>
+          <section v-if="openSections.permissions" class="accordion-content"><label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label><p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p></section>
+        </article>
+
+        <p v-if="formError" class="form-error">{{ formError }}</p>
+        <div class="form-actions floating-form-actions"><button class="cancel-button floating-form-action cancel" type="button" aria-label="Anuluj" title="Anuluj" @click="cancelForm">×</button><button class="save-button floating-form-action save" type="submit" aria-label="Zapisz" title="Zapisz" :disabled="isSaving">{{ isSaving ? '…' : '✓' }}</button></div>
+      </form>
+    </div>
+
+    <div v-if="employeeToDelete" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Usunąć pracownika?</div><p>Usunięte zostaną również jego dyspozycje i przydziały wymagające tego pracownika.</p><strong>{{ employeeToDelete.imie }} {{ employeeToDelete.nazwisko }}</strong><div class="form-actions"><button class="cancel-button" type="button" @click="employeeToDelete = null">Anuluj</button><button class="danger-button" type="button" @click="executeDelete">Usuń</button></div></div></div>
+    <div v-if="isPositionPickerOpen" class="app-dialog-overlay">
+      <div class="app-dialog-card position-picker-card">
+        <div class="app-dialog-title">Przypisz stanowiska</div>
+        <p>Zaznacz stanowiska pracownika. Nowe przypisania otrzymają domyślnie 5 gwiazdek kompetencji.</p>
+        <div class="position-picker-list">
+          <label v-for="position in positionPickerPositions" :key="position.id" class="choice-row" :class="{ selected: positionPickerSelection.includes(position.id), inactive: position.active === false }">
+            <input v-model="positionPickerSelection" type="checkbox" :value="position.id">
+            <span><strong>{{ position.nazwa }}</strong><small>{{ formatRate(position.defaultHourlyRate) }}<template v-if="position.active === false"> · stanowisko nieaktywne</template></small></span>
           </label>
         </div>
-
-        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">Imię</label>
-            <input v-model="form.imie" type="text" placeholder="Wpisz imię" translate="no" class="notranslate form-input" style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none;" />
-          </div>
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">Nazwisko</label>
-            <input v-model="form.nazwisko" type="text" placeholder="Wpisz nazwisko" translate="no" class="notranslate form-input" style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none;" />
-          </div>
-        </div>
-
-        <!-- PROFIL UPRAWNIEŃ -->
-        <div style="margin-bottom: 25px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">
-            Profil uprawnień (Dostęp do aplikacji)
-          </label>
-          <select 
-            v-model="form.permissionProfileId"
-            translate="no"
-            class="notranslate form-input"
-            style="width: 100%; padding: 12px 15px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; box-sizing: border-box; outline: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px center; background-size: 18px; padding-right: 45px;"
-          >
-            <option value="" disabled class="placeholder-option">Wybierz profil...</option>
-            <option v-for="profil in dostepneProfile" :key="profil.id" :value="profil.id" style="color: #111827;">{{ profil.nazwa }}</option>
-          </select>
-        </div>
-
-        <!-- STANOWISKA GRAFIKOWE (KOMPETENCJE) -->
-        <div style="margin-bottom: 30px; background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 15px;">
-          <h3 style="font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
-            Kompetencje i priorytet (Grafik)
-          </h3>
-          <p style="font-size: 12px; color: #9ca3af; margin-bottom: 15px; line-height: 1.4;">
-            Wybierz stanowiska i ustaw priorytet dla generatora grafiku.
-          </p>
-
-          <div v-if="positionsStore.positions.length === 0" style="font-size: 13px; color: #9ca3af; text-align: center; padding: 10px;">
-            Najpierw dodaj stanowiska grafikowe w Ustawieniach.
-          </div>
-
-          <div v-else>
-            <!-- Przycisk rozwijający listę wyboru kompetencji -->
-            <button 
-              @click="showCompetencyList = !showCompetencyList"
-              style="width: 100%; padding: 10px; border: 1px dashed #0ea5e9; background: #e0f2fe; color: #0369a1; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 15px;"
-            >
-              {{ showCompetencyList ? 'Zamknij listę stanowisk' : '➕ Dodaj kompetencje' }}
-            </button>
-
-            <!-- Lista checkboxów (rozwijana) -->
-            <div v-if="showCompetencyList" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 15px; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px;">
-              <label 
-                v-for="pos in positionsStore.positions" 
-                :key="'chk-'+pos.id"
-                style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s;"
-                :style="{ 
-                  borderColor: form.kompetencje[pos.id] ? '#0ea5e9' : '#e5e7eb', 
-                  background: form.kompetencje[pos.id] ? '#e0f2fe' : '#ffffff', 
-                  color: form.kompetencje[pos.id] ? '#0369a1' : '#4b5563' 
-                }"
-              >
-                <input 
-                  type="checkbox" 
-                  :checked="!!form.kompetencje[pos.id]"
-                  @change="toggleCompetency(pos.id)"
-                  style="width: 16px; height: 16px; accent-color: #0ea5e9; cursor: pointer; margin: 0;"
-                >
-                <span translate="no" class="notranslate">{{ pos.nazwa }}</span>
-              </label>
-            </div>
-
-            <!-- Lista WYBRANYCH kompetencji z gwiazdkami -->
-            <div v-if="Object.keys(form.kompetencje).length > 0">
-              <div 
-                v-for="posId in Object.keys(form.kompetencje)" 
-                :key="'star-'+posId" 
-                style="display: flex; align-items: center; justify-content: space-between; padding: 10px; border-bottom: 1px solid #f3f4f6;"
-              >
-                <span style="font-weight: 600; color: #374151; font-size: 14px;" translate="no" class="notranslate">
-                  {{ getPositionName(posId) }}
-                </span>
-                
-                <div style="display: flex; gap: 2px; align-items: center;">
-                  <button 
-                    v-for="star in 5" 
-                    :key="star"
-                    @click.prevent="setStar(posId, star)"
-                    style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0 3px; transition: color 0.2s; line-height: 1;"
-                    :style="{ color: (form.kompetencje[posId] >= star) ? '#eab308' : '#d1d5db' }"
-                  >
-                    ★
-                  </button>
-                  
-                  <button 
-                    @click.prevent="confirmDeleteCompetency(posId)"
-                    style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 6px; margin-left: 10px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
-                    title="Usuń kompetencję"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      <line x1="10" y1="11" x2="10" y2="17"></line>
-                      <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div v-else-if="!showCompetencyList" style="font-size: 13px; color: #9ca3af; text-align: center;">
-              Brak przypisanych stanowisk.
-            </div>
-
-          </div>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">PIN do logowania</label>
-          <div style="display: flex; gap: 8px; width: 100%;">
-            <input v-model="form.pin" type="text" placeholder="PIN" maxlength="4" class="form-input" style="flex: 1; min-width: 0; padding: 12px 10px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 18px; font-weight: 600; text-align: center; box-sizing: border-box; outline: none;" />
-            
-            <button @click="generateRandomPin" style="padding: 0 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 10px; font-weight: 600; cursor: pointer;">
-              🎲
-            </button>
-
-            <button @click="generatePairingCode(form)" style="padding: 0 15px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 10px; font-weight: 600; cursor: pointer;">
-              Paruj
-            </button>
-          </div>
-        </div>
-
-        <h3 style="font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin: 30px 0 15px 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Dane dodatkowe (opcjonalnie)</h3>
-
-        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 6px;">Stawka / h (zł)</label>
-            <input v-model="form.stawka" type="number" placeholder="Podaj stawkę" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; box-sizing: border-box; outline: none;" />
-          </div>
-          <div style="flex: 1;">
-            <label style="display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 6px;">Telefon</label>
-            <input v-model="form.telefon" type="tel" placeholder="Wpisz nr tel" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; box-sizing: border-box; outline: none;" />
-          </div>
-        </div>
-
-        <div style="margin-bottom: 25px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 6px;">Adres E-mail</label>
-          <input v-model="form.email" type="email" placeholder="Wpisz adres e-mail" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; box-sizing: border-box; outline: none;" />
-        </div>
-
-        <div style="display: flex; gap: 12px; margin-top: 30px; padding-bottom: 40px;">
-          <button @click="cancelForm" style="flex: 1; padding: 15px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Anuluj</button>
-          <button @click="saveEmployee" :disabled="!isFormValid || isSaving" :style="{ opacity: (!isFormValid || isSaving) ? 0.5 : 1 }" style="flex: 1; padding: 15px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; transition: opacity 0.2s;">
-            {{ isSaving ? 'Zapisywanie...' : 'Zapisz' }}
-          </button>
-        </div>
-      </div>
-
-    </div>
-
-   <!-- === MODAL POTWIERDZENIA USUNIĘCIA PRACOWNIKA === -->
-    <div v-if="showDeleteModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
-      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
-        <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-        </div>
-        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń pracownika</h3>
-        <p style="color: #6b7280; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">Czy usunąć pracownika: <br><strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ empToDelete?.imie }} {{ empToDelete?.nazwisko }}</strong>?</p>
-        <div style="display: flex; gap: 12px;">
-          <button @click="showDeleteModal = false" :disabled="isSaving" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Anuluj</button>
-          <button @click="executeDelete" :disabled="isSaving" style="flex: 1; padding: 14px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">{{ isSaving ? 'Usuwanie...' : 'Usuń' }}</button>
-        </div>
+        <div class="form-actions"><button class="cancel-button" type="button" @click="closePositionPicker">Anuluj</button><button class="save-button" type="button" @click="applyPositionSelection">Zastosuj</button></div>
       </div>
     </div>
-
-    <!-- === MODAL POTWIERDZENIA USUNIĘCIA KOMPETENCJI === -->
-    <div v-if="showDeleteCompetencyModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
-      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
-        <div style="width: 56px; height: 56px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-        </div>
-        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Usuń kompetencję</h3>
-        <p style="color: #6b7280; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">Czy na pewno chcesz usunąć stanowisko:<br><strong translate="no" class="notranslate" style="color: #374151; font-size: 16px;">{{ getPositionName(competencyToDelete) }}</strong><br>z profilu tego pracownika?</p>
-        <div style="display: flex; gap: 12px;">
-          <button @click="showDeleteCompetencyModal = false" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Anuluj</button>
-          <button @click="executeDeleteCompetency" style="flex: 1; padding: 14px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">Usuń</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- === MODAL PAROWANIA === -->
-    <div v-if="showPairingModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
-      <div style="background: white; border-radius: 20px; padding: 30px 20px; width: 100%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center;">
-        <div style="width: 56px; height: 56px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12" y2="18"></line></svg>
-        </div>
-        <h3 style="margin-top: 0; margin-bottom: 12px; color: #111827; font-size: 20px; font-weight: 700;">Kod parowania</h3>
-        <p style="color: #6b7280; font-size: 15px; margin-bottom: 5px;">Przekaż pracownikowi:</p>
-        <div style="font-size: 32px; font-weight: 800; color: #0284c7; margin: 15px 0; letter-spacing: 4px;">{{ generatedCode }}</div>
-        <p style="color: #6b7280; font-size: 13px; margin-bottom: 25px;">(dla: <strong>{{ empNameForPairing }}</strong>)<br>Kod jest ważny przez 3 minuty.</p>
-        
-        <button @click="showPairingModal = false" style="width: 100%; padding: 14px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;">OK, zamknij</button>
-      </div>
-    </div>
-
-  </div>
+    <div v-if="pairingCode" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Kod parowania</div><p>Wpisz kod na urządzeniu pracownika. Jest ważny przez 3 minuty.</p><div class="pairing-code">{{ pairingCode }}</div><button class="save-button full" type="button" @click="pairingCode = ''">Gotowe</button></div></div>
+  </main>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useEmployeesStore } from '../stores/employeesStore.js'
-import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
-import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js' 
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthStore } from '../stores/authStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { useEmployeeGroupsStore } from '../stores/employeeGroupsStore.js'
+import { useEmployeesStore } from '../stores/employeesStore.js'
+import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
+import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
+import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
+import { getScaledEmploymentProfile } from '../utils/employmentRules.js'
 
 const router = useRouter()
-const employeesStore = useEmployeesStore()
-const profilesStore = usePermissionProfilesStore()
-const positionsStore = useSchedulePositionsStore() 
 const authStore = useAuthStore()
 const employeeAuthStore = useEmployeeAuthStore()
+const groupsStore = useEmployeeGroupsStore()
+const employeesStore = useEmployeesStore()
+const permissionProfilesStore = usePermissionProfilesStore()
+const employmentProfilesStore = useScheduleEmploymentProfilesStore()
+const positionsStore = useSchedulePositionsStore()
 
 const scrollAreaRef = ref(null)
-let savedScrollPosition = 0
+const isFormOpen = ref(false)
+const editingEmployeeId = ref(null)
+const isSaving = ref(false)
+const searchQuery = ref('')
+const isPositionPickerOpen = ref(false)
+const positionPickerSelection = ref([])
+const employeeToDelete = ref(null)
+const pairingCode = ref('')
+const formError = ref('')
+const closedSections = () => ({ basic: false, employment: false, groups: false, positions: false, permissions: false })
+const openSections = ref(closedSections())
+
+const createEmptyForm = () => ({ imie: '', nazwisko: '', telefon: '', email: '', pin: '', aktywny: true, employmentProfileId: null, employmentPercentage: 100, employeeGroupIds: [], positionAssignments: [], permissionProfileId: '' })
+const form = ref(createEmptyForm())
+
+const isLoading = computed(() => employeesStore.isLoading || positionsStore.isLoading || groupsStore.isLoading || permissionProfilesStore.isLoading || employmentProfilesStore.isLoading)
+const employeeFormTitle = computed(() => {
+  if (!isFormOpen.value) return 'ZESPÓŁ'
+  const fullName = `${form.value.imie} ${form.value.nazwisko}`.trim()
+  return fullName ? fullName.toLocaleUpperCase('pl') : 'IMIĘ I NAZWISKO'
+})
+const filteredEmployees = computed(() => {
+  const search = searchQuery.value.trim().toLocaleLowerCase('pl')
+  return [...employeesStore.employees].filter(employee => !search || `${employee.imie} ${employee.nazwisko} ${employee.telefon}`.toLocaleLowerCase('pl').includes(search)).sort((first, second) => {
+    const activityDifference = Number(first.aktywny === false) - Number(second.aktywny === false)
+    return activityDifference || `${first.nazwisko} ${first.imie}`.localeCompare(`${second.nazwisko} ${second.imie}`, 'pl')
+  })
+})
+const availablePermissionProfiles = computed(() => {
+  if (!employeeAuthStore.currentEmployee) return permissionProfilesStore.profiles
+  return permissionProfilesStore.profiles.filter(profile => Object.entries(profile.uprawnienia || {}).every(([key, enabled]) => !enabled || employeeAuthStore.hasPermission(key)))
+})
+const selectableGroups = computed(() => groupsStore.groups.filter(group => group.active !== false || form.value.employeeGroupIds.includes(group.id)))
+const positionPickerPositions = computed(() => positionsStore.positions.filter(position => position.active !== false || form.value.positionAssignments.some(assignment => assignment.positionId === position.id)))
+const scaledEmploymentSummary = computed(() => {
+  const profile = employmentProfilesStore.profiles.find(item => item.id === form.value.employmentProfileId)
+  const scaled = getScaledEmploymentProfile(form.value, profile)
+  if (!scaled?.targetHours?.applies) return ''
+  const unit = scaled.targetHours.unit === 'week' ? 'tydzień' : 'okres rozliczeniowy'
+  const tolerance = scaled.targetTolerance?.applies ? `, tolerancja −${scaled.targetTolerance.minusHours}/+${scaled.targetTolerance.plusHours} h` : ''
+  return `${scaled.targetHours.amount} h / ${unit}${tolerance}`
+})
 
 onMounted(async () => {
-  await profilesStore.fetchProfiles() 
-  await positionsStore.fetchPositions() 
-  await employeesStore.fetchEmployees()
+  await Promise.all([employeesStore.fetchEmployees(), positionsStore.fetchPositions(), groupsStore.fetchGroups(), permissionProfilesStore.fetchProfiles(), employmentProfilesStore.fetchProfiles()])
 })
 
-const isFormOpen = ref(false)
-const showCompetencyList = ref(false) 
-const editingEmpId = ref(null)
-const isSaving = ref(false)
-const searchQuery = ref('') 
-const searchPlaceholder = ref('Szukaj pracownika...')
-
-const form = ref({
-  imie: '',
-  nazwisko: '',
-  permissionProfileId: '',
-  kompetencje: {}, 
-  pin: '',
-  stawka: '',
-  telefon: '',
-  email: '',
-  aktywny: true 
-})
-
-const isFormValid = computed(() => {
-  return form.value.imie.trim().length > 0 && 
-         form.value.nazwisko.trim().length > 0 && 
-         form.value.permissionProfileId !== '' && 
-         form.value.pin.trim().length >= 4
-})
-
-const dostepneProfile = computed(() => {
-  if (!employeeAuthStore.currentEmployee) {
-    return profilesStore.profiles
-  }
-  return profilesStore.profiles.filter(profil => {
-    const uprawnienia = profil.uprawnienia || {}
-    for (const klucz in uprawnienia) {
-      if (uprawnienia[klucz] === true) {
-        if (!employeeAuthStore.hasPermission(klucz)) {
-          return false 
-        }
-      }
-    }
-    return true 
-  })
-})
-
-const filteredAndSortedEmployees = computed(() => {
-  let list = employeesStore.employees || []
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter(emp => {
-      const fullname = `${emp.imie || ''} ${emp.nazwisko || ''}`.toLowerCase()
-      return fullname.includes(q)
-    })
-  }
-  return list.sort((a, b) => {
-    const nazwiskoA = (a.nazwisko || '').toLowerCase()
-    const nazwiskoB = (b.nazwisko || '').toLowerCase()
-    if (nazwiskoA < nazwiskoB) return -1
-    if (nazwiskoA > nazwiskoB) return 1
-    return 0
-  })
-})
-
-const handleBack = () => {
-  if (isFormOpen.value) {
-    cancelForm()
-  } else {
-    router.push('/ustawienia')
-  }
+const toggleSection = section => {
+  const shouldOpen = !openSections.value[section]
+  openSections.value = { ...closedSections(), [section]: shouldOpen }
 }
+const openOnlySection = section => { openSections.value = { ...closedSections(), [section]: true } }
+const handleBack = () => { if (isFormOpen.value) cancelForm(); else router.push('/ustawienia') }
+const getPermissionProfileName = profileId => permissionProfilesStore.profiles.find(profile => profile.id === profileId)?.nazwa || 'Brak profilu'
+const getPosition = positionId => positionsStore.positions.find(position => position.id === positionId)
+const formatRate = value => `${Number(value || 0).toFixed(2).replace('.', ',')} zł/h`
+const getDisplayedRate = assignment => assignment.hourlyRateOverride ?? Number(getPosition(assignment.positionId)?.defaultHourlyRate || 0)
 
-// Przełączanie kompetencji (Checkbox z listy)
-const toggleCompetency = (positionId) => {
-  if (form.value.kompetencje[positionId]) {
-    delete form.value.kompetencje[positionId]
-  } else {
-    form.value.kompetencje[positionId] = 5
-  }
-}
-
-// Ręczna zmiana gwiazdek
-const setStar = (positionId, stars) => {
-  form.value.kompetencje[positionId] = stars
-}
-
-// Pobieranie nazwy dla wyświetlania
-const getPositionName = (posId) => {
-  const pos = positionsStore.positions.find(p => p.id === posId)
-  return pos ? pos.nazwa : 'Nieznane stanowisko'
-}
-
-const openForm = (emp = null) => {
-  if (scrollAreaRef.value) {
-    savedScrollPosition = scrollAreaRef.value.scrollTop
-  }
-
-  showCompetencyList.value = false 
-  
-  if (emp) {
-    editingEmpId.value = emp.id
-    form.value = {
-      imie: emp.imie || '',
-      nazwisko: emp.nazwisko || '',
-      permissionProfileId: emp.permissionProfileId || emp.roleId || '',
-      kompetencje: emp.kompetencje ? { ...emp.kompetencje } : {}, 
-      pin: emp.pin || '',
-      stawka: emp.stawka || '',
-      telefon: emp.telefon || '',
-      email: emp.email || '',
-      aktywny: emp.aktywny !== false 
-    }
-  } else {
-    editingEmpId.value = null
-    form.value = { imie: '', nazwisko: '', permissionProfileId: '', kompetencje: {}, pin: '', stawka: '', telefon: '', email: '', aktywny: true }
-    generateRandomPin()
-  }
+const openForm = (employee = null) => {
+  editingEmployeeId.value = employee?.id || null
+  form.value = employee ? { ...createEmptyForm(), ...employee, employeeGroupIds: [...employee.employeeGroupIds], positionAssignments: employee.positionAssignments.map(assignment => ({ ...assignment })) } : createEmptyForm()
+  if (!employee) generateRandomPin()
+  openSections.value = closedSections()
+  formError.value = ''
+  isPositionPickerOpen.value = false
+  positionPickerSelection.value = []
   isFormOpen.value = true
 }
 
-const cancelForm = () => {
-  isFormOpen.value = false
-  editingEmpId.value = null
-  
-  nextTick(() => {
-    if (scrollAreaRef.value) {
-      scrollAreaRef.value.scrollTop = savedScrollPosition
-    }
-  })
+const cancelForm = () => { isFormOpen.value = false; editingEmployeeId.value = null; formError.value = ''; nextTick(() => { if (scrollAreaRef.value) scrollAreaRef.value.scrollTop = 0 }) }
+const generateRandomPin = () => { form.value.pin = String(Math.floor(1000 + Math.random() * 9000)) }
+const openPositionPicker = () => {
+  positionPickerSelection.value = form.value.positionAssignments.map(assignment => assignment.positionId)
+  isPositionPickerOpen.value = true
+}
+const closePositionPicker = () => { isPositionPickerOpen.value = false; positionPickerSelection.value = [] }
+const applyPositionSelection = () => {
+  const selectedIds = new Set(positionPickerSelection.value)
+  const existingAssignments = new Map(form.value.positionAssignments.map(assignment => [assignment.positionId, assignment]))
+  form.value.positionAssignments = positionPickerPositions.value
+    .filter(position => selectedIds.has(position.id))
+    .map(position => existingAssignments.get(position.id) || { positionId: position.id, competencyStars: 5, hourlyRateOverride: null })
+  closePositionPicker()
+}
+const removePositionAssignment = positionId => { form.value.positionAssignments = form.value.positionAssignments.filter(assignment => assignment.positionId !== positionId) }
+const setAssignmentRate = (assignment, value) => {
+  const parsed = Number(value)
+  const defaultRate = Number(getPosition(assignment.positionId)?.defaultHourlyRate || 0)
+  assignment.hourlyRateOverride = Number.isFinite(parsed) && Math.abs(parsed - defaultRate) >= 0.005 ? Math.max(0, Math.round(parsed * 100) / 100) : null
 }
 
-const generateRandomPin = () => {
-  const min = 1000
-  const max = 9999
-  form.value.pin = Math.floor(Math.random() * (max - min + 1) + min).toString()
+const validateForm = () => {
+  if (!form.value.imie.trim() || !form.value.nazwisko.trim() || form.value.pin.trim().length !== 4) { openOnlySection('basic'); return 'Uzupełnij imię, nazwisko i czterocyfrowy PIN.' }
+  if (!form.value.permissionProfileId) { openOnlySection('permissions'); return 'Wybierz wymagany profil uprawnień.' }
+  if (form.value.employmentProfileId && (form.value.employmentPercentage < 5 || form.value.employmentPercentage > 200 || form.value.employmentPercentage % 5 !== 0)) { openOnlySection('employment'); return 'Wymiar pracy musi mieścić się w zakresie 5–200% i być wielokrotnością 5%.' }
+  return ''
 }
 
-const cleanupExpiredCodes = async () => {
+const saveEmployee = async () => {
+  formError.value = validateForm()
+  if (formError.value || isSaving.value) return
+  isSaving.value = true
   try {
-    const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
-    if (!uid) return;
-    const codesRef = collection(db, 'pairing_codes');
-    const q = query(
-      codesRef,
-      where('companyUid', '==', uid),
-      where('expiresAt', '<', new Date()) 
-    );
-    const snapshot = await getDocs(q);
-    snapshot.forEach(async (docSnap) => {
-      await deleteDoc(docSnap.ref); 
-    });
-  } catch (e) {
-    console.error("Błąd podczas sprzątania starych kodów:", e);
+    const payload = { ...form.value, employmentPercentage: form.value.employmentProfileId ? form.value.employmentPercentage : 100, employeeGroupIds: [...form.value.employeeGroupIds], positionAssignments: form.value.positionAssignments.map(assignment => ({ ...assignment })) }
+    if (editingEmployeeId.value) await employeesStore.updateEmployee(editingEmployeeId.value, payload)
+    else await employeesStore.addEmployee(payload)
+    cancelForm()
+    searchQuery.value = ''
+  } catch (error) { formError.value = 'Nie udało się zapisać pracownika.' }
+  finally { isSaving.value = false }
+}
+
+const executeDelete = async () => {
+  if (!employeeToDelete.value) return
+  try { await employeesStore.deleteEmployee(employeeToDelete.value.id); employeeToDelete.value = null }
+  catch (error) {
+    alert(
+      error?.message ||
+      'Nie udało się usunąć pracownika.'
+    )
   }
 }
 
 const generatePairingCode = async () => {
-  if (!editingEmpId.value) {
-    alert("Najpierw zapisz pracownika, aby móc sparować urządzenie!");
-    return;
-  }
-  const uid = employeeAuthStore.restaurantId || (authStore.currentCompany ? authStore.currentCompany.uid : null);
-  if (!uid) {
-    alert("Błąd: Nie udało się zidentyfikować konta restauracji.");
-    return;
-  }
-  await cleanupExpiredCodes();
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  
+  if (!editingEmployeeId.value) return
+  const restaurantId = employeeAuthStore.restaurantId || authStore.currentCompany?.uid
+  if (!restaurantId) return
   try {
-    await setDoc(doc(db, 'pairing_codes', code), {
-      companyUid: uid,
-      employeeId: editingEmpId.value,
-      employeeName: form.value.imie,
-      createdAt: serverTimestamp(),
-      expiresAt: new Date(Date.now() + 3 * 60 * 1000) 
-    });
-    generatedCode.value = code;
-    empNameForPairing.value = form.value.imie;
-    showPairingModal.value = true;
-  } catch (e) {
-    console.error("Błąd parowania:", e);
-    alert('Wystąpił błąd podczas generowania kodu.');
-  }
+    const expiredQuery = query(collection(db, 'pairing_codes'), where('companyUid', '==', restaurantId), where('expiresAt', '<', new Date()))
+    const expiredSnapshot = await getDocs(expiredQuery)
+    await Promise.all(expiredSnapshot.docs.map(codeSnapshot => deleteDoc(codeSnapshot.ref)))
+    const code = String(Math.floor(100000 + Math.random() * 900000))
+    await setDoc(doc(db, 'pairing_codes', code), { companyUid: restaurantId, employeeId: editingEmployeeId.value, employeeName: form.value.imie, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + 3 * 60 * 1000) })
+    pairingCode.value = code
+  } catch (error) { alert('Nie udało się utworzyć kodu parowania.') }
 }
-
-const getProfileName = (profileId) => {
-  const profil = profilesStore.profiles.find(p => p.id === profileId)
-  return profil ? profil.nazwa : 'Brak przypisania'
-}
-
-const saveEmployee = async () => {
-  if (!isFormValid.value || isSaving.value) return
-  isSaving.value = true
-  try {
-    const dataToSave = { ...form.value }
-    if (editingEmpId.value) {
-      await employeesStore.updateEmployee(editingEmpId.value, dataToSave)
-    } else {
-      await employeesStore.addEmployee(dataToSave)
-    }
-    isFormOpen.value = false
-    editingEmpId.value = null
-    searchQuery.value = ''
-    nextTick(() => {
-      if (scrollAreaRef.value) {
-        scrollAreaRef.value.scrollTop = savedScrollPosition
-      }
-    })
-  } catch (error) {
-    alert('Wystąpił błąd podczas zapisu pracownika.')
-  } finally {
-    isSaving.value = false
-  }
-}
-
-const showDeleteModal = ref(false)
-const showPairingModal = ref(false)
-const generatedCode = ref('')
-const empNameForPairing = ref('')
-const empToDelete = ref(null)
-
-const confirmDelete = (emp) => {
-  empToDelete.value = emp
-  showDeleteModal.value = true
-}
-
-const executeDelete = async () => {
-  if (empToDelete.value && !isSaving.value) {
-    isSaving.value = true
-    try {
-      await employeesStore.deleteEmployee(empToDelete.value.id)
-      showDeleteModal.value = false
-      empToDelete.value = null
-    } catch (error) {
-      alert('Wystąpił błąd podczas usuwania.')
-    } finally {
-      isSaving.value = false
-    }
-  }
-}
-
-// NOWOŚĆ: Logika dla usuwania wybranej kompetencji z modalu
-const showDeleteCompetencyModal = ref(false)
-const competencyToDelete = ref(null)
-
-const confirmDeleteCompetency = (posId) => {
-  competencyToDelete.value = posId
-  showDeleteCompetencyModal.value = true
-}
-
-const executeDeleteCompetency = () => {
-  if (competencyToDelete.value) {
-    delete form.value.kompetencje[competencyToDelete.value]
-    showDeleteCompetencyModal.value = false
-    competencyToDelete.value = null
-  }
-}
-
 </script>
 
 <style scoped>
-.form-input {
-  background-color: #f3f4f6 !important; 
-  color: #0284c7 !important;            
-  font-weight: 600;
-}
-
-.form-input::placeholder {
-  color: #111827 !important;            
-  font-style: italic !important;        
-  font-weight: 400 !important;
-}
-
-.placeholder-option {
-  color: #111827 !important;
-  font-style: italic !important;
-}
+.team-scroll { background: #f6f7f9; }.team-toolbar { position: sticky; top: 0; z-index: 5; padding: 16px; border-bottom: 1px solid #e5e7eb; background: rgba(246,247,249,.95); backdrop-filter: blur(14px); }.add-employee { width: 100%; padding: 14px; border: 1px solid #bae6fd; border-radius: 14px; background: #e0f2fe; color: #0369a1; font-size: 16px; font-weight: 750; }.search-field { position: relative; display: block; margin-top: 11px; }.search-field span { position: absolute; top: 9px; left: 13px; color: #9ca3af; font-size: 22px; }.search-field input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 40px; border: 1px solid #d1d5db; border-radius: 12px; background: white; font-size: 16px; }.employee-list { display: grid; gap: 10px; padding: 14px 16px 24px; }.employee-card { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 15px; background: white; box-shadow: 0 3px 12px rgba(15,23,42,.04); }.employee-card.inactive { opacity: .58; }.employee-main { display: grid; flex: 1; min-width: 0; gap: 8px; padding: 0; border: 0; background: transparent; text-align: left; }.employee-main strong { color: #111827; font-size: 16px; }.employee-badges { display: flex; flex-wrap: wrap; gap: 5px; }.employee-badges small { padding: 3px 7px; border-radius: 6px; background: #f1f5f9; color: #475569; font-weight: 650; }.delete-icon { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; padding: 0; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; color: #dc2626; }.empty-state, .inline-empty { padding: 28px 14px; color: #9ca3af; text-align: center; }.employee-form { display: grid; gap: 11px; padding: 14px 14px 32px; }.form-status-card, .accordion-card { border: 1px solid #e5e7eb; border-radius: 16px; background: white; box-shadow: 0 3px 12px rgba(15,23,42,.04); }.form-status-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px; }.form-status-card span { display: grid; gap: 3px; }.form-status-card small { color: #6b7280; }.form-status-card input { width: 23px; height: 23px; accent-color: #10b981; }.accordion-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 16px; border: 0; background: transparent; color: #111827; font-size: 15px; font-weight: 750; text-align: left; }.accordion-toggle span { display: flex; align-items: center; gap: 10px; }.accordion-toggle b { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: #e0f2fe; color: #0284c7; font-size: 12px; }.accordion-toggle i { color: #94a3b8; font-size: 22px; font-style: normal; }.accordion-content { padding: 0 16px 16px; border-top: 1px solid #f1f5f9; }.two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.form-field { display: grid; gap: 7px; margin-top: 15px; color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; }.form-field input, .form-field select { width: 100%; box-sizing: border-box; min-height: 46px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 11px; background: white; color: #0f172a; font-size: 16px; text-transform: none; }.form-field.disabled { opacity: .48; }.pin-row { display: grid; grid-template-columns: 86px 46px minmax(0, 1fr); gap: 7px; }.pin-row .pin-input { width: 86px; text-align: center; letter-spacing: .12em; }.pin-row button, .add-position { min-height: 44px; padding: 0 12px; border: 1px solid #bae6fd; border-radius: 10px; background: #f0f9ff; color: #0369a1; font-weight: 700; }.pin-row .dice-button { padding: 0; font-size: 21px; }.range-heading { display: flex; align-items: center; justify-content: space-between; }.range-heading strong { color: #0284c7; font-size: 20px; }.range-heading small { color: #94a3b8; text-transform: none; }.form-field input[type="range"] { padding: 0; accent-color: #0ea5e9; }.field-note { margin: 12px 0 0; color: #64748b; font-size: 13px; line-height: 1.5; }.choice-row { display: flex; align-items: center; gap: 11px; min-height: 72px; box-sizing: border-box; margin-top: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; }.choice-row.selected { border-color: #7dd3fc; background: #f0f9ff; }.choice-row.inactive { opacity: .58; }.choice-row input { width: 20px; height: 20px; flex: 0 0 20px; accent-color: #0ea5e9; }.choice-row span { display: grid; min-width: 0; gap: 2px; }.choice-row small { display: -webkit-box; overflow: hidden; min-height: 32px; color: #64748b; line-height: 16px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }.add-position { width: 100%; margin-top: 10px; }.add-position:disabled { opacity: .4; }.assignment-card { margin-top: 12px; padding: 13px; border: 1px solid #e2e8f0; border-radius: 13px; background: #f8fafc; }.assignment-heading, .stars-row, .rate-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.assignment-heading span { display: grid; gap: 2px; }.assignment-heading small { color: #dc2626; }.assignment-heading button, .rate-footer button { padding: 6px 8px; border: 0; background: transparent; color: #dc2626; font-size: 12px; font-weight: 700; }.stars-row { margin-top: 13px; color: #64748b; font-size: 13px; font-weight: 700; }.stars-row button { padding: 1px; border: 0; background: transparent; color: #cbd5e1; font-size: 25px; }.stars-row button.active { color: #eab308; }.rate-field { margin-top: 12px; }.rate-input { position: relative; }.rate-input input { padding-right: 52px; }.rate-input b { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #64748b; text-transform: none; }.rate-footer { align-items: flex-start; margin-top: 8px; }.rate-footer small { color: #64748b; line-height: 1.35; }.rate-footer button { color: #0284c7; text-align: right; }.form-error { margin: 2px 0; padding: 12px; border: 1px solid #fecaca; border-radius: 11px; background: #fef2f2; color: #b91c1c; font-size: 13px; }.form-actions { display: flex; gap: 10px; margin-top: 8px; }.form-actions button, .full { flex: 1; min-height: 48px; border-radius: 12px; font-weight: 750; }.cancel-button { border: 1px solid #cbd5e1; background: white; color: #475569; }.save-button { border: 0; background: #0ea5e9; color: white; }.danger-button { border: 0; background: #ef4444; color: white; }.dialog-card { max-width: 340px; text-align: center; }.dialog-card p, .position-picker-card p { color: #64748b; line-height: 1.45; }.position-picker-card { width: min(390px, calc(100vw - 28px)); max-height: min(680px, calc(100vh - 40px)); overflow: auto; }.position-picker-list { margin-top: 14px; }.pairing-code { margin: 18px 0; color: #0369a1; font-size: 36px; font-weight: 800; letter-spacing: .16em; }.full { width: 100%; padding: 0 20px; }
+.employment-summary { display: grid; gap: 4px; margin-top: 12px; padding: 12px; border-radius: 11px; background: #f0f9ff; color: #075985; font-size: 13px; }
+.search-field input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
+.search-field input::placeholder { color: #94a3b8; opacity: 1; -webkit-text-fill-color: #94a3b8; }
+.accordion-card { overflow: hidden; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.accordion-card.open { border-color: #7dd3fc; background: #f0f9ff; box-shadow: 0 5px 18px rgba(14, 165, 233, .13); }
+.accordion-card.open .accordion-toggle { background: #e8f7ff; }
+.accordion-card.open .accordion-content { background: rgba(255, 255, 255, .8); }
+@media (max-width: 380px) { .two-columns { grid-template-columns: 1fr; }.pin-row { grid-template-columns: 82px 44px minmax(0, 1fr); }.pin-row .pin-input { width: 82px; }.pin-row button { padding: 0 7px; font-size: 12px; } }
+@media (min-width: 760px) { .employee-form, .employee-list, .team-toolbar { max-width: 720px; margin-right: auto; margin-left: auto; box-sizing: border-box; } }
 </style>

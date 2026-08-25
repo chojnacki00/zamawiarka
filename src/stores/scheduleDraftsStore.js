@@ -86,6 +86,7 @@ export const useScheduleDraftsStore = defineStore(
             from: group.from,
             to: group.to,
             employeeId: null,
+            employeeNameSnapshot: null,
             assignmentSource: null,
             decision: null,
             warnings: []
@@ -428,6 +429,7 @@ export const useScheduleDraftsStore = defineStore(
       dayId,
       shiftId,
       employeeId,
+      employeeNameSnapshot = null,
       decision = null,
       warnings = []
     }) => {
@@ -444,6 +446,15 @@ export const useScheduleDraftsStore = defineStore(
       const normalizedWarnings = Array.isArray(warnings)
         ? warnings.filter(Boolean).map(String)
         : []
+      const normalizedEmployeeName = String(
+        employeeNameSnapshot || ''
+      ).trim()
+
+      if (employeeId && !normalizedEmployeeName) {
+        throw new Error(
+          'Nie udało się zapisać nazwy pracownika w historii grafiku.'
+        )
+      }
       const scheduleRef = doc(
         db,
         'users',
@@ -495,6 +506,9 @@ export const useScheduleDraftsStore = defineStore(
           return {
             ...shift,
             employeeId: nextEmployeeId,
+            employeeNameSnapshot: nextEmployeeId
+              ? normalizedEmployeeName
+              : null,
             assignmentSource: nextEmployeeId
               ? normalizedWarnings.length > 0
                 ? 'OVERRIDE'
@@ -596,6 +610,7 @@ export const useScheduleDraftsStore = defineStore(
       scheduleId,
       dayId,
       employeeId,
+      employeeNameSnapshot,
       positionId = null,
       positionNameSnapshot = 'Bez stanowiska',
       from,
@@ -620,6 +635,15 @@ export const useScheduleDraftsStore = defineStore(
       const normalizedWarnings = Array.isArray(warnings)
         ? warnings.filter(Boolean).map(String)
         : []
+      const normalizedEmployeeName = String(
+        employeeNameSnapshot || ''
+      ).trim()
+
+      if (!normalizedEmployeeName) {
+        throw new Error(
+          'Nie udało się zapisać nazwy pracownika w historii grafiku.'
+        )
+      }
       const extraShiftId = `extra_${createFragmentId()}`
       const scheduleRef = doc(
         db,
@@ -658,6 +682,7 @@ export const useScheduleDraftsStore = defineStore(
           from,
           to,
           employeeId,
+          employeeNameSnapshot: normalizedEmployeeName,
           assignmentSource: normalizedWarnings.length > 0
             ? 'OVERRIDE'
             : 'MANUAL',

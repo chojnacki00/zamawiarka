@@ -17,6 +17,7 @@ const routes = [
   { path: '/rentownosc', name: 'Rentownosc', component: RentownoscView },
   { path: '/ustawienia', name: 'Ustawienia', component: () => import('./views/UstawieniaView.vue') },
   { path: '/ustawienia/profile-zatrudnienia', name: 'ProfileZatrudnienia', component: () => import('./views/grafik/GrafikProfileZatrudnieniaView.vue') },
+  { path: '/ustawienia/grupy-pracownicze', name: 'GrupyPracownicze', component: () => import('./views/UstawieniaGrupPracowniczychView.vue') },
   { path: '/profile-uprawnien', name: 'ProfileUprawnien', component: () => import('./views/UstawieniaProfiliView.vue') },
   { path: '/stanowiska-grafik', name: 'StanowiskaGrafikowe', component: () => import('./views/StanowiskaGrafikoweView.vue') },
   { path: '/zespol', name: 'Zespol', component: () => import('./views/UstawieniaZespoluView.vue') },
@@ -137,6 +138,7 @@ router.beforeEach(async (to, from, next) => {
   const isManagerRoute = [
     '/ustawienia',
     '/ustawienia/profile-zatrudnienia',
+    '/ustawienia/grupy-pracownicze',
     '/profile-uprawnien',
     '/stanowiska-grafik',
     '/zespol'
@@ -156,6 +158,10 @@ router.beforeEach(async (to, from, next) => {
       return next('/') 
     }
     // W przeciwnym razie - brama otwarta, wpuszczamy!
+  }
+
+  if (hasEmployeeSession && to.path === '/ustawienia/grupy-pracownicze' && !employeeStore.hasPermission('can_manage_employees')) {
+    return next('/ustawienia')
   }
 
   // === NOWOŚĆ: ZASADA 3 - Blokada konkretnych modułów na podstawie uprawnień ===

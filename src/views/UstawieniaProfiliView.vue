@@ -36,6 +36,11 @@
             v-for="profil in profilesStore.profiles" 
             :key="profil.id"
             class="item-card"
+            role="button"
+            tabindex="0"
+            @click="openForm(profil)"
+            @keydown.enter="openForm(profil)"
+            @keydown.space.prevent="openForm(profil)"
             style="padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"
           >
             <span translate="no" class="notranslate" style="font-weight: 600; color: #111827; font-size: 16px;">
@@ -43,20 +48,10 @@
             </span>
             
             <div style="display: flex; gap: 10px;">
-              <!-- Ikonka Edytuj -->
-              <button 
-                @click="openForm(profil)" 
-                style="background: white; border: 1px solid #d1d5db; border-radius: 8px; color: #374151; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-              </button>
-
               <!-- Ikonka Usuń -->
               <button 
-                @click="confirmDelete(profil)" 
+                @click.stop="confirmDelete(profil)"
+                @keydown.stop
                 style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #ef4444; cursor: pointer; padding: 8px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -72,7 +67,7 @@
       </div>
 
       <!-- === WIDOK 2: FORMULARZ DODAWANIA/EDYCJI === -->
-      <div v-else>
+      <div v-else class="floating-actions-content">
         <div style="margin-bottom: 25px;">
           <label style="display: block; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 8px;">
             Nazwa profilu (np. Kelnerzy)
@@ -127,20 +122,25 @@
         </div>
 
         <!-- PRZYCISKI AKCJI FORMULARZA -->
-        <div style="display: flex; gap: 12px; margin-top: 30px; padding-bottom: 40px;">
-          <button 
+        <div class="floating-form-actions">
+          <button
+            type="button"
+            class="floating-form-action cancel"
+            aria-label="Anuluj"
+            title="Anuluj"
             @click="cancelForm"
-            style="flex: 1; padding: 15px; border: 1px solid #d1d5db; background: white; color: #374151; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer;"
           >
-            Anuluj
+            ×
           </button>
-          <button 
+          <button
+            type="button"
+            class="floating-form-action save"
+            aria-label="Zapisz"
+            title="Zapisz"
             @click="saveProfile"
-            style="flex: 1; padding: 15px; border: none; background: #0ea5e9; color: white; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; transition: opacity 0.2s;"
             :disabled="!newProfileName.trim() || isSaving"
-            :style="{ opacity: (!newProfileName.trim() || isSaving) ? 0.5 : 1 }"
           >
-            {{ isSaving ? 'Zapisywanie...' : 'Zapisz' }}
+            {{ isSaving ? '…' : '✓' }}
           </button>
         </div>
       </div>

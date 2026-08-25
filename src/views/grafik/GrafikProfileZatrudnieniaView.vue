@@ -78,7 +78,7 @@
       class="app-dialog-overlay employment-editor-overlay"
       @click.self="closeEditor"
     >
-      <div class="app-dialog-card employment-editor-card">
+      <div class="app-dialog-card employment-editor-card floating-actions-content">
         <div class="employment-editor-kicker">
           {{ form.id ? 'EDYCJA PROFILU' : 'NOWY PROFIL' }}
         </div>
@@ -371,17 +371,19 @@
             Usuń profil
           </button>
 
-          <div>
-            <button class="employment-cancel" type="button" :disabled="profilesStore.isSaving" @click="closeEditor">
-              Anuluj
+          <div class="floating-form-actions">
+            <button class="employment-cancel floating-form-action cancel" type="button" aria-label="Anuluj" title="Anuluj" :disabled="profilesStore.isSaving" @click="closeEditor">
+              ×
             </button>
             <button
-              class="employment-save"
+              class="employment-save floating-form-action save"
               type="button"
+              aria-label="Zapisz profil"
+              title="Zapisz profil"
               :disabled="profilesStore.isSaving || weeklyHoursConflict"
               @click="saveProfile"
             >
-              {{ profilesStore.isSaving ? 'Zapisywanie…' : 'Zapisz profil' }}
+              {{ profilesStore.isSaving ? '…' : '✓' }}
             </button>
           </div>
         </div>
