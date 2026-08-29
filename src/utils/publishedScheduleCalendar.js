@@ -21,6 +21,11 @@ export const PUBLISHED_CALENDAR_WEEKDAYS = Object.freeze([
 ])
 
 export const MAX_PUBLISHED_SHIFT_LAYERS = 3
+export const PUBLISHED_POSITION_LABEL_LIMITS = Object.freeze({
+  compact: 7,
+  medium: 11,
+  desktop: 15
+})
 
 const formatUtcDateKey = date => {
   const year = date.getUTCFullYear()
@@ -345,6 +350,26 @@ const hasPositionSnapshot = shift => (
   Boolean(String(shift?.positionNameSnapshot || '').trim())
 )
 
+export const truncatePublishedPositionName = (
+  value,
+  maxLength
+) => {
+  const normalizedValue = String(value || '').trim()
+  const normalizedLimit = Math.max(
+    1,
+    Math.floor(Number(maxLength) || 1)
+  )
+  const characters = Array.from(normalizedValue)
+
+  if (characters.length <= normalizedLimit) return normalizedValue
+  if (normalizedLimit === 1) return '/'
+
+  return characters
+    .slice(0, normalizedLimit - 1)
+    .join('')
+    .trimEnd() + '/'
+}
+
 export const getPublishedShiftCardPresentation = shift => {
   const isExtra = shift?.shiftType === PUBLIC_SHIFT_TYPES.EXTRA
   const normalizedPositionColor = normalizeSchedulePositionColor(
@@ -356,12 +381,18 @@ export const getPublishedShiftCardPresentation = shift => {
     ? PUBLISHED_SCHEDULE_EXTRA_COLOR
     : normalizedPositionColor || PUBLISHED_SCHEDULE_NEUTRAL_COLOR
   const colorOption = getSchedulePositionColorOption(backgroundColor)
-  const extraColorOption = getSchedulePositionColorOption(
-    PUBLISHED_SCHEDULE_EXTRA_COLOR
-  )
   const positionName = String(
     shift?.positionNameSnapshot || ''
   ).trim()
+  const positionLabel = isExtra && !usesPositionColor
+    ? 'Dodatkowa'
+    : positionName || 'Bez stanowiska'
+  const preserveFullPositionLabel = positionLabel === 'Dodatkowa'
+  const getDisplayPositionLabel = limit => (
+    preserveFullPositionLabel
+      ? positionLabel
+      : truncatePublishedPositionName(positionLabel, limit)
+  )
 
   return {
     id: String(shift?.id || '').trim(),
@@ -370,12 +401,18 @@ export const getPublishedShiftCardPresentation = shift => {
     timeLabel: `${shift?.from || ''}–${shift?.to || ''}`,
     compactTimeLabel:
       `${formatCompactTime(shift?.from)}–${formatCompactTime(shift?.to)}`,
-    positionLabel: isExtra && !usesPositionColor
-      ? 'Dodatkowa'
-      : positionName || 'Bez stanowiska',
+    positionLabel,
+    compactPositionLabel: getDisplayPositionLabel(
+      PUBLISHED_POSITION_LABEL_LIMITS.compact
+    ),
+    mediumPositionLabel: getDisplayPositionLabel(
+      PUBLISHED_POSITION_LABEL_LIMITS.medium
+    ),
+    desktopPositionLabel: getDisplayPositionLabel(
+      PUBLISHED_POSITION_LABEL_LIMITS.desktop
+    ),
     backgroundColor,
     textColor: colorOption.textColor,
-    accentColor: isExtra ? extraColorOption.textColor : 'transparent',
     isExtra,
     usesPositionColor
   }

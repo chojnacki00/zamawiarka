@@ -11,8 +11,10 @@ import {
   getPublishedCalendarAccess,
   getPublishedShiftCardPresentation,
   mergePublishedCalendarMonth,
+  PUBLISHED_POSITION_LABEL_LIMITS,
   resolvePublishedCalendarEmployeeId,
-  sortPublishedShiftsForDisplay
+  sortPublishedShiftsForDisplay,
+  truncatePublishedPositionName
 } from '../src/utils/publishedScheduleCalendar.js'
 import {
   PUBLISHED_SCHEDULE_EXTRA_COLOR,
@@ -236,7 +238,7 @@ test('zwykła zmiana bez koloru korzysta z neutralnego wariantu', () => {
   assert.equal(card.textColor, '#1F2937')
 })
 
-test('zmiana dodatkowa ze stanowiskiem zachowuje jego kolor i fioletowy akcent', () => {
+test('zmiana dodatkowa ze stanowiskiem zachowuje jego kolor i typ EXTRA', () => {
   const card = getPublishedShiftCardPresentation(createShift(
     'extra',
     'employee-1',
@@ -248,7 +250,6 @@ test('zmiana dodatkowa ze stanowiskiem zachowuje jego kolor i fioletowy akcent',
 
   assert.equal(card.backgroundColor, '#86EFAC')
   assert.equal(card.textColor, '#14532D')
-  assert.equal(card.accentColor, '#4C1D95')
   assert.equal(card.positionLabel, 'Pizzer')
   assert.equal(card.isExtra, true)
 })
@@ -301,16 +302,21 @@ test('jedna zmiana tworzy jedną warstwę bez licznika', () => {
   assert.equal(stack.hiddenCount, 0)
 })
 
-test('dwie zmiany tworzą dwie nakładające się warstwy', () => {
+test('wcześniejsza zmiana znajduje się nad późniejszą w stosie', () => {
   const stack = buildPublishedShiftStack({
     shifts: [
-      createShift('shift-1', 'employee-1'),
-      createShift('shift-2', 'employee-1', { from: '18:00' })
+      createShift('shift-late', 'employee-1', { from: '15:00' }),
+      createShift('shift-early', 'employee-1', { from: '09:00' })
     ]
   })
 
+  assert.deepEqual(
+    stack.cards.map(card => card.id),
+    ['shift-early', 'shift-late']
+  )
   assert.deepEqual(stack.cards.map(card => card.layerIndex), [0, 1])
   assert.deepEqual(stack.cards.map(card => card.zIndex), [2, 1])
+  assert.ok(stack.cards[0].zIndex > stack.cards[1].zIndex)
   assert.equal(stack.hiddenCount, 0)
 })
 
@@ -351,6 +357,33 @@ test('długa nazwa stanowiska pozostaje w modelu kapsla do ucięcia przez CSS', 
   ))
 
   assert.equal(card.positionLabel, longName)
+  assert.match(card.compactPositionLabel, /\/$/)
+  assert.match(card.mediumPositionLabel, /\/$/)
+  assert.match(card.desktopPositionLabel, /\/$/)
+})
+
+test('krótka nazwa stanowiska pozostaje bez znaku skrócenia', () => {
+  assert.equal(truncatePublishedPositionName('Bar', 7), 'Bar')
+})
+
+test('długa nazwa stanowiska kończy się pojedynczym znakiem ukośnika', () => {
+  assert.equal(
+    truncatePublishedPositionName('Kucharka zmianowa', 7),
+    'Kuchar/'
+  )
+})
+
+test('skrócona nazwa mieści się w limicie wariantu kompaktowego', () => {
+  const result = truncatePublishedPositionName(
+    'Bardzo długie stanowisko',
+    PUBLISHED_POSITION_LABEL_LIMITS.compact
+  )
+
+  assert.equal(
+    Array.from(result).length,
+    PUBLISHED_POSITION_LABEL_LIMITS.compact
+  )
+  assert.equal(result.endsWith('/'), true)
 })
 
 test('buduje czytelny opis aria-label dnia wraz ze wszystkimi zmianami', () => {

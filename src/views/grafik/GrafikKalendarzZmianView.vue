@@ -134,9 +134,20 @@
                 <span class="shift-card-time compact-time">
                   {{ card.compactTimeLabel }}
                 </span>
+                <span
+                  v-if="card.isExtra"
+                  class="extra-symbol"
+                >+</span>
                 <span class="shift-card-position">
-                  <b v-if="card.isExtra" class="extra-symbol">+</b>
-                  <span>{{ card.positionLabel }}</span>
+                  <span class="position-label compact-position-label">
+                    {{ card.compactPositionLabel }}
+                  </span>
+                  <span class="position-label medium-position-label">
+                    {{ card.mediumPositionLabel }}
+                  </span>
+                  <span class="position-label desktop-position-label">
+                    {{ card.desktopPositionLabel }}
+                  </span>
                 </span>
               </div>
               <span
@@ -293,7 +304,6 @@ const calendarDays = computed(() => {
 const getPublishedShiftCardStyle = card => ({
   '--shift-card-background': card.backgroundColor,
   '--shift-card-color': card.textColor,
-  '--shift-card-accent': card.accentColor,
   '--shift-card-layer': card.layerIndex,
   '--shift-card-z-index': card.zIndex
 })
@@ -549,7 +559,7 @@ onMounted(async () => {
 
 .calendar-day.inactive {
   color: #94a3b8;
-  background: #f8fafc;
+  background: #f1f5f9;
 }
 
 .calendar-day.outside {
@@ -598,11 +608,12 @@ onMounted(async () => {
 
 .shift-card-stack {
   position: absolute;
+  top: 32px;
   right: 3px;
   bottom: 3px;
   left: 3px;
-  height: 36px;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -618,6 +629,7 @@ onMounted(async () => {
   min-width: 0;
   padding: 3px 4px;
   box-sizing: border-box;
+  border: 1px solid #111827;
   border-radius: 6px;
   color: var(--shift-card-color);
   background: var(--shift-card-background);
@@ -627,11 +639,6 @@ onMounted(async () => {
   font-weight: 800;
   line-height: 1.05;
   white-space: nowrap;
-}
-
-.published-shift-card.extra {
-  border-top: 3px solid var(--shift-card-accent);
-  padding-top: 1px;
 }
 
 .published-shift-card.has-overflow {
@@ -644,7 +651,7 @@ onMounted(async () => {
   display: block;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -655,19 +662,36 @@ onMounted(async () => {
 .shift-card-position {
   display: flex;
   align-items: center;
-  gap: 2px;
   margin-top: 1px;
   font-size: 8px;
 }
 
-.shift-card-position span {
+.shift-card-position .position-label {
+  display: none;
   flex: 1 1 auto;
 }
 
+.shift-card-position .compact-position-label {
+  display: block;
+}
+
 .extra-symbol {
-  flex: 0 0 auto;
-  font-size: 10px;
-  line-height: 0.8;
+  position: absolute;
+  z-index: 2;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #111827;
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .compact-time {
@@ -677,7 +701,7 @@ onMounted(async () => {
 .hidden-shifts-count {
   position: absolute;
   z-index: 10;
-  top: 1px;
+  bottom: 1px;
   right: 1px;
   display: inline-flex;
   min-width: 14px;
@@ -748,6 +772,16 @@ onMounted(async () => {
   }
 }
 
+@media (min-width: 521px) and (max-width: 759px) {
+  .shift-card-position .compact-position-label {
+    display: none;
+  }
+
+  .shift-card-position .medium-position-label {
+    display: block;
+  }
+}
+
 @media (max-width: 420px) {
   .calendar-panel {
     border-radius: 17px;
@@ -766,6 +800,7 @@ onMounted(async () => {
   }
 
   .shift-card-stack {
+    top: 29px;
     right: 2px;
     bottom: 2px;
     left: 2px;
@@ -798,10 +833,10 @@ onMounted(async () => {
   }
 
   .shift-card-stack {
+    top: 38px;
     right: 7px;
     bottom: 7px;
     left: 7px;
-    height: 43px;
   }
 
   .published-shift-card {
@@ -811,17 +846,24 @@ onMounted(async () => {
     border-radius: 8px;
   }
 
-  .published-shift-card.extra {
-    padding-top: 2px;
-  }
-
   .shift-card-time,
   .shift-card-position {
     font-size: 10px;
   }
 
   .extra-symbol {
-    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    font-size: 9px;
+  }
+
+  .shift-card-position .compact-position-label,
+  .shift-card-position .medium-position-label {
+    display: none;
+  }
+
+  .shift-card-position .desktop-position-label {
+    display: block;
   }
 }
 
