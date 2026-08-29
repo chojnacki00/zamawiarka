@@ -11,18 +11,15 @@
     </div>
 
     <div class="scroll-area published-calendar-scroll">
-      <section class="published-calendar-card employee-panel">
-        <div class="section-heading">
-          <span>PODGLĄD PRACOWNIKA</span>
-          <h3>Kalendarz — podgląd zmian</h3>
-        </div>
-
+      <div class="employee-control">
         <label
           v-if="access.canSelectEmployee"
           class="employee-selector"
         >
-          <span>Pracownik</span>
-          <select v-model="selectedEmployeeId">
+          <select
+            v-model="selectedEmployeeId"
+            aria-label="Pracownik"
+          >
             <option value="">Wybierz pracownika</option>
             <option
               v-for="employee in selectableEmployees"
@@ -34,15 +31,18 @@
           </select>
         </label>
 
-        <div v-else class="employee-readonly">
-          <span>Pracownik</span>
-          <strong>{{ ownEmployeeName }}</strong>
+        <div
+          v-else
+          class="employee-readonly"
+          aria-label="Pracownik"
+        >
+          {{ ownEmployeeName }}
         </div>
 
         <div v-if="sessionEmployeeError" class="calendar-message error">
           Nie udało się rozpoznać pracownika dla tej sesji.
         </div>
-      </section>
+      </div>
 
       <div v-if="isLoading" class="published-calendar-card calendar-state">
         Pobieranie opublikowanego grafiku...
@@ -77,13 +77,6 @@
 
         <div v-if="hasNoPublishedSchedules" class="calendar-message">
           Brak opublikowanego grafiku.
-        </div>
-
-        <div
-          v-else-if="access.isAdmin && !selectedEmployeeId"
-          class="calendar-message"
-        >
-          Wybierz pracownika, aby zobaczyć jego grafik.
         </div>
 
         <div class="calendar-weekdays" aria-hidden="true">
@@ -343,8 +336,22 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.published-calendar-screen {
+  overflow: hidden;
+}
+
+.published-calendar-screen > .zamawiarka-menu-topbar {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+
 .published-calendar-scroll {
-  padding-top: 4px;
+  display: flex;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: max(4px, env(safe-area-inset-bottom));
+  flex-direction: column;
+  overflow-y: hidden;
 }
 
 .published-calendar-card {
@@ -359,36 +366,30 @@ onMounted(async () => {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
 }
 
-.employee-panel {
-  padding: 18px;
-}
-
-.section-heading > span,
-.employee-selector > span,
-.employee-readonly > span {
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.section-heading h3 {
-  margin: 5px 0 16px;
-  color: #111827;
-  font-size: 21px;
-}
-
+.employee-control,
 .employee-selector,
 .employee-readonly {
-  display: grid;
-  gap: 7px;
+  width: 100%;
+  max-width: 920px;
+  margin-right: auto;
+  margin-left: auto;
+  box-sizing: border-box;
+}
+
+.employee-control {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
+.employee-selector {
+  display: block;
 }
 
 .employee-selector select,
-.employee-readonly strong {
+.employee-readonly {
   width: 100%;
-  min-height: 50px;
+  height: 44px;
+  min-height: 44px;
   padding: 0 14px;
   box-sizing: border-box;
   border: 1px solid #bfdbfe;
@@ -399,34 +400,38 @@ onMounted(async () => {
   font-weight: 750;
 }
 
-.employee-readonly strong {
+.employee-readonly {
   display: flex;
   align-items: center;
 }
 
 .calendar-panel {
-  margin-top: 14px;
-  padding: 14px 10px 18px;
+  display: flex;
+  min-height: 0;
+  padding: 5px 6px 7px;
+  flex: 1 1 auto;
+  flex-direction: column;
   overflow: hidden;
 }
 
 .month-navigation {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  min-height: 44px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 2px;
 }
 
 .month-navigation button {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 1px solid #cbd5e1;
   border-radius: 50%;
   color: #1d4ed8;
   background: #f8fafc;
-  font-size: 29px;
+  font-size: 26px;
   line-height: 1;
 }
 
@@ -450,9 +455,15 @@ onMounted(async () => {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+.calendar-grid {
+  min-height: 0;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  flex: 1 1 auto;
+}
+
 .calendar-weekdays span {
   min-width: 0;
-  padding: 7px 0 9px;
+  padding: 3px 0 5px;
   color: #64748b;
   font-size: 10px;
   font-weight: 900;
@@ -462,8 +473,8 @@ onMounted(async () => {
 .calendar-day {
   position: relative;
   min-width: 0;
-  min-height: 72px;
-  padding: 7px 5px;
+  min-height: 0;
+  padding: 4px 3px;
   box-sizing: border-box;
   color: #1f2937;
   background: #ffffff;
@@ -498,8 +509,8 @@ onMounted(async () => {
 
 .day-number {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
@@ -537,7 +548,7 @@ onMounted(async () => {
 }
 
 .calendar-state {
-  margin-top: 14px;
+  margin-top: 0;
   padding: 26px 18px;
   color: #64748b;
   text-align: center;
@@ -562,8 +573,8 @@ onMounted(async () => {
 }
 
 .calendar-message {
-  margin: 5px 0 12px;
-  padding: 10px 12px;
+  margin: 2px 0 6px;
+  padding: 7px 10px;
   border-radius: 12px;
   color: #475569;
   background: #f1f5f9;
@@ -573,45 +584,62 @@ onMounted(async () => {
 }
 
 .calendar-message.error {
-  margin-top: 13px;
+  margin-top: 6px;
   color: #b91c1c;
   background: #fee2e2;
 }
 
 @media (max-width: 420px) {
-  .employee-panel {
-    padding: 15px;
-  }
-
   .calendar-panel {
-    padding-right: 5px;
-    padding-left: 5px;
+    border-radius: 17px;
+    padding-right: 4px;
+    padding-left: 4px;
   }
 
   .calendar-day {
-    min-height: 62px;
-    padding: 5px 3px;
+    padding: 3px 2px;
   }
 
   .day-number {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
     font-size: 12px;
   }
 }
 
 @media (min-width: 760px) {
+  .published-calendar-scroll {
+    align-items: center;
+  }
+
+  .employee-control {
+    margin-bottom: 10px;
+  }
+
   .calendar-panel {
-    padding: 20px 22px 24px;
+    width: 100%;
+    max-height: 720px;
+    padding: 10px 14px 14px;
+    flex: 0 1 720px;
   }
 
   .calendar-day {
-    min-height: 96px;
-    padding: 10px;
+    padding: 8px;
   }
 
   .day-number {
     font-size: 14px;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 620px) {
+  .published-calendar-scroll {
+    overflow-y: auto;
+  }
+
+  .calendar-panel {
+    min-height: 400px;
+    flex: 0 0 400px;
   }
 }
 </style>
