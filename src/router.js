@@ -24,6 +24,7 @@ const routes = [
   { path: '/logowanie', name: 'LogowaniePIN', component: () => import('./views/PinLoginView.vue') },
   { path: '/terminal', name: 'Terminal', component: () => import('./views/TerminalView.vue') },
   { path: '/grafik', name: 'GrafikHome', component: () => import('./views/grafik/GrafikHomeView.vue') },
+  { path: '/grafik/kalendarz', name: 'GrafikKalendarzZmian', component: () => import('./views/grafik/GrafikKalendarzZmianView.vue') },
   { path: '/grafik/tworzenie', name: 'GrafikTworzenie', component: () => import('./views/grafik/GrafikTworzenieView.vue') },
   { path: '/grafik/grafiki', name: 'GrafikiLista', component: () => import('./views/grafik/GrafikiListaView.vue') },
   { path: '/grafik/grafiki/:id', name: 'GrafikRoboczy', component: () => import('./views/grafik/GrafikRoboczyView.vue') },
@@ -158,6 +159,26 @@ router.beforeEach(async (to, from, next) => {
       return next('/') 
     }
     // W przeciwnym razie - brama otwarta, wpuszczamy!
+  }
+
+  if (to.name === 'GrafikKalendarzZmian') {
+    if (hasEmployeeSession) {
+      if (!employeeStore.hasPermission('can_view_schedule')) {
+        console.warn(
+          'Strażnik: Brak uprawnienia do podglądu grafiku!'
+        )
+        return next('/grafik')
+      }
+    } else {
+      const firebaseUser = await getResolvedFirebaseUser()
+
+      if (!firebaseUser) {
+        console.warn(
+          'Strażnik: Próba podglądu grafiku bez logowania!'
+        )
+        return next('/login')
+      }
+    }
   }
 
   if (hasEmployeeSession && to.path === '/ustawienia/grupy-pracownicze' && !employeeStore.hasPermission('can_manage_employees')) {

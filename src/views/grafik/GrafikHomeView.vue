@@ -43,7 +43,11 @@
       </button>
       
       <!-- KAFELEK 1: KALENDARZ ZMIAN -->
-      <button @click="goTo('kalendarz')" class="ios-menu-tile efekt-kliku">
+      <button
+        v-if="canViewSchedule"
+        @click="goTo('kalendarz')"
+        class="ios-menu-tile efekt-kliku"
+      >
         <!-- Klasa niebieska z Zamawiarki -->
         <div class="ios-menu-icon ios-menu-icon-blue">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -127,6 +131,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
+import { getAuth } from 'firebase/auth'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore'
 
 const router = useRouter()
@@ -136,6 +141,12 @@ const employeeAuthStore = useEmployeeAuthStore()
 const isManagerOrHasPermission = computed(() => {
   if (!employeeAuthStore.currentEmployee) return true 
   return employeeAuthStore.hasPermission('can_manage_schedule')
+})
+const canViewSchedule = computed(() => {
+  if (!employeeAuthStore.currentEmployee) {
+    return Boolean(getAuth().currentUser)
+  }
+  return employeeAuthStore.hasPermission('can_view_schedule')
 })
 
 const goBack = () => {

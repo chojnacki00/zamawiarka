@@ -15,6 +15,7 @@
     "test:schedule-assignments": "node --test tests/scheduleAssignments.test.js",
     "test:schedule-publication": "node --test tests/schedulePublication.test.js",
     "test:schedule-publication-withdrawal": "node --test tests/schedulePublicationWithdrawal.test.js",
+    "test:published-schedule-calendar": "node --test tests/publishedScheduleCalendar.test.js",
     "test:schedule-public-projection": "node --test tests/schedulePublicProjection.test.js",
     "test:schedule-position-colors": "node --test tests/schedulePositionColors.test.js",
     "preview": "vite preview"
