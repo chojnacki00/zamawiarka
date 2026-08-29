@@ -11,6 +11,23 @@ export const PUBLICATION_STATUSES = Object.freeze({
   PUBLISHED: 'published'
 })
 
+const DEFAULT_PUBLICATION_ERROR_MESSAGE =
+  'Nie udało się opublikować grafiku. Odśwież widok i spróbuj ponownie.'
+
+const PUBLICATION_PERMISSION_ERROR_MESSAGE =
+  'Nie można opublikować grafiku. Twoja sesja nie ma uprawnień do wykonania tej operacji. Skontaktuj się z administratorem.'
+
+export const getSchedulePublicationErrorMessage = error => {
+  const errorCode = String(error?.code || '').trim()
+
+  return (
+    errorCode === 'permission-denied' ||
+    errorCode.endsWith('/permission-denied')
+  )
+    ? PUBLICATION_PERMISSION_ERROR_MESSAGE
+    : DEFAULT_PUBLICATION_ERROR_MESSAGE
+}
+
 const cloneValue = value => {
   if (Array.isArray(value)) {
     return Array.from(value, child => (

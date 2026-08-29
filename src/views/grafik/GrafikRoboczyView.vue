@@ -649,7 +649,8 @@ import {
   PUBLICATION_STATUSES,
   canPublishSchedule,
   getDefaultPublicationEndDate,
-  getPublicationDateKeys
+  getPublicationDateKeys,
+  getSchedulePublicationErrorMessage
 } from '../../utils/schedulePublication.js'
 
 const route = useRoute()
@@ -972,8 +973,7 @@ const confirmPublication = async () => {
     publishedSuccessUntil.value = publishedUntil
   } catch (error) {
     console.error('Błąd publikowania grafiku:', error)
-    publicationError.value =
-      'Nie udało się opublikować grafiku. Odśwież widok i spróbuj ponownie.'
+    publicationError.value = getSchedulePublicationErrorMessage(error)
   } finally {
     isPublishing.value = false
   }

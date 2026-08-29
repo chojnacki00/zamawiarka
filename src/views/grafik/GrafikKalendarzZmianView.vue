@@ -607,9 +607,10 @@ onMounted(async () => {
 }
 
 .shift-card-stack {
+  --extra-symbol-overhang: 3px;
   position: absolute;
-  top: 32px;
-  right: 3px;
+  top: 29px;
+  right: 0;
   bottom: 3px;
   left: 3px;
   min-width: 0;
@@ -621,8 +622,8 @@ onMounted(async () => {
 .published-shift-card {
   position: absolute;
   z-index: var(--shift-card-z-index);
-  top: calc(var(--shift-card-layer) * 4px);
-  right: calc(var(--shift-card-layer) * 1px);
+  top: calc(var(--extra-symbol-overhang) + (var(--shift-card-layer) * 4px));
+  right: calc(var(--extra-symbol-overhang) + (var(--shift-card-layer) * 1px));
   left: calc(var(--shift-card-layer) * 1px);
   display: flex;
   height: 28px;
@@ -635,7 +636,7 @@ onMounted(async () => {
   background: var(--shift-card-background);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   font-weight: 800;
   line-height: 1.05;
   white-space: nowrap;
@@ -678,8 +679,8 @@ onMounted(async () => {
 .extra-symbol {
   position: absolute;
   z-index: 2;
-  top: 2px;
-  right: 2px;
+  top: calc(0px - var(--extra-symbol-overhang));
+  right: calc(0px - var(--extra-symbol-overhang));
   display: inline-flex;
   width: 11px;
   height: 11px;
@@ -800,8 +801,9 @@ onMounted(async () => {
   }
 
   .shift-card-stack {
-    top: 29px;
-    right: 2px;
+    --extra-symbol-overhang: 2px;
+    top: 27px;
+    right: 0;
     bottom: 2px;
     left: 2px;
   }
@@ -833,14 +835,14 @@ onMounted(async () => {
   }
 
   .shift-card-stack {
-    top: 38px;
-    right: 7px;
+    top: 35px;
+    right: 4px;
     bottom: 7px;
     left: 7px;
   }
 
   .published-shift-card {
-    top: calc(var(--shift-card-layer) * 5px);
+    top: calc(var(--extra-symbol-overhang) + (var(--shift-card-layer) * 5px));
     height: 33px;
     padding: 4px 7px;
     border-radius: 8px;

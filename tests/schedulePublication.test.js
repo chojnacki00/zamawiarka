@@ -6,9 +6,24 @@ import {
   canPublishSchedule,
   getDefaultPublicationEndDate,
   getPublicationDateKeys,
+  getSchedulePublicationErrorMessage,
   getWorkingEditPublicationState,
   prepareSchedulePublication
 } from '../src/utils/schedulePublication.js'
+
+test('mapuje brak uprawnień publikacji na czytelny komunikat', () => {
+  const expectedMessage =
+    'Nie można opublikować grafiku. Twoja sesja nie ma uprawnień do wykonania tej operacji. Skontaktuj się z administratorem.'
+
+  assert.equal(
+    getSchedulePublicationErrorMessage({ code: 'permission-denied' }),
+    expectedMessage
+  )
+  assert.equal(
+    getSchedulePublicationErrorMessage({ code: 'firestore/permission-denied' }),
+    expectedMessage
+  )
+})
 
 const createSchedule = overrides => ({
   id: 'schedule-1',
