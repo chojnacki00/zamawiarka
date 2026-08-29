@@ -1,4 +1,6 @@
 export const DEFAULT_SCHEDULE_POSITION_COLOR = null
+export const PUBLISHED_SCHEDULE_NEUTRAL_COLOR = '#E5E7EB'
+export const PUBLISHED_SCHEDULE_EXTRA_COLOR = '#C4B5FD'
 
 export const SCHEDULE_POSITION_COLOR_PALETTE = Object.freeze([
   Object.freeze({

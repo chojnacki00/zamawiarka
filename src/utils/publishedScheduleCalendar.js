@@ -9,10 +9,18 @@ import {
   PUBLIC_SHIFT_TYPES
 } from './schedulePublicProjection.js'
 import { PUBLICATION_STATUSES } from './schedulePublication.js'
+import {
+  PUBLISHED_SCHEDULE_EXTRA_COLOR,
+  PUBLISHED_SCHEDULE_NEUTRAL_COLOR,
+  getSchedulePositionColorOption,
+  normalizeSchedulePositionColor
+} from './schedulePositionColors.js'
 
 export const PUBLISHED_CALENDAR_WEEKDAYS = Object.freeze([
   'PN', 'WT', 'ŚR', 'CZ', 'PT', 'SB', 'ND'
 ])
+
+export const MAX_PUBLISHED_SHIFT_LAYERS = 3
 
 const formatUtcDateKey = date => {
   const year = date.getUTCFullYear()
@@ -285,6 +293,173 @@ export const getEmployeePublishedShifts = ({
   return day.shifts.filter(
     shift => shift.employeeId === normalizedEmployeeId
   )
+}
+
+const getShiftTypeOrder = shiftType => (
+  shiftType === PUBLIC_SHIFT_TYPES.REGULAR ? 0 : 1
+)
+
+export const sortPublishedShiftsForDisplay = shifts => (
+  (Array.isArray(shifts) ? shifts : [])
+    .map((shift, sourceIndex) => ({ shift, sourceIndex }))
+    .sort((firstEntry, secondEntry) => {
+      const first = firstEntry.shift || {}
+      const second = secondEntry.shift || {}
+      const timeComparison = String(first.from || '').localeCompare(
+        String(second.from || '')
+      )
+
+      if (timeComparison !== 0) return timeComparison
+
+      const typeComparison = getShiftTypeOrder(first.shiftType) -
+        getShiftTypeOrder(second.shiftType)
+
+      if (typeComparison !== 0) return typeComparison
+
+      const idComparison = String(first.id || '').localeCompare(
+        String(second.id || '')
+      )
+
+      return idComparison || firstEntry.sourceIndex - secondEntry.sourceIndex
+    })
+    .map(entry => entry.shift)
+)
+
+const formatCompactTime = value => {
+  const normalizedValue = String(value || '').trim()
+  const match = /^(\d{2}):(\d{2})$/.exec(normalizedValue)
+
+  if (!match) return normalizedValue
+
+  const hours = String(Number(match[1]))
+  return match[2] === '00' ? hours : `${hours}:${match[2]}`
+}
+
+const formatAccessibleTime = value => {
+  const normalizedValue = String(value || '').trim()
+  return normalizedValue.replace(/^0(?=\d:)/, '')
+}
+
+const hasPositionSnapshot = shift => (
+  Boolean(String(shift?.positionId || '').trim()) &&
+  Boolean(String(shift?.positionNameSnapshot || '').trim())
+)
+
+export const getPublishedShiftCardPresentation = shift => {
+  const isExtra = shift?.shiftType === PUBLIC_SHIFT_TYPES.EXTRA
+  const normalizedPositionColor = normalizeSchedulePositionColor(
+    shift?.positionColorSnapshot
+  )
+  const usesPositionColor = Boolean(normalizedPositionColor) &&
+    (!isExtra || hasPositionSnapshot(shift))
+  const backgroundColor = isExtra && !usesPositionColor
+    ? PUBLISHED_SCHEDULE_EXTRA_COLOR
+    : normalizedPositionColor || PUBLISHED_SCHEDULE_NEUTRAL_COLOR
+  const colorOption = getSchedulePositionColorOption(backgroundColor)
+  const extraColorOption = getSchedulePositionColorOption(
+    PUBLISHED_SCHEDULE_EXTRA_COLOR
+  )
+  const positionName = String(
+    shift?.positionNameSnapshot || ''
+  ).trim()
+
+  return {
+    id: String(shift?.id || '').trim(),
+    from: String(shift?.from || '').trim(),
+    to: String(shift?.to || '').trim(),
+    timeLabel: `${shift?.from || ''}–${shift?.to || ''}`,
+    compactTimeLabel:
+      `${formatCompactTime(shift?.from)}–${formatCompactTime(shift?.to)}`,
+    positionLabel: isExtra && !usesPositionColor
+      ? 'Dodatkowa'
+      : positionName || 'Bez stanowiska',
+    backgroundColor,
+    textColor: colorOption.textColor,
+    accentColor: isExtra ? extraColorOption.textColor : 'transparent',
+    isExtra,
+    usesPositionColor
+  }
+}
+
+export const buildPublishedShiftStack = ({
+  shifts = [],
+  maxVisible = MAX_PUBLISHED_SHIFT_LAYERS
+} = {}) => {
+  const sortedShifts = sortPublishedShiftsForDisplay(shifts)
+  const visibleLimit = Math.max(1, Number(maxVisible) || 1)
+  const visibleShifts = sortedShifts.slice(0, visibleLimit)
+
+  return {
+    cards: visibleShifts.map((shift, layerIndex) => ({
+      ...getPublishedShiftCardPresentation(shift),
+      layerIndex,
+      zIndex: visibleShifts.length - layerIndex
+    })),
+    totalCount: sortedShifts.length,
+    hiddenCount: Math.max(0, sortedShifts.length - visibleShifts.length)
+  }
+}
+
+const getPolishShiftCountLabel = count => {
+  if (count === 1) return '1 zmiana'
+  if (count >= 2 && count <= 4) return `${count} zmiany`
+  return `${count} zmian`
+}
+
+export const buildPublishedDayAriaLabel = ({
+  dateKey,
+  shifts = []
+} = {}) => {
+  const normalizedDateKey = String(dateKey || '').trim()
+  const sortedShifts = sortPublishedShiftsForDisplay(shifts)
+
+  if (!isValidDateKey(normalizedDateKey)) return ''
+
+  const [year, month, day] = normalizedDateKey.split('-').map(Number)
+  const dateLabel = new Intl.DateTimeFormat('pl-PL', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, day)))
+
+  if (sortedShifts.length === 0) {
+    return `${dateLabel}, brak zmian`
+  }
+
+  const shiftLabels = sortedShifts.map(shift => {
+    const presentation = getPublishedShiftCardPresentation(shift)
+    const positionLabel = presentation.isExtra
+      ? presentation.positionLabel === 'Dodatkowa'
+        ? 'zmiana dodatkowa'
+        : `${presentation.positionLabel}, zmiana dodatkowa`
+      : presentation.positionLabel
+
+    return `${formatAccessibleTime(presentation.from)}–` +
+      `${formatAccessibleTime(presentation.to)} ${positionLabel}`
+  })
+
+  return `${dateLabel}, ${getPolishShiftCountLabel(sortedShifts.length)}: ` +
+    shiftLabels.join(', ')
+}
+
+export const buildPublishedCalendarDayPresentation = ({
+  dateKey,
+  day,
+  employeeId
+} = {}) => {
+  const isPublished = Boolean(day)
+  const employeeShifts = getEmployeePublishedShifts({ day, employeeId })
+  const shiftStack = buildPublishedShiftStack({ shifts: employeeShifts })
+
+  return {
+    isPublished,
+    isInteractive: isPublished,
+    employeeShifts: sortPublishedShiftsForDisplay(employeeShifts),
+    shiftStack,
+    ariaLabel: isPublished
+      ? buildPublishedDayAriaLabel({ dateKey, shifts: employeeShifts })
+      : null
+  }
 }
 
 export const chooseInitialPublishedMonth = ({

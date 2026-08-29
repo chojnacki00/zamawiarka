@@ -2,13 +2,22 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildPublishedCalendarIndex,
+  buildPublishedCalendarDayPresentation,
+  buildPublishedDayAriaLabel,
   buildPublishedMonthGrid,
+  buildPublishedShiftStack,
   chooseInitialPublishedMonth,
   getEmployeePublishedShifts,
   getPublishedCalendarAccess,
+  getPublishedShiftCardPresentation,
   mergePublishedCalendarMonth,
-  resolvePublishedCalendarEmployeeId
+  resolvePublishedCalendarEmployeeId,
+  sortPublishedShiftsForDisplay
 } from '../src/utils/publishedScheduleCalendar.js'
+import {
+  PUBLISHED_SCHEDULE_EXTRA_COLOR,
+  PUBLISHED_SCHEDULE_NEUTRAL_COLOR
+} from '../src/utils/schedulePositionColors.js'
 
 const createHeader = (id, dateFrom, publishedUntil, overrides = {}) => ({
   id,
@@ -21,7 +30,7 @@ const createHeader = (id, dateFrom, publishedUntil, overrides = {}) => ({
   ...overrides
 })
 
-const createShift = (id, employeeId) => ({
+const createShift = (id, employeeId, overrides = {}) => ({
   id,
   shiftGroupId: null,
   employeeId,
@@ -30,7 +39,8 @@ const createShift = (id, employeeId) => ({
   positionNameSnapshot: 'Pizzer',
   from: '09:00',
   to: '17:00',
-  shiftType: 'REGULAR'
+  shiftType: 'REGULAR',
+  ...overrides
 })
 
 const createDay = (date, scheduleId = 'schedule-1', shifts = []) => ({
@@ -163,6 +173,246 @@ test('zwraca kilka zmian jednego pracownika w jednym dniu', () => {
     day,
     employeeId: 'employee-1'
   }).length, 2)
+})
+
+test('sortuje zmiany prezentacyjne według godziny rozpoczęcia', () => {
+  const shifts = [
+    createShift('shift-late', 'employee-1', { from: '18:00' }),
+    createShift('shift-early', 'employee-1', { from: '07:00' })
+  ]
+
+  assert.deepEqual(
+    sortPublishedShiftsForDisplay(shifts).map(shift => shift.id),
+    ['shift-early', 'shift-late']
+  )
+  assert.deepEqual(shifts.map(shift => shift.id), ['shift-late', 'shift-early'])
+})
+
+test('przy tej samej godzinie REGULAR poprzedza EXTRA', () => {
+  const shifts = [
+    createShift('extra', 'employee-1', { shiftType: 'EXTRA' }),
+    createShift('regular', 'employee-1')
+  ]
+
+  assert.deepEqual(
+    sortPublishedShiftsForDisplay(shifts).map(shift => shift.id),
+    ['regular', 'extra']
+  )
+})
+
+test('przy tej samej godzinie i typie sortuje stabilnie według id', () => {
+  const shifts = [
+    createShift('shift-c', 'employee-1'),
+    createShift('shift-a', 'employee-1'),
+    createShift('shift-b', 'employee-1')
+  ]
+
+  assert.deepEqual(
+    sortPublishedShiftsForDisplay(shifts).map(shift => shift.id),
+    ['shift-a', 'shift-b', 'shift-c']
+  )
+})
+
+test('zwykła zmiana korzysta z koloru i koloru tekstu centralnej palety', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'regular',
+    'employee-1',
+    { positionColorSnapshot: '#FDBA74' }
+  ))
+
+  assert.equal(card.backgroundColor, '#FDBA74')
+  assert.equal(card.textColor, '#7C2D12')
+  assert.equal(card.positionLabel, 'Pizzer')
+  assert.equal(card.isExtra, false)
+})
+
+test('zwykła zmiana bez koloru korzysta z neutralnego wariantu', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'regular',
+    'employee-1'
+  ))
+
+  assert.equal(card.backgroundColor, PUBLISHED_SCHEDULE_NEUTRAL_COLOR)
+  assert.equal(card.textColor, '#1F2937')
+})
+
+test('zmiana dodatkowa ze stanowiskiem zachowuje jego kolor i fioletowy akcent', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'extra',
+    'employee-1',
+    {
+      shiftType: 'EXTRA',
+      positionColorSnapshot: '#86EFAC'
+    }
+  ))
+
+  assert.equal(card.backgroundColor, '#86EFAC')
+  assert.equal(card.textColor, '#14532D')
+  assert.equal(card.accentColor, '#4C1D95')
+  assert.equal(card.positionLabel, 'Pizzer')
+  assert.equal(card.isExtra, true)
+})
+
+test('zmiana dodatkowa bez stanowiska jest fioletowa i opisana jako Dodatkowa', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'extra',
+    'employee-1',
+    {
+      shiftType: 'EXTRA',
+      positionId: null,
+      positionNameSnapshot: 'Bez stanowiska'
+    }
+  ))
+
+  assert.equal(card.backgroundColor, PUBLISHED_SCHEDULE_EXTRA_COLOR)
+  assert.equal(card.textColor, '#4C1D95')
+  assert.equal(card.positionLabel, 'Dodatkowa')
+})
+
+test('zmiana dodatkowa bez koloru stanowiska korzysta z jednego fioletowego wariantu', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'extra',
+    'employee-1',
+    { shiftType: 'EXTRA' }
+  ))
+
+  assert.equal(card.backgroundColor, PUBLISHED_SCHEDULE_EXTRA_COLOR)
+  assert.equal(card.positionLabel, 'Dodatkowa')
+})
+
+test('nieprawidłowy kolor snapshotu jest zastępowany neutralnym', () => {
+  const card = getPublishedShiftCardPresentation(createShift(
+    'regular',
+    'employee-1',
+    { positionColorSnapshot: '#123456' }
+  ))
+
+  assert.equal(card.backgroundColor, PUBLISHED_SCHEDULE_NEUTRAL_COLOR)
+  assert.equal(card.textColor, '#1F2937')
+})
+
+test('jedna zmiana tworzy jedną warstwę bez licznika', () => {
+  const stack = buildPublishedShiftStack({
+    shifts: [createShift('shift-1', 'employee-1')]
+  })
+
+  assert.equal(stack.cards.length, 1)
+  assert.equal(stack.totalCount, 1)
+  assert.equal(stack.hiddenCount, 0)
+})
+
+test('dwie zmiany tworzą dwie nakładające się warstwy', () => {
+  const stack = buildPublishedShiftStack({
+    shifts: [
+      createShift('shift-1', 'employee-1'),
+      createShift('shift-2', 'employee-1', { from: '18:00' })
+    ]
+  })
+
+  assert.deepEqual(stack.cards.map(card => card.layerIndex), [0, 1])
+  assert.deepEqual(stack.cards.map(card => card.zIndex), [2, 1])
+  assert.equal(stack.hiddenCount, 0)
+})
+
+test('trzy zmiany wykorzystują maksymalnie trzy widoczne warstwy', () => {
+  const stack = buildPublishedShiftStack({
+    shifts: [1, 2, 3].map(index => createShift(
+      `shift-${index}`,
+      'employee-1',
+      { from: `0${index + 7}:00` }
+    ))
+  })
+
+  assert.equal(stack.cards.length, 3)
+  assert.deepEqual(stack.cards.map(card => card.layerIndex), [0, 1, 2])
+  assert.equal(stack.hiddenCount, 0)
+})
+
+test('pięć zmian pokazuje trzy warstwy i licznik dwóch ukrytych', () => {
+  const stack = buildPublishedShiftStack({
+    shifts: [1, 2, 3, 4, 5].map(index => createShift(
+      `shift-${index}`,
+      'employee-1',
+      { from: `${String(index + 7).padStart(2, '0')}:00` }
+    ))
+  })
+
+  assert.equal(stack.cards.length, 3)
+  assert.equal(stack.totalCount, 5)
+  assert.equal(stack.hiddenCount, 2)
+})
+
+test('długa nazwa stanowiska pozostaje w modelu kapsla do ucięcia przez CSS', () => {
+  const longName = 'Starszy specjalista przygotowania wyjątkowo długich zamówień'
+  const card = getPublishedShiftCardPresentation(createShift(
+    'regular',
+    'employee-1',
+    { positionNameSnapshot: longName }
+  ))
+
+  assert.equal(card.positionLabel, longName)
+})
+
+test('buduje czytelny opis aria-label dnia wraz ze wszystkimi zmianami', () => {
+  const label = buildPublishedDayAriaLabel({
+    dateKey: '2026-09-12',
+    shifts: [
+      createShift('regular', 'employee-1'),
+      createShift('extra', 'employee-1', {
+        from: '18:00',
+        to: '22:00',
+        shiftType: 'EXTRA',
+        positionId: null,
+        positionNameSnapshot: null
+      })
+    ]
+  })
+
+  assert.match(label, /^12 września, 2 zmiany:/)
+  assert.match(label, /9:00–17:00 Pizzer/)
+  assert.match(label, /18:00–22:00 zmiana dodatkowa/)
+})
+
+test('bez wybranego pracownika opublikowany dzień nie tworzy kapsli', () => {
+  const presentation = buildPublishedCalendarDayPresentation({
+    dateKey: '2026-09-01',
+    day: createDay('2026-09-01', 'schedule-1', [
+      createShift('shift-1', 'employee-1')
+    ]),
+    employeeId: null
+  })
+
+  assert.equal(presentation.shiftStack.cards.length, 0)
+})
+
+test('opublikowany dzień bez zmiany wybranego pracownika nie tworzy kapsla', () => {
+  const presentation = buildPublishedCalendarDayPresentation({
+    dateKey: '2026-09-01',
+    day: createDay('2026-09-01', 'schedule-1', [
+      createShift('shift-1', 'employee-2')
+    ]),
+    employeeId: 'employee-1'
+  })
+
+  assert.equal(presentation.shiftStack.cards.length, 0)
+  assert.equal(presentation.isPublished, true)
+})
+
+test('kapsle nie wpływają na rozpoznanie aktywności opublikowanego dnia', () => {
+  const publishedWithoutShifts = buildPublishedCalendarDayPresentation({
+    dateKey: '2026-09-01',
+    day: createDay('2026-09-01'),
+    employeeId: 'employee-1'
+  })
+  const unpublished = buildPublishedCalendarDayPresentation({
+    dateKey: '2026-09-02',
+    day: null,
+    employeeId: 'employee-1'
+  })
+
+  assert.equal(publishedWithoutShifts.isInteractive, true)
+  assert.equal(unpublished.isInteractive, false)
+  assert.equal(unpublished.ariaLabel, null)
 })
 
 test('opublikowany dzień bez zmiany pracownika zwraca pustą listę', () => {

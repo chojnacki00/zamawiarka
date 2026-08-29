@@ -94,23 +94,56 @@
             :class="{
               outside: !day.isCurrentMonth,
               inactive: !day.isPublished,
-              published: day.isPublished
+              published: day.isPublished,
+              selected: selectedDateKey === day.dateKey
             }"
+            :role="day.isInteractive ? 'button' : undefined"
+            :tabindex="day.isInteractive ? 0 : undefined"
+            :aria-label="day.ariaLabel || undefined"
+            :aria-pressed="day.isInteractive
+              ? selectedDateKey === day.dateKey
+              : undefined"
+            @click="selectPublishedDay(day)"
+            @keydown.enter.prevent="selectPublishedDay(day)"
+            @keydown.space.prevent="selectPublishedDay(day)"
           >
             <span
               class="day-number"
               :class="{ today: day.isToday }"
+              aria-hidden="true"
             >{{ day.dayNumber }}</span>
-            <span
-              v-if="day.employeeShifts.length"
-              class="shift-count-marker"
-              :title="`${day.employeeShifts.length} zmian`"
-              :aria-label="`${day.employeeShifts.length} zmian`"
+            <div
+              v-if="day.shiftStack.cards.length"
+              class="shift-card-stack"
+              aria-hidden="true"
             >
-              {{ day.employeeShifts.length > 1
-                ? day.employeeShifts.length
-                : '' }}
-            </span>
+              <div
+                v-for="card in day.shiftStack.cards"
+                :key="card.id"
+                class="published-shift-card"
+                :class="{
+                  extra: card.isExtra,
+                  'has-overflow': day.shiftStack.hiddenCount > 0 &&
+                    card.layerIndex === 0
+                }"
+                :style="getPublishedShiftCardStyle(card)"
+              >
+                <span class="shift-card-time full-time">
+                  {{ card.timeLabel }}
+                </span>
+                <span class="shift-card-time compact-time">
+                  {{ card.compactTimeLabel }}
+                </span>
+                <span class="shift-card-position">
+                  <b v-if="card.isExtra" class="extra-symbol">+</b>
+                  <span>{{ card.positionLabel }}</span>
+                </span>
+              </div>
+              <span
+                v-if="day.shiftStack.hiddenCount > 0"
+                class="hidden-shifts-count"
+              >+{{ day.shiftStack.hiddenCount }}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -131,6 +164,7 @@ import {
 import { getEmployeeFullName } from '../../utils/employeeAssignments.js'
 import {
   PUBLISHED_CALENDAR_WEEKDAYS,
+  buildPublishedCalendarDayPresentation,
   buildPublishedMonthGrid,
   chooseInitialPublishedMonth,
   getAdjacentPublishedMonth,
@@ -144,6 +178,7 @@ const employeesStore = useEmployeesStore()
 const calendarStore = usePublishedScheduleCalendarStore()
 const displayedMonthKey = ref('')
 const selectedEmployeeId = ref('')
+const selectedDateKey = ref('')
 const isLoading = ref(false)
 const loadError = ref('')
 
@@ -239,15 +274,34 @@ const calendarDays = computed(() => {
           requestedEmployeeId: selectedEmployeeId.value
         })
       : []
+    const presentation = buildPublishedCalendarDayPresentation({
+      dateKey: day.dateKey,
+      day: publicDay
+        ? { ...publicDay, shifts: employeeShifts }
+        : null,
+      employeeId: authorizedEmployeeId.value
+    })
 
     return {
       ...day,
-      isPublished: Boolean(publicDay),
       publicDay,
-      employeeShifts
+      ...presentation
     }
   })
 })
+
+const getPublishedShiftCardStyle = card => ({
+  '--shift-card-background': card.backgroundColor,
+  '--shift-card-color': card.textColor,
+  '--shift-card-accent': card.accentColor,
+  '--shift-card-layer': card.layerIndex,
+  '--shift-card-z-index': card.zIndex
+})
+
+const selectPublishedDay = day => {
+  if (!day?.isInteractive) return
+  selectedDateKey.value = day.dateKey
+}
 
 const getEmployeeName = employee => (
   getEmployeeFullName(employee) ||
@@ -505,9 +559,22 @@ onMounted(async () => {
 
 .calendar-day.published {
   background: #ffffff;
+  cursor: pointer;
+}
+
+.calendar-day.published:focus-visible {
+  z-index: 2;
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}
+
+.calendar-day.published.selected {
+  background: #f8fbff;
 }
 
 .day-number {
+  position: relative;
+  z-index: 20;
   display: inline-flex;
   width: 26px;
   height: 26px;
@@ -518,33 +585,115 @@ onMounted(async () => {
   font-weight: 800;
 }
 
-.day-number.today {
+.calendar-day.published .day-number {
+  background: #ffffff;
+}
+
+.day-number.today,
+.calendar-day.published .day-number.today {
   color: #1d4ed8;
   background: #dbeafe;
   box-shadow: inset 0 0 0 1px #93c5fd;
 }
 
-.shift-count-marker {
+.shift-card-stack {
   position: absolute;
-  right: 7px;
-  bottom: 8px;
-  display: inline-flex;
-  width: 17px;
-  height: 17px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: #ffffff;
-  background: #64748b;
-  font-size: 9px;
-  font-weight: 900;
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  height: 36px;
+  min-width: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.shift-count-marker:empty {
-  width: 8px;
-  height: 8px;
-  right: 10px;
-  bottom: 11px;
+.published-shift-card {
+  position: absolute;
+  z-index: var(--shift-card-z-index);
+  top: calc(var(--shift-card-layer) * 4px);
+  right: calc(var(--shift-card-layer) * 1px);
+  left: calc(var(--shift-card-layer) * 1px);
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  padding: 3px 4px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  color: var(--shift-card-color);
+  background: var(--shift-card-background);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+  flex-direction: column;
+  overflow: hidden;
+  font-weight: 800;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.published-shift-card.extra {
+  border-top: 3px solid var(--shift-card-accent);
+  padding-top: 1px;
+}
+
+.published-shift-card.has-overflow {
+  padding-right: 17px;
+}
+
+.shift-card-time,
+.shift-card-position,
+.shift-card-position span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shift-card-time {
+  font-size: 8px;
+}
+
+.shift-card-position {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 1px;
+  font-size: 8px;
+}
+
+.shift-card-position span {
+  flex: 1 1 auto;
+}
+
+.extra-symbol {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 0.8;
+}
+
+.compact-time {
+  display: none;
+}
+
+.hidden-shifts-count {
+  position: absolute;
+  z-index: 10;
+  top: 1px;
+  right: 1px;
+  display: inline-flex;
+  min-width: 14px;
+  height: 13px;
+  padding: 0 2px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid #c4b5fd;
+  border-radius: 7px;
+  color: #4c1d95;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(76, 29, 149, 0.16);
+  font-size: 7px;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .calendar-state {
@@ -589,6 +738,16 @@ onMounted(async () => {
   background: #fee2e2;
 }
 
+@media (max-width: 520px) {
+  .full-time {
+    display: none;
+  }
+
+  .compact-time {
+    display: block;
+  }
+}
+
 @media (max-width: 420px) {
   .calendar-panel {
     border-radius: 17px;
@@ -605,6 +764,13 @@ onMounted(async () => {
     height: 24px;
     font-size: 12px;
   }
+
+  .shift-card-stack {
+    right: 2px;
+    bottom: 2px;
+    left: 2px;
+  }
+
 }
 
 @media (min-width: 760px) {
@@ -629,6 +795,33 @@ onMounted(async () => {
 
   .day-number {
     font-size: 14px;
+  }
+
+  .shift-card-stack {
+    right: 7px;
+    bottom: 7px;
+    left: 7px;
+    height: 43px;
+  }
+
+  .published-shift-card {
+    top: calc(var(--shift-card-layer) * 5px);
+    height: 33px;
+    padding: 4px 7px;
+    border-radius: 8px;
+  }
+
+  .published-shift-card.extra {
+    padding-top: 2px;
+  }
+
+  .shift-card-time,
+  .shift-card-position {
+    font-size: 10px;
+  }
+
+  .extra-symbol {
+    font-size: 12px;
   }
 }
 
