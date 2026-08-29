@@ -16,7 +16,14 @@
         <section v-else class="positions-list">
           <article v-for="position in positionsStore.positions" :key="position.id" class="position-card" :class="{ inactive: position.active === false }">
             <button class="position-main" type="button" @click="openForm(position)">
-              <span class="position-name">{{ position.nazwa }}</span>
+              <span class="position-title-row">
+                <i
+                  class="position-list-color"
+                  :style="{ backgroundColor: getPositionListColor(position) }"
+                  aria-hidden="true"
+                ></i>
+                <span class="position-name">{{ position.nazwa }}</span>
+              </span>
               <span class="position-rate">{{ formatRate(position.defaultHourlyRate) }}</span>
               <small>{{ position.active === false ? 'Nieaktywne' : 'Aktywne' }}</small>
             </button>
@@ -153,6 +160,10 @@ onMounted(async () => {
 })
 
 const formatRate = value => `${Number(value || 0).toFixed(2).replace('.', ',')} zł/h`
+const getPositionListColor = position => (
+  getSchedulePositionColorOption(position?.scheduleColor).value ||
+  getSchedulePositionColorOption('#E5E7EB').value
+)
 const isPositionUsed = positionId => (
   employeesStore.employees.some(employee => employee.positionAssignments?.some(assignment => assignment.positionId === positionId))
   || demandModelsStore.models.some(model => Object.values(model.days || {}).some(vacancies => (
@@ -248,6 +259,8 @@ const executeDelete = async () => {
 .position-card, .editor-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 16px; background: white; box-shadow: 0 4px 15px rgba(15, 23, 42, .05); }
 .position-card.inactive { opacity: .62; }
 .position-main { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
+.position-title-row { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.position-list-color { display: block; width: 13px; height: 13px; flex: 0 0 13px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #cbd5e1; }
 .position-name { display: block; color: #111827; font-size: 17px; font-weight: 700; }
 .position-rate { display: block; margin-top: 5px; color: #0369a1; font-size: 14px; font-weight: 700; }
 .position-main small { display: block; margin-top: 4px; color: #6b7280; }

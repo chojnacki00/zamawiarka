@@ -28,6 +28,12 @@
                 type="button"
                 @click="openPublicationModal"
               >{{ publicationButtonLabel }}</button>
+              <button
+                v-if="canShowUnpublicationButton"
+                class="unpublish-schedule-button"
+                type="button"
+                @click="openUnpublicationModal"
+              >Wycofaj publikację</button>
             </div>
           </div>
 
@@ -280,6 +286,77 @@
             class="app-dialog-button app-dialog-ok"
             type="button"
             @click="publishedSuccessUntil = ''"
+          >OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showUnpublicationModal && schedule"
+      class="app-dialog-overlay publication-overlay"
+      @click.self="closeUnpublicationModal"
+    >
+      <div class="app-dialog-card publication-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          :disabled="isUnpublishing"
+          @click="closeUnpublicationModal"
+        >×</button>
+        <div class="app-dialog-icon unpublication-icon">!</div>
+        <div class="app-dialog-title">Wycofać publikację grafiku?</div>
+        <div class="app-dialog-message publication-message">
+          Grafik przestanie być widoczny dla pracowników. Wersja robocza
+          i wszystkie wprowadzone zmiany pozostaną bez zmian. Grafik będzie
+          można ponownie opublikować.
+        </div>
+        <div v-if="unpublicationError" class="modal-error">
+          {{ unpublicationError }}
+        </div>
+        <div class="app-dialog-actions publication-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            :disabled="isUnpublishing"
+            @click="closeUnpublicationModal"
+          >Anuluj</button>
+          <button
+            class="app-dialog-button unpublication-confirm-button"
+            type="button"
+            :disabled="isUnpublishing"
+            @click="confirmUnpublication"
+          >
+            {{ isUnpublishing ? 'Wycofywanie...' : 'Wycofaj publikację' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showUnpublicationSuccess"
+      class="app-dialog-overlay publication-success-overlay"
+      @click.self="showUnpublicationSuccess = false"
+    >
+      <div class="app-dialog-card publication-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          @click="showUnpublicationSuccess = false"
+        >×</button>
+        <div class="app-dialog-icon publication-success-icon">✓</div>
+        <div class="app-dialog-title">Publikacja została wycofana</div>
+        <div class="app-dialog-message">
+          Grafik nie jest już dostępny dla pracowników.
+        </div>
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="showUnpublicationSuccess = false"
           >OK</button>
         </div>
       </div>
@@ -606,6 +683,10 @@ const publicationEndDate = ref('')
 const publicationError = ref('')
 const isPublishing = ref(false)
 const publishedSuccessUntil = ref('')
+const showUnpublicationModal = ref(false)
+const unpublicationError = ref('')
+const isUnpublishing = ref(false)
+const showUnpublicationSuccess = ref(false)
 let saveStateTimer = null
 
 const hours = Array.from(
@@ -654,6 +735,12 @@ const canCurrentUserPublish = computed(() => canPublishSchedule({
 const canShowPublicationButton = computed(() => (
   canCurrentUserPublish.value &&
   schedule.value?.publicationStatus !== PUBLICATION_STATUSES.PUBLISHED
+))
+const canShowUnpublicationButton = computed(() => (
+  canCurrentUserPublish.value && [
+    PUBLICATION_STATUSES.PARTIALLY_PUBLISHED,
+    PUBLICATION_STATUSES.PUBLISHED
+  ].includes(schedule.value?.publicationStatus)
 ))
 const publicationMinDate = computed(() => {
   if (!schedule.value) return ''
@@ -889,6 +976,56 @@ const confirmPublication = async () => {
       'Nie udało się opublikować grafiku. Odśwież widok i spróbuj ponownie.'
   } finally {
     isPublishing.value = false
+  }
+}
+
+const openUnpublicationModal = () => {
+  if (!schedule.value || !canShowUnpublicationButton.value) return
+
+  unpublicationError.value = ''
+  showUnpublicationModal.value = true
+}
+
+const closeUnpublicationModal = () => {
+  if (isUnpublishing.value) return
+
+  showUnpublicationModal.value = false
+  unpublicationError.value = ''
+}
+
+const confirmUnpublication = async () => {
+  if (
+    isUnpublishing.value ||
+    !schedule.value ||
+    !canShowUnpublicationButton.value
+  ) {
+    return
+  }
+
+  isUnpublishing.value = true
+  unpublicationError.value = ''
+
+  try {
+    await scheduleDraftsStore.unpublishSchedule({
+      scheduleId: schedule.value.id,
+      expectedSchedule: {
+        id: schedule.value.id,
+        dateFrom: schedule.value.dateFrom,
+        dateTo: schedule.value.dateTo,
+        publicationStatus: schedule.value.publicationStatus,
+        publishedUntil: schedule.value.publishedUntil ?? null,
+        publishedRevision:
+          Number(schedule.value.publishedRevision) || 0
+      }
+    })
+    showUnpublicationModal.value = false
+    showUnpublicationSuccess.value = true
+  } catch (error) {
+    console.error('Błąd wycofywania publikacji grafiku:', error)
+    unpublicationError.value =
+      'Nie udało się wycofać publikacji. Odśwież widok i spróbuj ponownie.'
+  } finally {
+    isUnpublishing.value = false
   }
 }
 
@@ -1792,6 +1929,18 @@ const formatDayMonth = key => {
   font-weight: 850;
 }
 
+.unpublish-schedule-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  color: #9a3412;
+  background: #ffedd5;
+  box-shadow: 0 5px 14px rgba(234, 88, 12, 0.16);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .unpublished-changes-notice {
   margin-top: 14px;
   padding: 10px 12px;
@@ -1820,6 +1969,11 @@ const formatDayMonth = key => {
 .publication-success-icon {
   color: #ffffff;
   background: #16a34a;
+}
+
+.unpublication-icon {
+  color: #ffffff;
+  background: #ea580c;
 }
 
 .publication-message {
@@ -1878,6 +2032,15 @@ const formatDayMonth = key => {
   background: #bbf7d0;
 }
 
+.unpublication-confirm-button {
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.unpublication-confirm-button:disabled {
+  background: #fecaca;
+}
+
 .publication-actions {
   margin-top: 24px;
 }
@@ -1888,7 +2051,8 @@ const formatDayMonth = key => {
   }
 
   .header-actions,
-  .publish-schedule-button {
+  .publish-schedule-button,
+  .unpublish-schedule-button {
     width: 100%;
     max-width: none;
   }

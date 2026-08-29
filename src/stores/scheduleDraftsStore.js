@@ -68,6 +68,14 @@ import {
 import {
   preparePublicScheduleProjection
 } from '../utils/schedulePublicProjection.js'
+import {
+  assertAtomicUnpublicationSize,
+  assertPublicProjectionOwnership,
+  canUnpublishSchedule,
+  getUnpublicationDateKeys,
+  prepareScheduleDeletion,
+  prepareScheduleUnpublication
+} from '../utils/schedulePublicationWithdrawal.js'
 
 export const SCHEDULE_CREATION_ERROR_CODES = {
   RANGE_PROBLEMS: 'schedule/range-problems',
@@ -626,6 +634,20 @@ export const useScheduleDraftsStore = defineStore(
         throw new Error('Brak danych grafiku do usunięcia.')
       }
 
+      const employeeAuthStore = useEmployeeAuthStore()
+      const auth = getAuth()
+
+      if (!canPublishSchedule({
+        hasEmployeeSession: Boolean(
+          employeeAuthStore.currentEmployee
+        ),
+        employeePermissions:
+          employeeAuthStore.currentEmployee?.uprawnienia || {},
+        hasAdminSession: Boolean(auth.currentUser)
+      })) {
+        throw new Error('Nie masz uprawnienia do usuwania grafiku.')
+      }
+
       const scheduleRef = doc(
         db,
         'users',
@@ -648,6 +670,12 @@ export const useScheduleDraftsStore = defineStore(
         )
       }
 
+      const scheduleData = scheduleSnapshot.data()
+      const scheduleDateKeys = getDateKeysInRange(
+        scheduleData.dateFrom,
+        scheduleData.dateTo
+      )
+
       const daysQuery = query(
         collection(db, 'users', restaurantId, 'grafik_dni'),
         where('scheduleId', '==', scheduleId)
@@ -656,9 +684,23 @@ export const useScheduleDraftsStore = defineStore(
         collection(db, 'users', restaurantId, 'grafik_aktualizacje'),
         where('scheduleId', '==', scheduleId)
       )
-      const [daysSnapshot, updatesSnapshot] = await Promise.all([
+      const publicDaysQuery = query(
+        collection(
+          db,
+          'users',
+          restaurantId,
+          'grafik_opublikowane_dni'
+        ),
+        where('scheduleId', '==', scheduleId)
+      )
+      const [
+        daysSnapshot,
+        updatesSnapshot,
+        publicDaysSnapshot
+      ] = await Promise.all([
         getDocs(daysQuery),
-        getDocs(updatesQuery)
+        getDocs(updatesQuery),
+        getDocs(publicDaysQuery)
       ])
       const ownedDocuments = [
         ...daysSnapshot.docs.map(snapshot => ({
@@ -670,22 +712,65 @@ export const useScheduleDraftsStore = defineStore(
           type: 'update'
         }))
       ]
-      const deleteWritesCount = ownedDocuments.length + 1
+      const publicScheduleRef = doc(
+        db,
+        'users',
+        restaurantId,
+        'grafiki_opublikowane',
+        scheduleId
+      )
+      const publicDayRefsById = new Map(
+        scheduleDateKeys.map(dateKey => [
+          dateKey,
+          doc(
+            db,
+            'users',
+            restaurantId,
+            'grafik_opublikowane_dni',
+            getScheduleDayDocumentId(dateKey)
+          )
+        ])
+      )
 
-      if (deleteWritesCount > FIRESTORE_ATOMIC_WRITE_LIMIT) {
+      publicDaysSnapshot.docs.forEach(publicDaySnapshot => {
+        publicDayRefsById.set(
+          publicDaySnapshot.id,
+          publicDaySnapshot.ref
+        )
+      })
+
+      const publicDayRefs = [...publicDayRefsById.values()]
+      const knownDeleteWritesCount =
+        ownedDocuments.length + publicDaysSnapshot.docs.length + 2
+
+      if (knownDeleteWritesCount > FIRESTORE_ATOMIC_WRITE_LIMIT) {
         throw new Error(
           'Grafik zawiera zbyt wiele dokumentów, aby usunąć go atomowo.'
         )
       }
 
       await runTransaction(db, async transaction => {
-        const [currentScheduleSnapshot, ...ownedSnapshots] =
-          await Promise.all([
-            transaction.get(scheduleRef),
-            ...ownedDocuments.map(document => (
-              transaction.get(document.ref)
-            ))
-          ])
+        const deletionSnapshots = await Promise.all([
+          transaction.get(scheduleRef),
+          ...ownedDocuments.map(document => (
+            transaction.get(document.ref)
+          )),
+          transaction.get(publicScheduleRef),
+          ...publicDayRefs.map(publicDayRef => (
+            transaction.get(publicDayRef)
+          ))
+        ])
+        const currentScheduleSnapshot = deletionSnapshots[0]
+        const ownedSnapshots = deletionSnapshots.slice(
+          1,
+          1 + ownedDocuments.length
+        )
+        const publicScheduleSnapshot = deletionSnapshots[
+          1 + ownedDocuments.length
+        ]
+        const publicDaySnapshots = deletionSnapshots.slice(
+          2 + ownedDocuments.length
+        )
 
         if (!currentScheduleSnapshot.exists()) return
 
@@ -694,6 +779,51 @@ export const useScheduleDraftsStore = defineStore(
             'Można usunąć tylko gotowy, nieopublikowany grafik.'
           )
         }
+
+        const existingPublicHeader = publicScheduleSnapshot.exists()
+          ? publicScheduleSnapshot.data()
+          : null
+        const existingPublicDays = publicDaySnapshots
+          .filter(snapshot => snapshot.exists())
+          .map(snapshot => ({
+            id: snapshot.id,
+            ...snapshot.data()
+          }))
+
+        assertPublicProjectionOwnership({
+          scheduleId,
+          publicHeader: existingPublicHeader,
+          publicDays: existingPublicDays
+        })
+
+        prepareScheduleDeletion({
+          schedule: {
+            id: currentScheduleSnapshot.id,
+            ...currentScheduleSnapshot.data()
+          },
+          days: ownedSnapshots
+            .map((snapshot, index) => ({ snapshot, index }))
+            .filter(({ snapshot, index }) => (
+              snapshot.exists() &&
+              ownedDocuments[index].type === 'day'
+            ))
+            .map(({ snapshot }) => ({
+              id: snapshot.id,
+              ...snapshot.data()
+            })),
+          updates: ownedSnapshots
+            .map((snapshot, index) => ({ snapshot, index }))
+            .filter(({ snapshot, index }) => (
+              snapshot.exists() &&
+              ownedDocuments[index].type === 'update'
+            ))
+            .map(({ snapshot }) => ({
+              id: snapshot.id,
+              ...snapshot.data()
+            })),
+          publicHeader: existingPublicHeader,
+          publicDays: existingPublicDays
+        })
 
         ownedSnapshots.forEach((ownedSnapshot, index) => {
           if (!ownedSnapshot.exists()) return
@@ -711,6 +841,16 @@ export const useScheduleDraftsStore = defineStore(
 
           transaction.delete(ownedSnapshot.ref)
         })
+        publicDaySnapshots.forEach(publicDaySnapshot => {
+          if (publicDaySnapshot.exists()) {
+            transaction.delete(publicDaySnapshot.ref)
+          }
+        })
+
+        if (publicScheduleSnapshot.exists()) {
+          transaction.delete(publicScheduleRef)
+        }
+
         transaction.delete(scheduleRef)
       })
 
@@ -1014,6 +1154,232 @@ export const useScheduleDraftsStore = defineStore(
 
         if (dayIndex !== -1) {
           currentDays.value[dayIndex] = publishedDay
+        }
+      })
+
+      if (currentSchedule.value?.id === result.schedule.id) {
+        currentSchedule.value = result.schedule
+      }
+
+      const scheduleIndex = schedules.value.findIndex(
+        schedule => schedule.id === result.schedule.id
+      )
+
+      if (scheduleIndex !== -1) {
+        schedules.value[scheduleIndex] = result.schedule
+      }
+
+      return result
+    }
+
+    const unpublishSchedule = async ({
+      scheduleId,
+      expectedSchedule = null
+    } = {}) => {
+      const restaurantId = await getRestaurantId()
+
+      if (!restaurantId || !scheduleId) {
+        throw new Error('Brak danych grafiku do wycofania publikacji.')
+      }
+
+      const employeeAuthStore = useEmployeeAuthStore()
+      const auth = getAuth()
+      const hasEmployeeSession = Boolean(
+        employeeAuthStore.currentEmployee
+      )
+
+      if (!canUnpublishSchedule({
+        hasEmployeeSession,
+        employeePermissions:
+          employeeAuthStore.currentEmployee?.uprawnienia || {},
+        hasAdminSession: Boolean(auth.currentUser)
+      })) {
+        throw new Error(
+          'Nie masz uprawnienia do wycofania publikacji grafiku.'
+        )
+      }
+
+      const scheduleRef = doc(
+        db,
+        'users',
+        restaurantId,
+        'grafiki',
+        scheduleId
+      )
+      let expectedHeader = expectedSchedule
+
+      if (
+        !expectedHeader?.dateFrom ||
+        !expectedHeader?.dateTo ||
+        !expectedHeader?.publicationStatus
+      ) {
+        const scheduleSnapshot = await getDoc(scheduleRef)
+
+        if (!scheduleSnapshot.exists()) {
+          throw new Error('Nie znaleziono nagłówka grafiku.')
+        }
+
+        expectedHeader = {
+          id: scheduleSnapshot.id,
+          ...scheduleSnapshot.data()
+        }
+      }
+
+      expectedHeader = {
+        ...expectedHeader,
+        id: scheduleId,
+        publishedUntil: expectedHeader.publishedUntil ?? null,
+        publishedRevision:
+          Number(expectedHeader.publishedRevision) || 0
+      }
+
+      const dateKeys = getUnpublicationDateKeys(expectedHeader)
+      assertAtomicUnpublicationSize(dateKeys.length)
+      const dayRefs = dateKeys.map(dateKey => doc(
+        db,
+        'users',
+        restaurantId,
+        'grafik_dni',
+        getScheduleDayDocumentId(dateKey)
+      ))
+      const publicScheduleRef = doc(
+        db,
+        'users',
+        restaurantId,
+        'grafiki_opublikowane',
+        scheduleId
+      )
+      const publicDayRefs = dateKeys.map(dateKey => doc(
+        db,
+        'users',
+        restaurantId,
+        'grafik_opublikowane_dni',
+        getScheduleDayDocumentId(dateKey)
+      ))
+
+      const result = await runTransaction(db, async transaction => {
+        const withdrawalSnapshots = await Promise.all([
+          transaction.get(scheduleRef),
+          ...dayRefs.map(dayRef => transaction.get(dayRef)),
+          transaction.get(publicScheduleRef),
+          ...publicDayRefs.map(publicDayRef => (
+            transaction.get(publicDayRef)
+          ))
+        ])
+        const scheduleSnapshot = withdrawalSnapshots[0]
+        const daySnapshots = withdrawalSnapshots.slice(
+          1,
+          1 + dayRefs.length
+        )
+        const publicScheduleSnapshot = withdrawalSnapshots[
+          1 + dayRefs.length
+        ]
+        const publicDaySnapshots = withdrawalSnapshots.slice(
+          2 + dayRefs.length
+        )
+
+        if (!scheduleSnapshot.exists()) {
+          throw new Error('Nie znaleziono nagłówka grafiku.')
+        }
+
+        const scheduleData = scheduleSnapshot.data()
+
+        if (
+          scheduleData.dateFrom !== expectedHeader.dateFrom ||
+          scheduleData.dateTo !== expectedHeader.dateTo
+        ) {
+          throw new Error(
+            'Zakres grafiku zmienił się. Odśwież widok.'
+          )
+        }
+
+        const existingDays = daySnapshots
+          .filter(daySnapshot => daySnapshot.exists())
+          .map(daySnapshot => ({
+            id: daySnapshot.id,
+            ...daySnapshot.data()
+          }))
+        const existingPublicHeader = publicScheduleSnapshot.exists()
+          ? {
+              id: publicScheduleSnapshot.id,
+              ...publicScheduleSnapshot.data()
+            }
+          : null
+        const existingPublicDays = publicDaySnapshots
+          .filter(snapshot => snapshot.exists())
+          .map(snapshot => ({
+            id: snapshot.id,
+            ...snapshot.data()
+          }))
+        const prepared = prepareScheduleUnpublication({
+          schedule: {
+            id: scheduleSnapshot.id,
+            ...scheduleData
+          },
+          days: existingDays,
+          publicHeader: existingPublicHeader,
+          publicDays: existingPublicDays,
+          expectedPublicationStatus:
+            expectedHeader.publicationStatus,
+          expectedPublishedUntil:
+            expectedHeader.publishedUntil,
+          expectedPublishedRevision:
+            expectedHeader.publishedRevision
+        })
+        const resetDaysByDate = new Map(
+          prepared.days.map(day => [day.date, day])
+        )
+        const publicDaySnapshotsByDate = new Map(
+          publicDaySnapshots.map(snapshot => [
+            snapshot.id,
+            snapshot
+          ])
+        )
+        const updatedAt = serverTimestamp()
+        const headerUpdate = {
+          ...prepared.header,
+          updatedAt
+        }
+
+        daySnapshots.forEach(daySnapshot => {
+          const resetDay = resetDaysByDate.get(daySnapshot.id)
+
+          transaction.update(daySnapshot.ref, {
+            publishedShifts: resetDay.publishedShifts,
+            publishedRevision: resetDay.publishedRevision,
+            hasUnpublishedChanges: false,
+            updatedAt
+          })
+        })
+        prepared.publicDayDateKeysToDelete.forEach(dateKey => {
+          transaction.delete(
+            publicDaySnapshotsByDate.get(dateKey).ref
+          )
+        })
+
+        if (prepared.publicHeaderShouldDelete) {
+          transaction.delete(publicScheduleRef)
+        }
+
+        transaction.update(scheduleRef, headerUpdate)
+
+        return {
+          schedule: {
+            ...scheduleData,
+            id: scheduleSnapshot.id,
+            ...headerUpdate
+          },
+          days: prepared.days
+        }
+      })
+
+      result.days.forEach(resetDay => {
+        const dayIndex = currentDays.value.findIndex(
+          day => day.id === resetDay.id
+        )
+
+        if (dayIndex !== -1) {
+          currentDays.value[dayIndex] = resetDay
         }
       })
 
@@ -1800,6 +2166,7 @@ export const useScheduleDraftsStore = defineStore(
       fetchSchedule,
       fetchScheduleDays,
       publishSchedule,
+      unpublishSchedule,
       fetchPlanningContext,
       updateWorkingShift,
       addExtraShift,

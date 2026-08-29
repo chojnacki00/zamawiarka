@@ -99,6 +99,14 @@
             </span>
             <div class="schedule-list-actions">
               <button
+                v-if="canUnpublish(schedule)"
+                class="schedule-list-unpublish-button"
+                type="button"
+                @click="openUnpublishConfirm(schedule)"
+              >
+                Wycofaj publikację
+              </button>
+              <button
                 v-if="canDeleteSchedule(schedule)"
                 class="schedule-list-delete-button"
                 type="button"
@@ -154,22 +162,98 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="scheduleToUnpublish"
+      class="app-dialog-overlay schedule-unpublish-overlay"
+      @click.self="closeUnpublishConfirm"
+    >
+      <div class="app-dialog-card schedule-delete-dialog">
+        <div class="app-dialog-icon schedule-unpublish-icon">!</div>
+        <div class="app-dialog-title">Wycofać publikację grafiku?</div>
+        <div class="app-dialog-message">
+          Grafik przestanie być widoczny dla pracowników. Wersja robocza
+          i wszystkie wprowadzone zmiany pozostaną bez zmian. Grafik będzie
+          można ponownie opublikować.
+        </div>
+        <div v-if="unpublishError" class="schedule-delete-error">
+          {{ unpublishError }}
+        </div>
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            :disabled="isUnpublishing"
+            @click="closeUnpublishConfirm"
+          >
+            Anuluj
+          </button>
+          <button
+            class="app-dialog-button app-dialog-delete"
+            type="button"
+            :disabled="isUnpublishing"
+            @click="confirmUnpublishSchedule"
+          >
+            {{ isUnpublishing ? 'Wycofywanie...' : 'Wycofaj publikację' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showUnpublishSuccess"
+      class="app-dialog-overlay schedule-unpublish-overlay"
+      @click.self="showUnpublishSuccess = false"
+    >
+      <div class="app-dialog-card schedule-delete-dialog">
+        <div class="app-dialog-icon schedule-unpublish-success-icon">✓</div>
+        <div class="app-dialog-title">Publikacja została wycofana</div>
+        <div class="app-dialog-message">
+          Grafik nie jest już dostępny dla pracowników.
+        </div>
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="showUnpublishSuccess = false"
+          >OK</button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { getAuth } from 'firebase/auth'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
+import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { canDeleteUnpublishedSchedule } from '../../utils/scheduleStructure.js'
+import { PUBLICATION_STATUSES } from '../../utils/schedulePublication.js'
+import {
+  canUnpublishSchedule
+} from '../../utils/schedulePublicationWithdrawal.js'
 
 const router = useRouter()
 const scheduleDraftsStore = useScheduleDraftsStore()
+const employeeAuthStore = useEmployeeAuthStore()
 const isLoading = ref(false)
 const loadError = ref('')
 const scheduleToDelete = ref(null)
 const isDeleting = ref(false)
 const deleteError = ref('')
+const scheduleToUnpublish = ref(null)
+const isUnpublishing = ref(false)
+const unpublishError = ref('')
+const showUnpublishSuccess = ref(false)
+
+const canManageSchedule = computed(() => canUnpublishSchedule({
+  hasEmployeeSession: Boolean(employeeAuthStore.currentEmployee),
+  employeePermissions:
+    employeeAuthStore.currentEmployee?.uprawnienia || {},
+  hasAdminSession: Boolean(getAuth().currentUser)
+}))
 
 onMounted(async () => {
   isLoading.value = true
@@ -191,7 +275,60 @@ const openSchedule = scheduleId => {
 }
 
 const canDeleteSchedule = schedule => {
-  return canDeleteUnpublishedSchedule(schedule)
+  return canManageSchedule.value && canDeleteUnpublishedSchedule(schedule)
+}
+
+const canUnpublish = schedule => (
+  canManageSchedule.value && [
+    PUBLICATION_STATUSES.PARTIALLY_PUBLISHED,
+    PUBLICATION_STATUSES.PUBLISHED
+  ].includes(schedule?.publicationStatus)
+)
+
+const openUnpublishConfirm = schedule => {
+  if (!canUnpublish(schedule)) return
+
+  scheduleToUnpublish.value = schedule
+  unpublishError.value = ''
+}
+
+const closeUnpublishConfirm = () => {
+  if (isUnpublishing.value) return
+
+  scheduleToUnpublish.value = null
+  unpublishError.value = ''
+}
+
+const confirmUnpublishSchedule = async () => {
+  const selectedSchedule = scheduleToUnpublish.value
+
+  if (!selectedSchedule || isUnpublishing.value) return
+
+  isUnpublishing.value = true
+  unpublishError.value = ''
+
+  try {
+    await scheduleDraftsStore.unpublishSchedule({
+      scheduleId: selectedSchedule.id,
+      expectedSchedule: {
+        id: selectedSchedule.id,
+        dateFrom: selectedSchedule.dateFrom,
+        dateTo: selectedSchedule.dateTo,
+        publicationStatus: selectedSchedule.publicationStatus,
+        publishedUntil: selectedSchedule.publishedUntil ?? null,
+        publishedRevision:
+          Number(selectedSchedule.publishedRevision) || 0
+      }
+    })
+    scheduleToUnpublish.value = null
+    showUnpublishSuccess.value = true
+  } catch (error) {
+    console.error('Błąd wycofywania publikacji grafiku:', error)
+    unpublishError.value =
+      'Nie udało się wycofać publikacji. Odśwież widok i spróbuj ponownie.'
+  } finally {
+    isUnpublishing.value = false
+  }
 }
 
 const openDeleteConfirm = schedule => {
@@ -526,12 +663,18 @@ const getStatusClass = schedule => {
   background: #fee2e2;
 }
 
+.schedule-list-unpublish-button {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
 .schedule-list-open-button {
   color: #0f766e;
   background: #ccfbf1;
 }
 
-.schedule-delete-overlay {
+.schedule-delete-overlay,
+.schedule-unpublish-overlay {
   z-index: 4000;
 }
 
@@ -542,6 +685,16 @@ const getStatusClass = schedule => {
 .schedule-delete-icon {
   color: #ffffff;
   background: #ef4444;
+}
+
+.schedule-unpublish-icon {
+  color: #ffffff;
+  background: #ea580c;
+}
+
+.schedule-unpublish-success-icon {
+  color: #ffffff;
+  background: #16a34a;
 }
 
 .schedule-delete-error {
