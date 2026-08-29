@@ -4,8 +4,11 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useAuthStore } from './authStore.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import {
+  getWeeklyMaximumValidationMessage
+} from '../utils/employmentRules.js'
 
-const TARGET_UNITS = ['week', 'settlementPeriod']
+const TARGET_UNITS = ['week', 'month', 'settlementPeriod']
 const SETTLEMENT_PERIOD_UNITS = ['day', 'week', 'month']
 
 const createId = prefix => {
@@ -174,13 +177,6 @@ const normalizeProfile = profile => {
   }
 }
 
-const getSettlementPeriodWeeks = settlementPeriod => {
-  if (!settlementPeriod?.applies) return null
-  if (settlementPeriod.unit === 'day') return settlementPeriod.amount / 7
-  if (settlementPeriod.unit === 'week') return settlementPeriod.amount
-  return settlementPeriod.amount * (365.2425 / 12 / 7)
-}
-
 const validateProfileConsistency = profile => {
   if (
     profile.targetHours.applies
@@ -192,22 +188,10 @@ const validateProfileConsistency = profile => {
     )
   }
 
-  if (!profile.targetHours.applies || !profile.maximumWeeklyHours.applies) return
-
-  let targetHoursPerWeek = profile.targetHours.amount
-
-  if (profile.targetHours.unit === 'settlementPeriod') {
-    const settlementWeeks = getSettlementPeriodWeeks(profile.settlementPeriod)
-    if (!settlementWeeks) return
-    targetHoursPerWeek = profile.targetHours.amount / settlementWeeks
-  }
-
-  if (profile.maximumWeeklyHours.hours + 0.001 < targetHoursPerWeek) {
-    const requiredMinimum = Math.ceil(targetHoursPerWeek * 10) / 10
-    throw new Error(
-      `Maksymalna liczba godzin tygodniowo nie może być mniejsza niż docelowa średnia ${requiredMinimum} godz. tygodniowo.`
-    )
-  }
+  const weeklyMaximumError = getWeeklyMaximumValidationMessage(
+    profile
+  )
+  if (weeklyMaximumError) throw new Error(weeklyMaximumError)
 }
 
 const cloneProfile = profile => JSON.parse(JSON.stringify(profile))

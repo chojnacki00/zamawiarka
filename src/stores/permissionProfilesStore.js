@@ -4,6 +4,14 @@ import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'fireb
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { normalizePermissionDependencies } from '../utils/permissionDependencies.js'
+
+const normalizeProfileData = profileData => ({
+  ...(profileData || {}),
+  uprawnienia: normalizePermissionDependencies(
+    profileData?.uprawnienia
+  )
+})
 
 export const usePermissionProfilesStore = defineStore('permissionProfiles', () => {
   // ZMIANA 1: Zamiast ról, trzymamy "profiles"
@@ -78,8 +86,9 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
     if (!uid) return null
     try {
       // ZMIANA 2: Zapis do kolekcji 'permissionProfiles'
-      const docRef = await addDoc(collection(db, 'users', uid, 'permissionProfiles'), profileData)
-      const newProfile = { id: docRef.id, ...profileData }
+      const normalizedProfileData = normalizeProfileData(profileData)
+      const docRef = await addDoc(collection(db, 'users', uid, 'permissionProfiles'), normalizedProfileData)
+      const newProfile = { id: docRef.id, ...normalizedProfileData }
       if (!unsubscribeProfiles && !profiles.value.some(profile => profile.id === newProfile.id)) profiles.value.push(newProfile)
       return newProfile
     } catch (error) { throw error }
@@ -89,10 +98,11 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
     const uid = await getUid()
     if (!uid) return
     try {
-      await updateDoc(doc(db, 'users', uid, 'permissionProfiles', profileId), updatedData)
+      const normalizedProfileData = normalizeProfileData(updatedData)
+      await updateDoc(doc(db, 'users', uid, 'permissionProfiles', profileId), normalizedProfileData)
       if (!unsubscribeProfiles) {
         const index = profiles.value.findIndex(p => p.id === profileId)
-        if (index !== -1) profiles.value[index] = { id: profileId, ...updatedData }
+        if (index !== -1) profiles.value[index] = { id: profileId, ...normalizedProfileData }
       }
     } catch (error) { throw error }
   }

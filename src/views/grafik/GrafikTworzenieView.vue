@@ -5,7 +5,7 @@
         class="zamawiarka-menu-back"
         type="button"
         title="Wróć"
-        @click="router.push('/grafik')"
+        @click="router.push({ name: 'GrafikiLista' })"
       >
         ←
       </button>
@@ -26,8 +26,9 @@
         </h3>
 
         <p class="schedule-create-description">
-          Wybierz daty w celu sprawdzenia, czy każdy dzień zakresu ma
-          przypisany model zapotrzebowania.
+          Wybierz daty, aby sprawdzić, czy każdy dzień zakresu ma przypisany
+          model zapotrzebowania oraz czy wprowadzanie dyspozycji dla wybranego
+          zakresu zostało wstrzymane.
         </p>
 
         <div class="schedule-create-date-grid">
@@ -441,13 +442,11 @@
           </div>
 
           <h3 class="schedule-create-heading">
-            Utwórz grafik roboczy
+            Utwórz grafik
           </h3>
 
           <p class="schedule-create-description">
-            Zapisz szkielet grafiku w Firebase. Powstanie osobny dokument
-            każdego dnia, a wszystkie wakaty pozostaną na razie
-            nieobsadzone.
+            Wszystkie wakaty pozostaną na razie nieobsadzone.
           </p>
 
           <div class="supplier-form-group">
@@ -476,12 +475,20 @@
             <button
               class="schedule-create-primary-button schedule-draft-create-button floating-form-action save"
               type="button"
-              aria-label="Utwórz grafik roboczy"
-              title="Utwórz grafik roboczy"
-              :disabled="scheduleDraftsStore.isCreating || !draftName"
-              @click="createScheduleDraft"
+              aria-label="Utwórz grafik"
+              title="Utwórz grafik"
+              :disabled="
+                scheduleDraftsStore.isCreating ||
+                isValidatingCreation ||
+                !draftName
+              "
+              @click="createSchedule"
             >
-              {{ scheduleDraftsStore.isCreating ? '…' : '✓' }}
+              {{
+                scheduleDraftsStore.isCreating || isValidatingCreation
+                  ? '…'
+                  : '✓'
+              }}
             </button>
           </div>
         </div>
@@ -574,6 +581,141 @@
     </div>
 
     <div
+      v-if="rangeProblemsDialog.visible"
+      class="app-dialog-overlay"
+      @click.self="closeRangeProblemsDialog"
+    >
+      <div class="app-dialog-card schedule-creation-validation-dialog schedule-range-problems-dialog">
+        <div class="schedule-range-problems-header">
+          <div class="app-dialog-icon schedule-creation-block-icon">!</div>
+
+          <div class="app-dialog-title">
+            Nie można użyć wybranego zakresu
+          </div>
+
+          <div class="app-dialog-message">
+            Popraw poniższe problemy i sprawdź zakres ponownie.
+          </div>
+        </div>
+
+        <div class="schedule-range-problem-sections">
+          <section
+            v-for="section in rangeProblemsDialog.sections"
+            :key="section.key"
+            class="schedule-range-problem-section"
+          >
+            <strong>{{ section.title }}</strong>
+
+            <ul>
+              <li
+                v-for="item in section.items"
+                :key="item"
+              >
+                {{ item }}
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="app-dialog-actions schedule-range-problems-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="closeRangeProblemsDialog"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="atomicConflictDialog.visible"
+      class="app-dialog-overlay"
+    >
+      <div class="app-dialog-card schedule-creation-validation-dialog">
+        <div class="app-dialog-icon schedule-creation-block-icon">!</div>
+
+        <div class="app-dialog-title">
+          Nie można utworzyć grafiku
+        </div>
+
+        <div class="app-dialog-message">
+          W czasie tworzenia wybrany zakres został zajęty przez inny grafik.
+          Sprawdź zakres ponownie.
+        </div>
+
+        <div
+          v-if="atomicConflictDialog.dateKeys.length"
+          class="schedule-atomic-conflict-dates"
+        >
+          <strong>Konfliktujące daty:</strong>
+          <ul>
+            <li
+              v-for="dateKey in atomicConflictDialog.dateKeys"
+              :key="dateKey"
+            >
+              {{ formatDate(dateKey) }}
+            </li>
+          </ul>
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="closeAtomicConflictDialog"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showContinuityWarningModal"
+      class="app-dialog-overlay"
+    >
+      <div class="app-dialog-card schedule-creation-validation-dialog">
+        <div class="app-dialog-icon schedule-continuity-warning-icon">!</div>
+
+        <div class="app-dialog-title">Brak ciągłości danych</div>
+
+        <div class="app-dialog-message">
+          Nie znalazłem opublikowanych dni grafiku bezpośrednio przed datą
+          początkową. Generator nie będzie mógł wiarygodnie uwzględnić
+          wcześniejszych godzin, odpoczynku, kolejnych dni pracy ani rotacji
+          weekendów. Nowy grafik zostanie obliczony jako początek nowej
+          ciągłości danych.
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            :disabled="scheduleDraftsStore.isCreating"
+            @click="cancelContinuityWarning"
+          >
+            Anuluj
+          </button>
+
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            :disabled="scheduleDraftsStore.isCreating"
+            @click="confirmContinuityWarning"
+          >
+            {{
+              scheduleDraftsStore.isCreating
+                ? 'Tworzenie...'
+                : 'Utwórz mimo to'
+            }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
       v-if="showDraftCreatedModal"
       class="app-dialog-overlay"
     >
@@ -581,12 +723,17 @@
         <div class="app-dialog-icon">✓</div>
 
         <div class="app-dialog-title">
-          Grafik roboczy został utworzony
+          Grafik został utworzony
         </div>
 
         <div class="app-dialog-message">
-          Zapisano nagłówek grafiku i {{ generatorInputResult?.daysCount || 0 }}
-          dokumentów dni. Grafik nie jest jeszcze widoczny dla pracowników.
+          Grafik zapamiętał aktualne ustawienia.
+          Ich późniejsze zmiany w ustawieniach aplikacji nie wpłyną na zasady
+          tego grafiku.
+        </div>
+
+        <div class="app-dialog-message">
+          Grafik nie jest jeszcze dostępny dla pracowników.
         </div>
 
         <div class="app-dialog-actions">
@@ -622,8 +769,15 @@ import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
-import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
+import {
+  SCHEDULE_CREATION_ERROR_CODES,
+  useScheduleDraftsStore
+} from '../../stores/scheduleDraftsStore.js'
 import { getCompetencyStars } from '../../utils/employeeAssignments.js'
+import {
+  buildScheduleRangeProblems,
+  isValidDateRange
+} from '../../utils/scheduleCreationValidation.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -647,6 +801,16 @@ const draftName = ref('')
 const draftCreateError = ref('')
 const createdDraftId = ref(null)
 const showDraftCreatedModal = ref(false)
+const isValidatingCreation = ref(false)
+const showContinuityWarningModal = ref(false)
+const rangeProblemsDialog = ref({
+  visible: false,
+  sections: []
+})
+const atomicConflictDialog = ref({
+  visible: false,
+  dateKeys: []
+})
 
 let analyzedDayDocumentsByDate = new Map()
 
@@ -761,10 +925,16 @@ const analyzeRange = async () => {
   showDayControlList.value = false
   expandedDayKeys.value = []
   analyzedDayDocumentsByDate = new Map()
+  closeRangeProblemsDialog()
+  closeAtomicConflictDialog()
 
-  if (dateFrom.value > dateTo.value) {
-    analysisError.value =
-      'Data końcowa nie może być wcześniejsza od daty początkowej.'
+  if (!isValidDateRange(dateFrom.value, dateTo.value)) {
+    openRangeProblemsDialog(buildScheduleRangeProblems({
+      dateRangeError:
+        dateFrom.value > dateTo.value
+          ? 'Data końcowa nie może być wcześniejsza od daty początkowej.'
+          : 'Wybierz prawidłową datę początkową i końcową.'
+    }))
     return
   }
 
@@ -788,9 +958,13 @@ const analyzeRange = async () => {
       where('date', '<=', dateTo.value)
     )
 
-    const [daysSnapshot] = await Promise.all([
+    const [daysSnapshot, , creationSafety] = await Promise.all([
       getDocs(daysQuery),
-      demandModelsStore.fetchModels()
+      demandModelsStore.fetchModels(),
+      scheduleDraftsStore.getCreationSafety({
+        dateFrom: dateFrom.value,
+        dateTo: dateTo.value
+      })
     ])
 
     const dayDocumentsByDate = new Map(
@@ -866,14 +1040,30 @@ const analyzeRange = async () => {
       return first.dates[0].localeCompare(second.dates[0])
     })
 
+    const unavailableModelDates = [...new Set([
+      ...missingDates,
+      ...unknownModelGroups.flatMap(group => group.dates),
+      ...(creationSafety.missingRequiredDataDates || [])
+    ])].sort()
+    const rangeProblems = buildScheduleRangeProblems({
+      missingDates: unavailableModelDates,
+      openAvailabilityConflicts:
+        creationSafety.openAvailabilityConflicts,
+      scheduleConflicts: creationSafety.scheduleConflicts
+    })
+
+    if (rangeProblems.hasProblems) {
+      analyzedDayDocumentsByDate = new Map()
+      openRangeProblemsDialog(rangeProblems)
+      return
+    }
+
     analysisResult.value = {
       daysCount: allDates.length,
-      missingDates,
+      missingDates: [],
       modelGroups,
-      unknownModelGroups,
-      ready:
-        missingDates.length === 0 &&
-        unknownModelGroups.length === 0
+      unknownModelGroups: [],
+      ready: true
     }
   } catch (error) {
     console.error('Błąd sprawdzania zakresu grafiku:', error)
@@ -1460,20 +1650,119 @@ const invalidateAnalysis = () => {
   draftName.value = ''
   draftCreateError.value = ''
   createdDraftId.value = null
+  showContinuityWarningModal.value = false
+  closeRangeProblemsDialog()
+  closeAtomicConflictDialog()
   analyzedDayDocumentsByDate = new Map()
 }
 
 const getDefaultDraftName = () => {
   if (!dateFrom.value || !dateTo.value) {
-    return 'Grafik roboczy'
+    return 'Grafik'
   }
 
   return `Grafik ${formatShortDate(dateFrom.value)} – ${formatShortDate(dateTo.value)}`
 }
 
-const createScheduleDraft = async () => {
+const closeRangeProblemsDialog = () => {
+  rangeProblemsDialog.value = {
+    visible: false,
+    sections: []
+  }
+}
+
+const openRangeProblemsDialog = problems => {
+  if (!problems?.hasProblems) return
+
+  rangeProblemsDialog.value = {
+    visible: true,
+    sections: problems.sections
+  }
+}
+
+const closeAtomicConflictDialog = () => {
+  atomicConflictDialog.value = {
+    visible: false,
+    dateKeys: []
+  }
+}
+
+const openAtomicConflictDialog = dateKeys => {
+  atomicConflictDialog.value = {
+    visible: true,
+    dateKeys: Array.isArray(dateKeys) ? dateKeys : []
+  }
+}
+
+const handleScheduleCreationError = error => {
+  if (error?.code === SCHEDULE_CREATION_ERROR_CODES.ATOMIC_DATE_CONFLICT) {
+    showContinuityWarningModal.value = false
+    analysisResult.value = null
+    generatorInputResult.value = null
+    generatorInputError.value = ''
+    showDayControlList.value = false
+    expandedDayKeys.value = []
+    draftName.value = ''
+    analyzedDayDocumentsByDate = new Map()
+    openAtomicConflictDialog(error?.details?.dateKeys)
+    return true
+  }
+
+  if (error?.code === SCHEDULE_CREATION_ERROR_CODES.RANGE_PROBLEMS) {
+    showContinuityWarningModal.value = false
+    analysisResult.value = null
+    generatorInputResult.value = null
+    generatorInputError.value = ''
+    showDayControlList.value = false
+    expandedDayKeys.value = []
+    analyzedDayDocumentsByDate = new Map()
+    openRangeProblemsDialog(error.details)
+    return true
+  }
+
+  if (error?.code === SCHEDULE_CREATION_ERROR_CODES.CONTINUITY_WARNING) {
+    showContinuityWarningModal.value = true
+    return true
+  }
+
+  return false
+}
+
+const persistSchedule = async continuityWarningAcknowledged => {
+  isValidatingCreation.value = true
+
+  try {
+    createdDraftId.value = await scheduleDraftsStore.createSchedule({
+      name: draftName.value,
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value,
+      daySummaries: generatorInputResult.value.daySummaries,
+      continuityWarningAcknowledged
+    })
+
+    if (!createdDraftId.value) {
+      throw new Error('Nie udało się utworzyć grafiku.')
+    }
+
+    showContinuityWarningModal.value = false
+    showDraftCreatedModal.value = true
+  } catch (error) {
+    console.error('Błąd tworzenia grafiku:', error)
+
+    if (!handleScheduleCreationError(error)) {
+      draftCreateError.value =
+        error?.message ||
+        'Nie udało się zapisać grafiku.'
+    }
+  } finally {
+    isValidatingCreation.value = false
+  }
+}
+
+const createSchedule = async () => {
   if (
     scheduleDraftsStore.isCreating ||
+    isValidatingCreation.value ||
     !generatorInputResult.value ||
     !draftName.value
   ) {
@@ -1481,27 +1770,19 @@ const createScheduleDraft = async () => {
   }
 
   draftCreateError.value = ''
+  closeRangeProblemsDialog()
+  await persistSchedule(false)
+}
 
-  try {
-    createdDraftId.value = await scheduleDraftsStore.createDraft({
-      name: draftName.value,
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value,
-      daySummaries: generatorInputResult.value.daySummaries
-    })
+const cancelContinuityWarning = () => {
+  if (scheduleDraftsStore.isCreating) return
+  showContinuityWarningModal.value = false
+}
 
-    if (!createdDraftId.value) {
-      throw new Error('Nie udało się utworzyć grafiku roboczego.')
-    }
-
-    showDraftCreatedModal.value = true
-  } catch (error) {
-    console.error('Błąd tworzenia grafiku roboczego:', error)
-
-    draftCreateError.value =
-      error?.message ||
-      'Nie udało się zapisać grafiku roboczego.'
-  }
+const confirmContinuityWarning = async () => {
+  if (scheduleDraftsStore.isCreating) return
+  draftCreateError.value = ''
+  await persistSchedule(true)
 }
 
 const openCreatedDraft = () => {
@@ -2397,6 +2678,100 @@ const isSelectedCalendarDay = day => {
 .schedule-draft-create-button {
   width: 100%;
   margin-top: 16px;
+}
+
+.schedule-creation-validation-dialog {
+  width: min(92vw, 520px);
+}
+
+.schedule-range-problems-dialog {
+  display: flex;
+  max-height: calc(100dvh - 48px);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.schedule-range-problems-header,
+.schedule-range-problems-actions {
+  flex: 0 0 auto;
+}
+
+.schedule-range-problems-header .app-dialog-message {
+  margin-bottom: 0;
+}
+
+.schedule-creation-block-icon {
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.schedule-continuity-warning-icon {
+  color: #ffffff;
+  background: #d97706;
+}
+
+.schedule-range-problem-sections {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.schedule-range-problems-actions {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.schedule-range-problem-section {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  color: #475569;
+  background: #fff7f7;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.schedule-range-problem-section strong {
+  color: #991b1b;
+}
+
+.schedule-range-problem-section ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.schedule-range-problem-section li + li {
+  margin-top: 4px;
+}
+
+.schedule-atomic-conflict-dates {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  color: #7f1d1d;
+  background: #fff7f7;
+  font-size: 13px;
+  text-align: left;
+}
+
+.schedule-atomic-conflict-dates ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
 }
 
 .schedule-draft-created-dialog .app-dialog-icon {

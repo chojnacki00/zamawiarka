@@ -6,6 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:employment-rules": "node --test tests/employmentRules.test.js",
+    "test:schedule-availability": "node --test tests/scheduleAvailability.test.js",
+    "test:schedule-creation": "node --test tests/scheduleCreationValidation.test.js",
+    "test:schedule-shift-warnings": "node --test tests/scheduleShiftWarnings.test.js",
+    "test:schedule-structure": "node --test tests/scheduleStructure.test.js",
+    "test:schedule-planning-context": "node --test tests/schedulePlanningContext.test.js",
+    "test:schedule-assignments": "node --test tests/scheduleAssignments.test.js",
+    "test:schedule-publication": "node --test tests/schedulePublication.test.js",
+    "test:schedule-public-projection": "node --test tests/schedulePublicProjection.test.js",
+    "test:schedule-position-colors": "node --test tests/schedulePositionColors.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

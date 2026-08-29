@@ -16,10 +16,10 @@
     <div class="scroll-area schedule-list-scroll">
       <section class="schedule-list-header-card">
         <div>
-          <h3>Grafiki robocze i opublikowane</h3>
+          <h3>Grafiki nieopublikowane i opublikowane</h3>
           <p>
-            Tutaj wrócisz do rozpoczętej pracy. Wersje robocze nie są
-            widoczne dla pracowników.
+            Tutaj wrócisz do rozpoczętej pracy. Nieopublikowane grafiki nie są
+            dostępne dla pracowników.
           </p>
         </div>
 
@@ -47,7 +47,7 @@
         <div class="schedule-list-empty-icon">▦</div>
         <strong>Nie ma jeszcze zapisanych grafików</strong>
         <span>
-          Utwórz pierwszy zakres i zapisz jego szkielet jako grafik roboczy.
+          Utwórz pierwszy grafik dla wybranego zakresu dat.
         </span>
       </div>
 
@@ -69,9 +69,9 @@
 
               <span
                 class="schedule-list-status"
-                :class="getStatusClass(schedule.status)"
+                :class="getStatusClass(schedule)"
               >
-                {{ getStatusLabel(schedule.status) }}
+                {{ getStatusLabel(schedule) }}
               </span>
             </div>
 
@@ -126,7 +126,7 @@
     >
       <div class="app-dialog-card schedule-delete-dialog">
         <div class="app-dialog-icon schedule-delete-icon">−</div>
-        <div class="app-dialog-title">Usunąć grafik roboczy?</div>
+        <div class="app-dialog-title">Usunąć grafik?</div>
         <div class="app-dialog-message">
           Grafik „{{ scheduleToDelete.name || 'Grafik bez nazwy' }}” oraz
           wszystkie jego dni zostaną trwale usunięte.
@@ -161,6 +161,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
+import { canDeleteUnpublishedSchedule } from '../../utils/scheduleStructure.js'
 
 const router = useRouter()
 const scheduleDraftsStore = useScheduleDraftsStore()
@@ -190,7 +191,7 @@ const openSchedule = scheduleId => {
 }
 
 const canDeleteSchedule = schedule => {
-  return ['draft', 'creation_error'].includes(schedule?.status)
+  return canDeleteUnpublishedSchedule(schedule)
 }
 
 const openDeleteConfirm = schedule => {
@@ -258,18 +259,24 @@ const formatUpdatedAt = timestamp => {
   }).format(date)
 }
 
-const getStatusLabel = status => {
-  if (status === 'published') return 'Opublikowany'
-  if (status === 'creating') return 'Zapisywanie'
-  if (status === 'creation_error') return 'Błąd zapisu'
-  return 'Roboczy'
+const getStatusLabel = schedule => {
+  if (schedule?.publicationStatus === 'partially_published') {
+    return `Częściowo opublikowany do ${formatDate(
+      schedule.publishedUntil
+    )}`
+  }
+
+  if (schedule?.publicationStatus === 'published') return 'Opublikowany'
+  return 'Nieopublikowany'
 }
 
-const getStatusClass = status => {
-  if (status === 'published') return 'published'
-  if (status === 'creating') return 'creating'
-  if (status === 'creation_error') return 'error'
-  return 'draft'
+const getStatusClass = schedule => {
+  if (schedule?.publicationStatus === 'partially_published') {
+    return 'partially-published'
+  }
+
+  if (schedule?.publicationStatus === 'published') return 'published'
+  return 'unpublished'
 }
 </script>
 
@@ -381,7 +388,7 @@ const getStatusClass = status => {
   text-transform: uppercase;
 }
 
-.schedule-list-status.draft {
+.schedule-list-status.unpublished {
   color: #1d4ed8;
   background: #dbeafe;
 }
@@ -391,14 +398,10 @@ const getStatusClass = status => {
   background: #dcfce7;
 }
 
-.schedule-list-status.creating {
-  color: #854d0e;
+.schedule-list-status.partially-published {
+  color: #92400e;
   background: #fef3c7;
-}
-
-.schedule-list-status.error {
-  color: #b91c1c;
-  background: #fee2e2;
+  text-transform: none;
 }
 
 .schedule-list-range {

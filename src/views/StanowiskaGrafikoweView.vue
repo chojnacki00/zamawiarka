@@ -44,6 +44,52 @@
             <b>zł/h</b>
           </div>
         </label>
+        <div class="form-field schedule-color-field">
+          <span>Kolor w opublikowanym grafiku</span>
+          <button
+            class="schedule-color-trigger"
+            type="button"
+            :aria-expanded="isColorPaletteOpen"
+            @click="isColorPaletteOpen = !isColorPaletteOpen"
+          >
+            <span
+              class="schedule-color-swatch"
+              :class="{ neutral: !selectedColorOption.value }"
+              :style="selectedColorOption.value
+                ? { backgroundColor: selectedColorOption.value }
+                : {}"
+            >{{ selectedColorOption.value ? '' : '—' }}</span>
+            <strong>{{ selectedColorOption.label }}</strong>
+            <span class="schedule-color-chevron">⌄</span>
+          </button>
+          <div
+            v-if="isColorPaletteOpen"
+            class="schedule-color-palette"
+            role="listbox"
+            aria-label="Kolor w opublikowanym grafiku"
+          >
+            <button
+              v-for="colorOption in SCHEDULE_POSITION_COLOR_PALETTE"
+              :key="colorOption.value || 'default'"
+              class="schedule-color-option"
+              :class="{ selected: form.scheduleColor === colorOption.value }"
+              type="button"
+              role="option"
+              :aria-selected="form.scheduleColor === colorOption.value"
+              @click="selectScheduleColor(colorOption.value)"
+            >
+              <span
+                class="schedule-color-swatch"
+                :class="{ neutral: !colorOption.value }"
+                :style="colorOption.value
+                  ? { backgroundColor: colorOption.value }
+                  : {}"
+              >{{ colorOption.value ? '' : '—' }}</span>
+              <span>{{ colorOption.label }}</span>
+              <b v-if="form.scheduleColor === colorOption.value">✓</b>
+            </button>
+          </div>
+        </div>
         <label class="switch-row">
           <span><strong>Stanowisko aktywne</strong><small>Nieaktywnego stanowiska nie można przypisywać w nowych miejscach.</small></span>
           <input v-model="form.active" type="checkbox">
@@ -74,6 +120,11 @@ import { useRouter } from 'vue-router'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { useEmployeesStore } from '../stores/employeesStore.js'
 import { useScheduleDemandModelsStore } from '../stores/scheduleDemandModelsStore.js'
+import {
+  SCHEDULE_POSITION_COLOR_PALETTE,
+  getSchedulePositionColorOption,
+  normalizeSchedulePositionColor
+} from '../utils/schedulePositionColors.js'
 
 const router = useRouter()
 const positionsStore = useSchedulePositionsStore()
@@ -83,9 +134,19 @@ const isFormOpen = ref(false)
 const editingPositionId = ref(null)
 const isSaving = ref(false)
 const positionToDelete = ref(null)
-const form = ref({ nazwa: '', defaultHourlyRate: 0, active: true, displayOrder: 1 })
+const isColorPaletteOpen = ref(false)
+const form = ref({
+  nazwa: '',
+  defaultHourlyRate: 0,
+  scheduleColor: null,
+  active: true,
+  displayOrder: 1
+})
 
 const isFormValid = computed(() => form.value.nazwa.trim().length > 0 && Number.isFinite(Number(form.value.defaultHourlyRate)) && Number(form.value.defaultHourlyRate) >= 0)
+const selectedColorOption = computed(() => (
+  getSchedulePositionColorOption(form.value.scheduleColor)
+))
 
 onMounted(async () => {
   await Promise.all([positionsStore.fetchPositions(), employeesStore.fetchEmployees(), demandModelsStore.fetchModels()])
@@ -107,14 +168,35 @@ const handleBack = () => {
 const openForm = (position = null) => {
   editingPositionId.value = position?.id || null
   form.value = position
-    ? { nazwa: position.nazwa || '', defaultHourlyRate: Number(position.defaultHourlyRate) || 0, active: position.active !== false, displayOrder: Number(position.displayOrder) || 1 }
-    : { nazwa: '', defaultHourlyRate: 0, active: true, displayOrder: positionsStore.positions.length + 1 }
+    ? {
+        nazwa: position.nazwa || '',
+        defaultHourlyRate: Number(position.defaultHourlyRate) || 0,
+        scheduleColor: normalizeSchedulePositionColor(
+          position.scheduleColor
+        ),
+        active: position.active !== false,
+        displayOrder: Number(position.displayOrder) || 1
+      }
+    : {
+        nazwa: '',
+        defaultHourlyRate: 0,
+        scheduleColor: null,
+        active: true,
+        displayOrder: positionsStore.positions.length + 1
+      }
+  isColorPaletteOpen.value = false
   isFormOpen.value = true
 }
 
 const cancelForm = () => {
   isFormOpen.value = false
   editingPositionId.value = null
+  isColorPaletteOpen.value = false
+}
+
+const selectScheduleColor = value => {
+  form.value.scheduleColor = normalizeSchedulePositionColor(value)
+  isColorPaletteOpen.value = false
 }
 
 const savePosition = async () => {
@@ -182,6 +264,17 @@ const executeDelete = async () => {
 .input-suffix { position: relative; }
 .input-suffix input { padding-right: 58px; }
 .input-suffix b { position: absolute; top: 50%; right: 13px; transform: translateY(-50%); color: #6b7280; font-size: 13px; text-transform: none; }
+.schedule-color-field { position: relative; }
+.schedule-color-trigger { display: grid; width: 100%; min-height: 52px; padding: 7px 12px; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid #d1d5db; border-radius: 12px; color: #334155; background: #fff; text-align: left; }
+.schedule-color-trigger strong { font-size: 15px; }
+.schedule-color-chevron { color: #94a3b8; font-size: 20px; }
+.schedule-color-swatch { display: inline-grid; width: 34px; height: 34px; box-sizing: border-box; place-items: center; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; box-shadow: 0 0 0 1px #cbd5e1, 0 2px 5px rgba(15,23,42,.12); color: #64748b; font-size: 18px; font-weight: 800; }
+.schedule-color-swatch.neutral { background: #f8fafc; }
+.schedule-color-palette { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 3px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; box-shadow: 0 10px 24px rgba(15,23,42,.09); }
+.schedule-color-option { display: grid; min-width: 0; min-height: 50px; padding: 7px 9px; grid-template-columns: 34px minmax(0, 1fr) 18px; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 11px; color: #475569; background: #fff; text-align: left; }
+.schedule-color-option.selected { border-color: #38bdf8; color: #0369a1; background: #f0f9ff; }
+.schedule-color-option > span:nth-child(2) { overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+.schedule-color-option b { color: #0284c7; font-size: 15px; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border-radius: 12px; background: #f9fafb; }
 .switch-row span { display: grid; gap: 4px; }
 .switch-row small { color: #6b7280; line-height: 1.35; }
@@ -190,5 +283,6 @@ const executeDelete = async () => {
 .save-button:disabled { opacity: .45; }
 .confirm-card { max-width: 340px; }
 .confirm-card p { color: #6b7280; text-align: center; }
+@media (max-width: 380px) { .schedule-color-palette { grid-template-columns: 1fr; } }
 @media (min-width: 700px) { .positions-scroll { max-width: 680px; margin: 0 auto; } }
 </style>

@@ -1,4 +1,46 @@
-const roundHours = value => Math.round(Number(value || 0) * 100) / 100
+export const roundHours = value => (
+  Math.round(Number(value || 0) * 100) / 100
+)
+
+export const getRequiredWeeklyMaximumHours = profile => {
+  if (
+    !profile?.targetHours?.applies ||
+    profile.targetHours.unit !== 'week'
+  ) {
+    return null
+  }
+
+  const targetHours = roundHours(profile.targetHours.amount)
+  const plusHours = profile.targetTolerance?.applies
+    ? roundHours(profile.targetTolerance.plusHours)
+    : 0
+
+  return roundHours(targetHours + plusHours)
+}
+
+export const getWeeklyMaximumValidationMessage = profile => {
+  if (!profile?.maximumWeeklyHours?.applies) return ''
+
+  const requiredMaximum = getRequiredWeeklyMaximumHours(profile)
+  if (requiredMaximum === null) return ''
+
+  const maximumWeeklyHours = Number(
+    profile.maximumWeeklyHours.hours
+  )
+  if (
+    Number.isFinite(maximumWeeklyHours) &&
+    maximumWeeklyHours + 0.001 >= requiredMaximum
+  ) {
+    return ''
+  }
+
+  const targetHours = roundHours(profile.targetHours.amount)
+  const plusHours = profile.targetTolerance?.applies
+    ? roundHours(profile.targetTolerance.plusHours)
+    : 0
+
+  return `Maksymalna liczba godzin tygodniowo nie może być mniejsza niż górna granica celu: ${requiredMaximum} h (cel ${targetHours} h + odchylenie ${plusHours} h).`
+}
 
 export const getScaledEmploymentProfile = (employee, profile) => {
   if (!employee?.employmentProfileId || !profile) return null
@@ -11,6 +53,12 @@ export const getScaledEmploymentProfile = (employee, profile) => {
       ...profile.targetTolerance,
       minusHours: roundHours(Number(profile.targetTolerance?.minusHours || 0) * factor),
       plusHours: roundHours(Number(profile.targetTolerance?.plusHours || 0) * factor)
+    },
+    maximumWeeklyHours: {
+      ...profile.maximumWeeklyHours,
+      hours: roundHours(
+        Number(profile.maximumWeeklyHours?.hours || 0) * factor
+      )
     }
   }
 }
@@ -37,12 +85,26 @@ const getWeekKey = dateKey => {
 }
 
 export const getEmploymentRuleWarnings = ({ employee, profile, days, day, shift }) => {
-  const scaledProfile = getScaledEmploymentProfile(employee, profile)
+  const scaledProfile = employee?.effectiveEmploymentRules
+    ? employee.effectiveEmploymentRules
+    : getScaledEmploymentProfile(employee, profile)
   if (!scaledProfile || !day || !shift) return []
   const warnings = []
   const employeeShifts = (days || []).flatMap(scheduleDay => (
     (scheduleDay.workingShifts || [])
-      .filter(item => item.employeeId === employee.id && item.id !== shift.id)
+      .filter(item => {
+        const isEvaluatedShift =
+          item.id === shift.id &&
+          (
+            scheduleDay.id === day.id ||
+            scheduleDay.date === day.date
+          )
+
+        return (
+          item.employeeId === employee.id &&
+          !isEvaluatedShift
+        )
+      })
       .map(item => ({ ...item, date: scheduleDay.date }))
   ))
   const candidateHours = getShiftHours(shift)
@@ -58,8 +120,16 @@ export const getEmploymentRuleWarnings = ({ employee, profile, days, day, shift 
     warnings.push(`Przekroczony limit tygodniowy profilu: ${roundHours(weekHours)} h zamiast maksymalnie ${scaledProfile.maximumWeeklyHours.hours} h.`)
   }
 
-  if (scaledProfile.targetHours?.applies && scaledProfile.targetHours.unit === 'week' && scaledProfile.targetTolerance?.applies) {
-    const upperTarget = Number(scaledProfile.targetHours.amount) + Number(scaledProfile.targetTolerance.plusHours)
+  if (
+    scaledProfile.targetHours?.applies &&
+    scaledProfile.targetHours.unit === 'week'
+  ) {
+    const plusHours = scaledProfile.targetTolerance?.applies
+      ? Number(scaledProfile.targetTolerance.plusHours) || 0
+      : 0
+    const upperTarget = Number(
+      scaledProfile.targetHours.amount
+    ) + plusHours
     if (weekHours > upperTarget) warnings.push(`Przekroczony cel tygodniowy z tolerancją: ${roundHours(weekHours)} h przy limicie ${roundHours(upperTarget)} h.`)
   }
 

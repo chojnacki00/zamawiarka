@@ -13,6 +13,9 @@
           Wartości pochodzą z profilu przypisanego pracownikowi. Tutaj wybierasz,
           jak generator ma traktować każdą zasadę.
         </p>
+        <p class="generator-profile-scope">
+          Reguły pobierane z profilu zatrudnienia dotyczą tylko pracowników, którzy mają przypisany profil.
+        </p>
       </section>
 
       <section class="generator-settings-mode-info">
@@ -184,17 +187,17 @@ const rules = [
   {
     key: 'targetHours',
     title: 'Docelowa liczba godzin',
-    description: 'Uwzględnia cel godzin, wymiar pracownika, okres rozliczeniowy i dopuszczalne odchylenie.'
+    description: 'Uwzględnia cel i okres rozliczeniowy z profilu zatrudnienia oraz indywidualny wymiar pracy i przeliczone odchylenie pracownika.'
   },
   {
     key: 'maximumDailyHours',
     title: 'Maksymalna liczba godzin dziennie',
-    description: 'Limit pobierany z profilu zatrudnienia konkretnego pracownika.'
+    description: 'Limit pobierany z przypisanego profilu zatrudnienia.'
   },
   {
     key: 'maximumWeeklyHours',
     title: 'Maksymalna liczba godzin tygodniowo',
-    description: 'Generator kontroluje łączny tygodniowy czas pracy.'
+    description: 'Generator kontroluje łączny tygodniowy czas pracy. Limit z profilu zatrudnienia jest przeliczany według indywidualnego wymiaru pracy.'
   },
   {
     key: 'minimumRest',
@@ -321,6 +324,7 @@ onMounted(loadSettings)
 .generator-settings-step { margin-bottom: 6px; color: #f97316; font-size: 12px; font-weight: 900; letter-spacing: .08em; }
 .generator-settings-intro h1 { margin: 0 0 8px; color: #111827; font-size: 23px; line-height: 1.2; }
 .generator-settings-intro p { margin: 0; color: #64748b; font-size: 14px; line-height: 1.5; }
+.generator-settings-intro .generator-profile-scope { margin-top: 8px; color: #475569; font-size: 12px; font-weight: 700; }
 .generator-settings-mode-info {
   margin-bottom: 13px;
   padding: 13px 14px;

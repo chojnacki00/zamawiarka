@@ -17,7 +17,25 @@
               <h3>{{ schedule.name }}</h3>
               <p>{{ formatDate(schedule.dateFrom) }} – {{ formatDate(schedule.dateTo) }}</p>
             </div>
-            <span class="status-badge">Roboczy</span>
+            <div class="header-actions">
+              <span
+                class="status-badge"
+                :class="publicationStatusClass"
+              >{{ publicationStatusLabel }}</span>
+              <button
+                v-if="canShowPublicationButton"
+                class="publish-schedule-button"
+                type="button"
+                @click="openPublicationModal"
+              >{{ publicationButtonLabel }}</button>
+            </div>
+          </div>
+
+          <div
+            v-if="schedule.hasUnpublishedChanges"
+            class="unpublished-changes-notice"
+          >
+            Grafik zawiera zmiany, które nie zostały jeszcze opublikowane.
           </div>
 
           <div class="summary-grid">
@@ -33,7 +51,7 @@
           <div class="matrix-toolbar">
             <div>
               <strong>Tabela grafiku</strong>
-              <span>Kliknij zmianę, wakat, zielony „+” albo kreskę w pustym polu.</span>
+              <span>Kliknij zmianę, wakat albo neutralny „+”.</span>
             </div>
             <div class="toolbar-actions">
               <span v-if="saveState" class="save-state" :class="saveState">{{ saveStateLabel }}</span>
@@ -99,7 +117,13 @@
                         v-for="shift in getEmployeeShifts(day, employee.id)"
                         :key="shift.id"
                         class="shift-pill assigned"
-                        :class="getShiftClasses(shift)"
+                        :class="[
+                          getShiftClasses(shift),
+                          {
+                            'has-availability-marker': getAvailabilityMarkers(shift).length,
+                            'has-multiple-availability-markers': getAvailabilityMarkers(shift).length > 1
+                          }
+                        ]"
                         type="button"
                         :style="getShiftStyle(shift)"
                         @click="openShift(day, shift)"
@@ -107,31 +131,40 @@
                         <strong>{{ shift.from }}–{{ shift.to }}</strong>
                         <span>{{ getPositionName(shift) }}</span>
                         <em v-if="isExtraShift(shift)">Dodatkowa</em>
-                        <em v-else-if="shift.assignmentSource === 'OVERRIDE'">⚠ Z pominięciem ograniczeń</em>
-                        <i
-                          v-if="getExtraAvailabilityMarker(shift)"
-                          class="extra-availability-marker"
-                          :class="getExtraAvailabilityMarker(shift).className"
-                          :title="getExtraAvailabilityMarker(shift).label"
-                          :aria-label="getExtraAvailabilityMarker(shift).label"
-                        >!</i>
+                        <em v-if="shouldShowGeneralOverride(shift)" class="override-message"><span class="override-icon" aria-hidden="true">⚠</span> Z pominięciem ograniczeń</em>
+                        <span
+                          v-if="getAvailabilityMarkers(shift).length"
+                          class="shift-availability-markers"
+                        >
+                          <i
+                            v-for="marker in getAvailabilityMarkers(shift)"
+                            :key="marker.className"
+                            class="shift-availability-marker"
+                            :class="marker.className"
+                            :title="marker.label"
+                            :aria-label="marker.label"
+                          >{{ marker.symbol }}</i>
+                        </span>
                       </button>
-                      <div v-if="canAssignEmployee(employee)" class="cell-add-actions">
+                      <div
+                        v-if="shouldShowQuickAdd(employee, day)"
+                        class="cell-add-actions"
+                      >
                         <button
-                          v-if="canEmployeeFillAnyUnfilled(employee, day)"
-                          class="add-button vacancy-add"
+                          class="add-button quick-add"
+                          :class="getQuickAddClasses(employee, day)"
                           type="button"
-                          title="Obsadź wakat"
+                          :title="hasAssignableUnfilledShift(employee, day)
+                            ? 'Obsadź pasujący wakat lub dodaj zmianę dodatkową'
+                            : 'Dodaj zmianę dodatkową'"
+                          :aria-label="`Dodaj zmianę: ${getEmployeeName(employee)}, ${formatDateWithWeekday(day.date)}`"
                           @click="openEmployeeDay(employee, day)"
                         >+</button>
-                        <button
-                          v-else
-                          class="add-button extra-add"
-                          type="button"
-                          title="Dodatkowa zmiana"
-                          @click="openExtraShift(employee, day)"
-                        >—</button>
                       </div>
+                      <span
+                        v-else-if="getEmployeeShifts(day, employee.id).length === 0"
+                        class="empty-mark"
+                      >—</span>
                     </div>
                   </td>
                 </tr>
@@ -144,8 +177,125 @@
       <div v-else class="editor-state error">Nie znaleziono tego grafiku.</div>
     </div>
 
+    <div
+      v-if="showPublicationModal && schedule"
+      class="app-dialog-overlay publication-overlay"
+      @click.self="closePublicationModal"
+    >
+      <div class="app-dialog-card publication-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          :disabled="isPublishing"
+          @click="closePublicationModal"
+        >×</button>
+        <div class="app-dialog-icon publication-icon">↑</div>
+        <div class="app-dialog-title">
+          {{ schedule.publicationStatus === 'partially_published'
+            ? 'Rozszerz publikację'
+            : 'Opublikuj grafik' }}
+        </div>
+        <div class="app-dialog-message publication-message">
+          <template v-if="schedule.publicationStatus === 'partially_published'">
+            Grafik jest obecnie opublikowany do
+            {{ formatDate(schedule.publishedUntil) }}. Wybierz nową datę
+            końcową publikacji.
+          </template>
+          <template v-else>
+            Pracownicy zobaczą grafik od {{ formatDate(schedule.dateFrom) }}
+            do wskazanego dnia. Dalsza część pozostanie nieopublikowana.
+          </template>
+        </div>
+
+        <label class="publication-date-field">
+          <span>Publikacja do</span>
+          <input
+            v-model="publicationEndDate"
+            type="date"
+            :min="publicationMinDate"
+            :max="schedule.dateTo"
+            :disabled="isPublishing"
+          >
+        </label>
+
+        <div
+          v-if="publicationUnfilledCount > 0"
+          class="publication-vacancies-info"
+        >
+          W publikowanym zakresie pozostało
+          {{ publicationUnfilledCount }} nieobsadzonych wakatów. Pracownicy
+          zobaczą tylko przypisane zmiany.
+        </div>
+
+        <div v-if="publicationError" class="modal-error">
+          {{ publicationError }}
+        </div>
+
+        <div class="app-dialog-actions publication-actions">
+          <button
+            class="app-dialog-button app-dialog-cancel"
+            type="button"
+            :disabled="isPublishing"
+            @click="closePublicationModal"
+          >Anuluj</button>
+          <button
+            class="app-dialog-button publication-confirm-button"
+            type="button"
+            :disabled="isPublishing || !isPublicationEndDateValid"
+            @click="confirmPublication"
+          >
+            {{ isPublishing
+              ? 'Publikowanie...'
+              : schedule.publicationStatus === 'partially_published'
+                ? 'Rozszerz publikację'
+                : 'Opublikuj' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="publishedSuccessUntil"
+      class="app-dialog-overlay publication-success-overlay"
+      @click.self="publishedSuccessUntil = ''"
+    >
+      <div class="app-dialog-card publication-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          @click="publishedSuccessUntil = ''"
+        >×</button>
+        <div class="app-dialog-icon publication-success-icon">✓</div>
+        <div class="app-dialog-title">Grafik opublikowany</div>
+        <div class="app-dialog-message">
+          Grafik został opublikowany do
+          {{ formatDate(publishedSuccessUntil) }}.
+        </div>
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="publishedSuccessUntil = ''"
+          >OK</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="editorMode" class="app-dialog-overlay editor-modal-overlay" @click.self="closeEditorModal">
       <div class="app-dialog-card editor-modal">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          :disabled="isSaving"
+          @click="closeEditorModal"
+        >×</button>
+
         <template v-if="editorMode === 'shift' && selectedShift && selectedDay">
           <div class="modal-kicker">{{ formatDateWithWeekday(selectedDay.date) }}</div>
           <div class="app-dialog-title modal-title">{{ getPositionName(selectedShift) }}</div>
@@ -154,8 +304,16 @@
           <template v-if="selectedShift.employeeId && !showCandidates">
             <div class="current-assignment">
               <span>Przypisany pracownik</span>
-              <strong>{{ getShiftEmployeeName(selectedShift) }}</strong>
-              <small>{{ getAssignmentSourceLabel(selectedShift.assignmentSource) }}</small>
+              <div class="modal-employee-action-row">
+                <strong>{{ getShiftEmployeeName(selectedShift) }}</strong>
+                <button
+                  v-if="canAssignEmployee(selectedEmployee)"
+                  class="extra-shift-shortcut"
+                  type="button"
+                  @click="openExtraShift(selectedEmployee, selectedDay)"
+                >Zmiana dodatkowa</button>
+              </div>
+              <small>{{ getAssignmentSourceLabel(selectedShift) }}</small>
             </div>
             <div v-if="selectedShift.warnings?.length" class="assignment-warnings">
               <strong>Ostrzeżenia</strong>
@@ -192,7 +350,14 @@
 
         <template v-else-if="editorMode === 'employeeDay' && selectedEmployee && selectedDay">
           <div class="modal-kicker">{{ formatDateWithWeekday(selectedDay.date) }}</div>
-          <div class="app-dialog-title modal-title">{{ getEmployeeName(selectedEmployee) }}</div>
+          <div class="modal-employee-action-row modal-employee-heading">
+            <div class="app-dialog-title modal-title">{{ getEmployeeName(selectedEmployee) }}</div>
+            <button
+              class="extra-shift-shortcut"
+              type="button"
+              @click="openExtraShift(selectedEmployee, selectedDay)"
+            >Zmiana dodatkowa</button>
+          </div>
           <div class="section-title">Wybierz nieobsadzoną zmianę</div>
           <div v-if="employeeAvailableShifts.length" class="employee-shift-list">
             <article v-for="item in employeeAvailableShifts" :key="item.shift.id" class="employee-shift-card">
@@ -240,6 +405,11 @@
                 <div>
                   <strong>{{ getPositionName(templateShift) }}</strong>
                   <span>{{ templateShift.from }}–{{ templateShift.to }}</span>
+                  <small class="template-assignment-status">
+                    {{ templateShift.sourceEmployeeName
+                      ? `Obsadzona: ${templateShift.sourceEmployeeName}`
+                      : 'Nieobsadzony wakat' }}
+                  </small>
                 </div>
                 <button type="button" :disabled="isSaving" @click="attemptExtraTemplate(templateShift)">
                   Dodaj taką zmianę
@@ -268,14 +438,19 @@
         </template>
 
         <div v-if="editorError" class="modal-error">{{ editorError }}</div>
-        <div class="app-dialog-actions close-actions">
-          <button class="app-dialog-button app-dialog-cancel" type="button" :disabled="isSaving" @click="closeEditorModal">Zamknij</button>
-        </div>
       </div>
     </div>
 
     <div v-if="showOverrideConfirm && pendingAssignment" class="app-dialog-overlay confirm-overlay">
       <div class="app-dialog-card confirm-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          :disabled="isSaving"
+          @click="cancelOverride"
+        >×</button>
         <div class="app-dialog-icon warning-icon">!</div>
         <div class="app-dialog-title">Wstawić mimo ograniczeń?</div>
         <div class="app-dialog-message">{{ getEmployeeName(pendingAssignment.candidate.employee) }} nie spełnia wszystkich warunków tej zmiany.</div>
@@ -289,6 +464,14 @@
 
     <div v-if="showRemoveConfirm && selectedShift" class="app-dialog-overlay confirm-overlay">
       <div class="app-dialog-card confirm-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          :disabled="isSaving"
+          @click="showRemoveConfirm = false"
+        >×</button>
         <div class="app-dialog-icon remove-icon">−</div>
         <div class="app-dialog-title">
           {{
@@ -313,6 +496,13 @@
 
     <div v-if="showTimePickerModal" class="app-dialog-overlay time-picker-overlay" @click.self="closeTimePicker">
       <div class="app-dialog-card schedule-time-dialog">
+        <button
+          class="modal-close-button"
+          type="button"
+          aria-label="Zamknij"
+          title="Zamknij"
+          @click="closeTimePicker"
+        >×</button>
         <div class="app-dialog-icon">🕒</div>
         <div class="app-dialog-title">Wybierz godzinę</div>
         <div class="app-dialog-message">Ustaw godzinę i minuty.</div>
@@ -360,23 +550,35 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useEmployeesStore } from '../../stores/employeesStore.js'
-import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
+import { getAuth } from 'firebase/auth'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
-import { useScheduleEmploymentProfilesStore } from '../../stores/scheduleEmploymentProfilesStore.js'
+import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import {
   getCompetencyStars,
   getEmployeeFullName,
   resolveShiftEmployeeName
 } from '../../utils/employeeAssignments.js'
 import { getEmploymentRuleWarnings } from '../../utils/employmentRules.js'
+import { shouldShowEmployeeDayQuickAdd } from '../../utils/scheduleStructure.js'
+import {
+  isAutomaticAssignment,
+  isExtraShift
+} from '../../utils/scheduleAssignments.js'
+import {
+  hasAvailabilityRangeWarning,
+  shouldShowGeneralOverride
+} from '../../utils/scheduleShiftWarnings.js'
+import {
+  PUBLICATION_STATUSES,
+  canPublishSchedule,
+  getDefaultPublicationEndDate,
+  getPublicationDateKeys
+} from '../../utils/schedulePublication.js'
 
 const route = useRoute()
 const router = useRouter()
-const employeesStore = useEmployeesStore()
-const positionsStore = useSchedulePositionsStore()
 const scheduleDraftsStore = useScheduleDraftsStore()
-const employmentProfilesStore = useScheduleEmploymentProfilesStore()
+const employeeAuthStore = useEmployeeAuthStore()
 
 const isLoading = ref(false)
 const loadError = ref('')
@@ -399,6 +601,11 @@ const showTimePickerModal = ref(false)
 const activeTimeField = ref(null)
 const selectedHour = ref('00')
 const selectedMinute = ref('00')
+const showPublicationModal = ref(false)
+const publicationEndDate = ref('')
+const publicationError = ref('')
+const isPublishing = ref(false)
+const publishedSuccessUntil = ref('')
 let saveStateTimer = null
 
 const hours = Array.from(
@@ -409,8 +616,90 @@ const minutes = ['00', '15', '30', '45']
 
 const schedule = computed(() => scheduleDraftsStore.currentSchedule)
 const days = computed(() => scheduleDraftsStore.currentDays)
-const activeEmployees = computed(() => [...(employeesStore.employees || [])].filter(e => e.aktywny !== false).sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b), 'pl')))
-const employeesById = computed(() => new Map((employeesStore.employees || []).map(e => [e.id, e])))
+const publicationStatusLabel = computed(() => {
+  if (
+    schedule.value?.publicationStatus ===
+    PUBLICATION_STATUSES.PARTIALLY_PUBLISHED
+  ) {
+    return `Częściowo opublikowany do ${formatDate(
+      schedule.value.publishedUntil
+    )}`
+  }
+
+  if (
+    schedule.value?.publicationStatus ===
+    PUBLICATION_STATUSES.PUBLISHED
+  ) {
+    return 'Opublikowany'
+  }
+
+  return 'Nieopublikowany'
+})
+const publicationStatusClass = computed(() => (
+  schedule.value?.publicationStatus ||
+  PUBLICATION_STATUSES.UNPUBLISHED
+))
+const publicationButtonLabel = computed(() => (
+  schedule.value?.publicationStatus ===
+  PUBLICATION_STATUSES.PARTIALLY_PUBLISHED
+    ? 'Rozszerz publikację'
+    : 'Opublikuj grafik'
+))
+const canCurrentUserPublish = computed(() => canPublishSchedule({
+  hasEmployeeSession: Boolean(employeeAuthStore.currentEmployee),
+  employeePermissions:
+    employeeAuthStore.currentEmployee?.uprawnienia || {},
+  hasAdminSession: Boolean(getAuth().currentUser)
+}))
+const canShowPublicationButton = computed(() => (
+  canCurrentUserPublish.value &&
+  schedule.value?.publicationStatus !== PUBLICATION_STATUSES.PUBLISHED
+))
+const publicationMinDate = computed(() => {
+  if (!schedule.value) return ''
+
+  try {
+    return getPublicationDateKeys({
+      schedule: schedule.value,
+      publishUntil: schedule.value.dateTo
+    })[0] || ''
+  } catch {
+    return ''
+  }
+})
+const publicationDateKeys = computed(() => {
+  if (!schedule.value || !publicationEndDate.value) return []
+
+  try {
+    return getPublicationDateKeys({
+      schedule: schedule.value,
+      publishUntil: publicationEndDate.value
+    })
+  } catch {
+    return []
+  }
+})
+const isPublicationEndDateValid = computed(() => (
+  publicationDateKeys.value.length > 0
+))
+const publicationUnfilledCount = computed(() => {
+  const dateKeys = new Set(publicationDateKeys.value)
+
+  return days.value
+    .filter(day => dateKeys.has(day.date))
+    .reduce(
+      (sum, day) => sum + getUnfilledShifts(day).length,
+      0
+    )
+})
+const activeEmployees = computed(() => [...(
+  scheduleDraftsStore.planningEmployees || []
+)].filter(e => e.aktywny !== false).sort((a, b) => (
+  getEmployeeName(a).localeCompare(getEmployeeName(b), 'pl')
+)))
+const employeesById = computed(() => new Map((
+  scheduleDraftsStore.planningEmployees || []
+).map(e => [e.id, e])))
 const displayEmployees = computed(() => {
   const employees = new Map(
     activeEmployees.value.map(employee => [employee.id, employee])
@@ -454,8 +743,12 @@ const displayEmployees = computed(() => {
     getEmployeeName(first).localeCompare(getEmployeeName(second), 'pl')
   ))
 })
-const positionsById = computed(() => new Map((positionsStore.positions || []).map(p => [p.id, p])))
-const employmentProfilesById = computed(() => new Map((employmentProfilesStore.profiles || []).map(profile => [profile.id, profile])))
+const positionsById = computed(() => new Map((
+  scheduleDraftsStore.planningPositions || []
+).map(p => [p.id, p])))
+const employmentProfilesById = computed(() => new Map((
+  scheduleDraftsStore.planningEmploymentProfiles || []
+).map(profile => [profile.id, profile])))
 const availabilityByDateEmployee = computed(() => {
   const map = new Map()
   scheduleDraftsStore.availabilityEntries.forEach(entry => {
@@ -481,32 +774,33 @@ const employeeAvailableShifts = computed(() => {
 const extraShiftTemplates = computed(() => {
   if (!selectedDay.value) return []
 
-  const templates = new Map()
   const workingShifts = selectedDay.value.workingShifts || []
 
-  workingShifts
+  return workingShifts
     .filter(shift => !isExtraShift(shift) && shift.positionId)
-    .forEach(shift => {
-      const templateKey =
-        `${shift.positionId}_${shift.from}_${shift.to}`
+    .map(shift => {
+      const templateKey = `template_${shift.id}`
+      const sourceEmployeeName = shift.employeeId
+        ? resolveShiftEmployeeName(
+            shift,
+            employeesById.value.get(shift.employeeId)
+          )
+        : ''
 
-      if (!templates.has(templateKey)) {
-        templates.set(templateKey, {
-          ...shift,
-          id: `template_${templateKey}`,
-          templateKey,
-          employeeId: null,
-          employeeNameSnapshot: null
-        })
+      return {
+        ...shift,
+        id: templateKey,
+        templateKey,
+        sourceEmployeeName,
+        employeeId: null,
+        employeeNameSnapshot: null
       }
     })
-
-  return [...templates.values()].sort((first, second) => {
-    return (
+    .sort((first, second) => (
       first.from.localeCompare(second.from) ||
-      getPositionName(first).localeCompare(getPositionName(second), 'pl')
-    )
-  })
+      getPositionName(first).localeCompare(getPositionName(second), 'pl') ||
+      first.templateKey.localeCompare(second.templateKey)
+    ))
 })
 const saveStateLabel = computed(() => saveState.value === 'saving' ? 'Zapisywanie...' : saveState.value === 'error' ? 'Błąd zapisu' : 'Zapisano')
 
@@ -518,10 +812,7 @@ onMounted(async () => {
     if (!loaded) return
     await Promise.all([
       scheduleDraftsStore.fetchScheduleDays(scheduleId),
-      scheduleDraftsStore.fetchAvailability(loaded.dateFrom, loaded.dateTo),
-      employeesStore.fetchEmployees(),
-      positionsStore.fetchPositions(),
-      employmentProfilesStore.fetchProfiles()
+      scheduleDraftsStore.fetchPlanningContext(scheduleId)
     ])
   } catch (error) {
     console.error('Błąd pobierania edytora grafiku:', error)
@@ -531,8 +822,79 @@ onMounted(async () => {
   }
 })
 
+const openPublicationModal = () => {
+  if (!schedule.value || !canShowPublicationButton.value) return
+
+  publicationError.value = ''
+  publicationEndDate.value = getDefaultPublicationEndDate(
+    schedule.value
+  )
+  showPublicationModal.value = true
+}
+
+const closePublicationModal = () => {
+  if (isPublishing.value) return
+
+  showPublicationModal.value = false
+  publicationEndDate.value = ''
+  publicationError.value = ''
+}
+
+const confirmPublication = async () => {
+  if (
+    isPublishing.value ||
+    !schedule.value ||
+    !isPublicationEndDateValid.value
+  ) {
+    return
+  }
+
+  publicationError.value = ''
+  isPublishing.value = true
+
+  try {
+    const dateKeys = getPublicationDateKeys({
+      schedule: schedule.value,
+      publishUntil: publicationEndDate.value
+    })
+    const expectedDayRevisions = Object.fromEntries(
+      days.value
+        .filter(day => dateKeys.includes(day.date))
+        .map(day => [day.date, day.workingRevision])
+    )
+    const publishedUntil = publicationEndDate.value
+
+    await scheduleDraftsStore.publishSchedule({
+      scheduleId: schedule.value.id,
+      publishUntil: publishedUntil,
+      expectedSchedule: {
+        id: schedule.value.id,
+        dateFrom: schedule.value.dateFrom,
+        dateTo: schedule.value.dateTo,
+        lifecycleStatus: schedule.value.lifecycleStatus,
+        publicationStatus: schedule.value.publicationStatus,
+        publishedUntil: schedule.value.publishedUntil || null,
+        publishedRevision:
+          Number(schedule.value.publishedRevision) || 0
+      },
+      expectedDayRevisions
+    })
+
+    showPublicationModal.value = false
+    publicationEndDate.value = ''
+    publishedSuccessUntil.value = publishedUntil
+  } catch (error) {
+    console.error('Błąd publikowania grafiku:', error)
+    publicationError.value =
+      'Nie udało się opublikować grafiku. Odśwież widok i spróbuj ponownie.'
+  } finally {
+    isPublishing.value = false
+  }
+}
+
 const getEmployeeName = employee => (
   String(employee?.displayName || '').trim() ||
+  String(employee?.fullNameSnapshot || '').trim() ||
   getEmployeeFullName(employee) ||
   'Pracownik bez nazwy'
 )
@@ -549,14 +911,28 @@ const getPositionColor = id => {
   return position?.kolor || position?.color || '#64748b'
 }
 const getShiftStyle = shift => ({ '--position-color': getPositionColor(shift.positionId) })
-const isExtraShift = shift => shift?.origin === 'MANUAL_EXTRA'
 const getUnfilledShifts = day => (day?.workingShifts || []).filter(shift => !shift.employeeId)
 const hasUnfilledShifts = day => getUnfilledShifts(day).length > 0
 const getEmployeeShifts = (day, employeeId) => (day?.workingShifts || []).filter(shift => shift.employeeId === employeeId)
+const hasAssignableUnfilledShift = (employee, day) => (
+  getUnfilledShifts(day).some(shift => (
+    getCompetencyStars(employee, shift.positionId) >= 1
+  ))
+)
 const canAssignEmployee = employee => Boolean(
   employee && employee.aktywny !== false && !employee.isDeleted
 )
-const canEmployeeFillAnyUnfilled = (employee, day) => getUnfilledShifts(day).some(shift => getCompetencyStars(employee, shift.positionId) >= 1)
+const shouldShowQuickAdd = (employee, day) => (
+  canAssignEmployee(employee) &&
+  shouldShowEmployeeDayQuickAdd({
+    employeeShifts: getEmployeeShifts(day, employee.id),
+    hasAssignableVacancy: hasAssignableUnfilledShift(employee, day)
+  })
+)
+const getQuickAddClasses = (employee, day) => ({
+  'quick-add-vacancy': hasAssignableUnfilledShift(employee, day),
+  'quick-add-extra': !hasAssignableUnfilledShift(employee, day)
+})
 const getShiftClasses = shift => {
   if (isExtraShift(shift)) {
     return { extra: true }
@@ -575,33 +951,44 @@ const getShiftClasses = shift => {
     ].includes(availabilityType)
   }
 }
-const getExtraAvailabilityMarker = shift => {
-  if (!isExtraShift(shift)) return null
-
+const getAvailabilityMarkers = shift => {
   const availabilityType = shift?.decision?.availabilityType
 
   if (availabilityType === 'unavailable') {
-    return {
+    return [{
       className: 'unavailable',
+      symbol: '!',
       label: 'Pracownik zaznaczył: nie mogę pracować'
-    }
+    }]
   }
 
   if (availabilityType === 'preferred_off') {
-    return {
+    return [{
       className: 'preferred-off',
+      symbol: '♥',
       label: 'Pracownik zgłosił prośbę o wolne'
-    }
+    }]
   }
 
   if (availabilityType === 'partial') {
-    return {
+    const markers = [{
       className: 'partial',
+      symbol: '',
       label: 'Pracownik podał dyspozycję w godzinach'
+    }]
+
+    if (hasAvailabilityRangeWarning(shift?.warnings)) {
+      markers.push({
+        className: 'partial-outside-range',
+        symbol: '!',
+        label: 'Zmiana wykracza poza godziny dyspozycji pracownika'
+      })
     }
+
+    return markers
   }
 
-  return null
+  return []
 }
 
 const getTimeMinutes = value => {
@@ -716,6 +1103,50 @@ const getCandidateInfo = (employee, day, shift) => {
     otherShiftLabel
   }
 }
+const reevaluateEmployeeAssignments = async employeeIds => {
+  const affectedEmployeeIds = new Set(
+    (Array.isArray(employeeIds) ? employeeIds : [])
+      .filter(Boolean)
+  )
+
+  if (!affectedEmployeeIds.size || !schedule.value) return
+
+  const assessments = []
+
+  days.value.forEach(day => {
+    const workingShifts = day.workingShifts || []
+
+    workingShifts.forEach(shift => {
+      if (!affectedEmployeeIds.has(shift.employeeId)) return
+
+      const employee = employeesById.value.get(shift.employeeId)
+      if (!employee) return
+
+      const candidate = getCandidateInfo(employee, day, shift)
+      assessments.push({
+        dayId: day.id,
+        shiftId: shift.id,
+        employeeId: employee.id,
+        warnings: candidate.warnings
+      })
+    })
+  })
+
+  try {
+    await scheduleDraftsStore.updateWorkingShiftAssessments({
+      scheduleId: schedule.value.id,
+      assessments
+    })
+  } catch (error) {
+    console.error(
+      'Błąd ponownej oceny zmian pracownika:',
+      error
+    )
+    throw new Error(
+      'Zmiana została zapisana, ale nie udało się odświeżyć oznaczeń ograniczeń. Odśwież widok i spróbuj ponownie.'
+    )
+  }
+}
 const compareCandidates = (a, b) => a.rank - b.rank || b.competency - a.competency || getEmployeeName(a.employee).localeCompare(getEmployeeName(b.employee), 'pl')
 const formatStars = value => {
   const stars = Math.max(1, Math.min(5, Math.round(Number(value) || 1)))
@@ -723,7 +1154,10 @@ const formatStars = value => {
 }
 
 const openShift = (day, shift) => {
-  editorError.value = ''; selectedDay.value = day; selectedShift.value = shift; selectedEmployee.value = null
+  editorError.value = ''; selectedDay.value = day; selectedShift.value = shift
+  selectedEmployee.value = shift.employeeId
+    ? employeesById.value.get(shift.employeeId) || null
+    : null
   showCandidates.value = !shift.employeeId; editorMode.value = 'shift'
 }
 const openEmployeeDay = (employee, day) => {
@@ -782,6 +1216,8 @@ const attemptExtraTemplate = templateShift => {
     extraData: {
       positionId: templateShift.positionId,
       positionNameSnapshot: getPositionName(templateShift),
+      positionColorSnapshot:
+        templateShift.positionColorSnapshot ?? null,
       from: templateShift.from,
       to: templateShift.to
     }
@@ -855,6 +1291,8 @@ const saveAssignment = async payload => {
   if (isSaving.value || !schedule.value) return
   isSaving.value = true; editorError.value = ''; setSaveState('saving')
   try {
+    const previousEmployeeId = payload.shift.employeeId || null
+
     await scheduleDraftsStore.updateWorkingShift({
       scheduleId: schedule.value.id,
       dayId: payload.day.id,
@@ -871,6 +1309,10 @@ const saveAssignment = async payload => {
         availabilityLabel: payload.candidate.statusLabel
       }
     })
+    await reevaluateEmployeeAssignments([
+      previousEmployeeId,
+      payload.candidate.employee.id
+    ])
     pendingAssignment.value = null; showOverrideConfirm.value = false; closeEditorModalAfterSave(); setSaveState('saved')
   } catch (error) {
     console.error('Błąd przypisywania pracownika:', error)
@@ -895,6 +1337,8 @@ const saveExtraAssignment = async payload => {
       positionId: payload.extraData.positionId,
       positionNameSnapshot:
         payload.extraData.positionNameSnapshot,
+      positionColorSnapshot:
+        payload.extraData.positionColorSnapshot,
       from: payload.extraData.from,
       to: payload.extraData.to,
       warnings: payload.candidate.warnings,
@@ -905,6 +1349,9 @@ const saveExtraAssignment = async payload => {
         availabilityLabel: payload.candidate.statusLabel
       }
     })
+    await reevaluateEmployeeAssignments([
+      payload.candidate.employee.id
+    ])
 
     pendingAssignment.value = null
     showOverrideConfirm.value = false
@@ -923,6 +1370,8 @@ const removeSelectedAssignment = async () => {
   if (isSaving.value || !schedule.value || !selectedDay.value || !selectedShift.value) return
   isSaving.value = true; editorError.value = ''; setSaveState('saving')
   try {
+    const removedEmployeeId = selectedShift.value.employeeId || null
+
     if (isExtraShift(selectedShift.value)) {
       await scheduleDraftsStore.removeExtraShift({
         scheduleId: schedule.value.id,
@@ -937,6 +1386,7 @@ const removeSelectedAssignment = async () => {
         employeeId: null
       })
     }
+    await reevaluateEmployeeAssignments([removedEmployeeId])
     showRemoveConfirm.value = false; closeEditorModalAfterSave(); setSaveState('saved')
   } catch (error) {
     console.error('Błąd usuwania pracownika:', error)
@@ -949,7 +1399,15 @@ const setSaveState = state => {
   if (state !== 'saving') saveStateTimer = setTimeout(() => { saveState.value = '' }, 2600)
 }
 const scrollMatrix = offset => matrixScroll.value?.scrollBy({ left: offset * 132, behavior: 'smooth' })
-const getAssignmentSourceLabel = source => source === 'OVERRIDE' ? 'Z pominięciem ograniczeń' : source === 'AUTO' ? 'Przydział generatora' : 'Ręczne przypisanie managera'
+const getAssignmentSourceLabel = shift => {
+  if (isAutomaticAssignment(shift)) {
+    return 'Przydział generatora'
+  }
+
+  return shouldShowGeneralOverride(shift)
+    ? 'Z pominięciem ograniczeń'
+    : 'Ręczne przypisanie managera'
+}
 const openExtraTimePicker = field => {
   activeTimeField.value = field
 
@@ -1007,7 +1465,7 @@ const formatDayMonth = key => {
 </script>
 
 <style scoped>
-.editor-page{padding-top:4px}.editor-header,.matrix-card,.editor-state{width:100%;max-width:1180px;margin-right:auto;margin-left:auto;box-sizing:border-box}.editor-header,.matrix-card{border:1px solid #e2e8f0;border-radius:22px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.07)}.editor-header{padding:20px}.heading-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.kicker,.modal-kicker{margin-bottom:6px;color:#1d4ed8;font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.heading-row h3{margin:0 0 5px;color:#111827;font-size:23px}.heading-row p{margin:0;color:#64748b;font-size:14px;font-weight:650}.status-badge{flex:0 0 auto;padding:6px 10px;border-radius:999px;color:#1d4ed8;background:#dbeafe;font-size:11px;font-weight:900;text-transform:uppercase}.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:16px}.summary-grid div{display:flex;align-items:center;flex-direction:column;padding:11px 8px;border-radius:13px;background:#f8fafc}.summary-grid strong{color:#111827;font-size:20px}.summary-grid span{margin-top:3px;color:#64748b;font-size:11px;font-weight:700}.matrix-card{margin-top:14px;overflow:hidden}.matrix-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 17px;border-bottom:1px solid #e2e8f0}.matrix-toolbar>div:first-child{display:flex;flex-direction:column;gap:3px}.matrix-toolbar strong{color:#111827;font-size:15px}.matrix-toolbar span{color:#64748b;font-size:12px}.toolbar-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.toolbar-actions button{min-height:35px;padding:0 10px;border:1px solid #cbd5e1;border-radius:10px;color:#334155;background:#fff;font-size:12px;font-weight:750}.save-state{padding:5px 8px;border-radius:9px;font-weight:800}.save-state.saving{color:#854d0e;background:#fef3c7}.save-state.saved{color:#166534;background:#dcfce7}.save-state.error{color:#b91c1c;background:#fee2e2}.extra-legend{display:flex;align-items:center;gap:5px;color:#1d4ed8!important;font-weight:800}.extra-legend b{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:7px;color:#fff;background:#2563eb;font-size:16px}.matrix-scroll{max-height:calc(100dvh - 285px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.matrix-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}.matrix-table th,.matrix-table td{box-sizing:border-box;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}.matrix-table thead th{position:sticky;z-index:4;top:0;height:54px;background:#f8fafc}.day-head{width:132px;min-width:132px;padding:7px 6px;color:#475569;text-align:center}.day-head span,.day-head strong{display:block}.day-head span{font-size:11px;text-transform:uppercase}.day-head strong{margin-top:2px;color:#111827;font-size:13px}.person-cell{position:sticky;z-index:3;left:0;width:154px;min-width:154px;max-width:154px;padding:10px;background:#fff;text-align:left}.corner{z-index:6!important;background:#f8fafc!important;color:#475569;font-size:12px;text-transform:uppercase}.person-cell strong,.person-cell span{display:block}.person-cell strong{color:#111827;font-size:12px;line-height:1.3}.person-cell span{margin-top:3px;color:#64748b;font-size:11px}.matrix-table td{width:132px;min-width:132px;height:74px;padding:5px;vertical-align:top;background:#fff}.unfilled-row td,.unfilled-row .person-cell{background:#fff8f8}.matrix-cell-content{display:flex;min-height:62px;flex-direction:column;gap:5px}.shift-pill{width:100%;padding:7px 7px 7px 9px;border:0;border-left:4px solid var(--position-color);border-radius:10px;color:#1f2937;background:color-mix(in srgb,var(--position-color) 15%,white);text-align:left}.shift-pill:active{transform:scale(.98)}.shift-pill strong,.shift-pill span,.shift-pill em{display:block}.shift-pill strong{font-size:11px}.shift-pill span{margin-top:2px;overflow:hidden;font-size:10px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}.shift-pill em{margin-top:3px;color:#b91c1c;font-size:9px;font-style:normal;font-weight:800}.shift-pill.unfilled{border-top:1px solid #fecaca;border-right:1px solid #fecaca;border-bottom:1px solid #fecaca;background:#fff1f2}.shift-pill.extra{border:1px solid #60a5fa;border-left:4px solid #2563eb;color:#1e3a8a;background:#dbeafe}.shift-pill.extra em{color:#1d4ed8}.cell-add-actions{display:flex;justify-content:center;gap:6px;margin-top:auto}.add-button{width:28px;min-height:26px;border:0;border-radius:9px;color:#fff;font-size:18px;font-weight:700}.vacancy-add{background:#22c55e}.extra-add{background:#2563eb}.empty-mark{margin:auto;color:#cbd5e1;font-size:16px}.editor-state{padding:28px 20px;border:1px solid #e2e8f0;border-radius:20px;color:#64748b;background:#fff;text-align:center}.editor-state.error{color:#b91c1c;background:#fff7f7}.editor-modal-overlay{z-index:3000}.editor-modal{width:min(94vw,560px);max-height:min(86dvh,760px);overflow-y:auto;text-align:left}.modal-title{margin-bottom:2px;text-align:left}.modal-time,.extra-employee-name{color:#475569;font-size:16px;font-weight:800}.current-assignment{display:flex;flex-direction:column;gap:4px;margin-top:17px;padding:14px;border-radius:15px;background:#f1f5f9}.current-assignment span,.current-assignment small{color:#64748b;font-size:11px;font-weight:700}.current-assignment strong{color:#111827;font-size:17px}.assignment-warnings,.warning-list{display:flex;flex-direction:column;gap:5px;margin-top:11px;padding:12px;border:1px solid #fed7aa;border-radius:13px;color:#9a3412;background:#fff7ed;font-size:12px}.main-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.main-actions button,.candidate-card>button,.employee-shift-card>button,.create-extra-button{min-height:42px;border:0;border-radius:12px;font-size:13px;font-weight:800}.change-button,.candidate-card>button,.employee-shift-card>button,.create-extra-button{color:#fff;background:#2563eb}.remove-button{color:#b91c1c;background:#fee2e2}.section-title{margin:18px 0 9px;color:#334155;font-size:13px;font-weight:900;text-transform:uppercase}.candidate-list,.employee-shift-list{display:grid;gap:9px}.candidate-card,.employee-shift-card{padding:12px;border:1px solid #e2e8f0;border-radius:15px;background:#fff}.candidate-main{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.candidate-main>div,.employee-shift-card>div{display:flex;flex-direction:column;gap:3px}.candidate-main strong,.employee-shift-card strong{color:#111827;font-size:14px}.candidate-main>div>span{color:#d97706;font-size:13px}.candidate-status{display:inline-block;padding:5px 7px;border-radius:8px;font-size:10px;font-weight:850;line-height:1.25;text-align:center}.candidate-status.available{color:#166534;background:#dcfce7}.candidate-status.partial{color:#1d4ed8;background:#dbeafe}.candidate-status.preferred{color:#92400e;background:#fef3c7}.candidate-status.blocked{color:#b91c1c;background:#fee2e2}.other-shift{margin-top:8px;padding:7px 9px;border-radius:9px;color:#b91c1c;background:#fef2f2;font-size:11px;font-weight:800}.candidate-card>button,.employee-shift-card>button{width:100%;margin-top:10px}.employee-shift-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}.employee-shift-card>div>span{color:#64748b;font-size:12px}.employee-shift-card>button{grid-column:1/-1}.extra-mode-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.extra-mode-buttons button{min-height:44px;border:1px solid #cbd5e1;border-radius:12px;color:#475569;background:#fff;font-size:12px;font-weight:800}.extra-mode-buttons button.active{border-color:#2563eb;color:#1d4ed8;background:#dbeafe}.custom-time-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.custom-time-grid>div{display:flex;flex-direction:column;gap:6px}.custom-time-grid span{color:#64748b;font-size:11px;font-weight:900;text-transform:uppercase}.custom-time-grid button{min-height:48px;border:1.5px solid #93c5fd;border-radius:13px;color:#1d4ed8;background:#eff6ff;font-size:20px;font-weight:850}.create-extra-button{width:100%;margin-top:14px}.empty-list{padding:18px 14px;border-radius:13px;color:#64748b;background:#f8fafc;font-size:13px;line-height:1.45;text-align:center}.modal-error{margin-top:12px;padding:10px 12px;border-radius:11px;color:#b91c1c;background:#fee2e2;font-size:12px;font-weight:700}.close-actions{margin-top:14px}.confirm-overlay{z-index:4000}.confirm-dialog{width:min(92vw,430px)}.warning-icon{color:#fff;background:#d97706}.remove-icon{color:#fff;background:#ef4444}.confirm-button{color:#fff;background:#d97706}.time-picker-overlay{z-index:4100}@media(max-width:660px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.matrix-toolbar{align-items:stretch;flex-direction:column}.toolbar-actions{justify-content:flex-start}.save-state{margin-right:auto}.matrix-scroll{max-height:calc(100dvh - 330px)}.person-cell{width:124px;min-width:124px;max-width:124px}.day-head,.matrix-table td{width:122px;min-width:122px}.main-actions{grid-template-columns:1fr}}
+.editor-page{padding-top:4px}.editor-header,.matrix-card,.editor-state{width:100%;max-width:1180px;margin-right:auto;margin-left:auto;box-sizing:border-box}.editor-header,.matrix-card{border:1px solid #e2e8f0;border-radius:22px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.07)}.editor-header{padding:20px}.heading-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.kicker,.modal-kicker{margin-bottom:6px;color:#1d4ed8;font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.heading-row h3{margin:0 0 5px;color:#111827;font-size:23px}.heading-row p{margin:0;color:#64748b;font-size:14px;font-weight:650}.status-badge{flex:0 0 auto;padding:6px 10px;border-radius:999px;color:#1d4ed8;background:#dbeafe;font-size:11px;font-weight:900;text-transform:uppercase}.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:16px}.summary-grid div{display:flex;align-items:center;flex-direction:column;padding:11px 8px;border-radius:13px;background:#f8fafc}.summary-grid strong{color:#111827;font-size:20px}.summary-grid span{margin-top:3px;color:#64748b;font-size:11px;font-weight:700}.matrix-card{margin-top:14px;overflow:hidden}.matrix-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 17px;border-bottom:1px solid #e2e8f0}.matrix-toolbar>div:first-child{display:flex;flex-direction:column;gap:3px}.matrix-toolbar strong{color:#111827;font-size:15px}.matrix-toolbar span{color:#64748b;font-size:12px}.toolbar-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.toolbar-actions button{min-height:35px;padding:0 10px;border:1px solid #cbd5e1;border-radius:10px;color:#334155;background:#fff;font-size:12px;font-weight:750}.save-state{padding:5px 8px;border-radius:9px;font-weight:800}.save-state.saving{color:#854d0e;background:#fef3c7}.save-state.saved{color:#166534;background:#dcfce7}.save-state.error{color:#b91c1c;background:#fee2e2}.extra-legend{display:flex;align-items:center;gap:5px;color:#1d4ed8!important;font-weight:800}.extra-legend b{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:7px;color:#fff;background:#2563eb;font-size:16px}.matrix-scroll{max-height:calc(100dvh - 285px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.matrix-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}.matrix-table th,.matrix-table td{box-sizing:border-box;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}.matrix-table thead th{position:sticky;z-index:4;top:0;height:54px;background:#f8fafc}.day-head{width:132px;min-width:132px;padding:7px 6px;color:#475569;text-align:center}.day-head span,.day-head strong{display:block}.day-head span{font-size:11px;text-transform:uppercase}.day-head strong{margin-top:2px;color:#111827;font-size:13px}.person-cell{position:sticky;z-index:3;left:0;width:154px;min-width:154px;max-width:154px;padding:10px;background:#fff;text-align:left}.corner{z-index:6!important;background:#f8fafc!important;color:#475569;font-size:12px;text-transform:uppercase}.person-cell strong,.person-cell span{display:block}.person-cell strong{color:#111827;font-size:12px;line-height:1.3}.person-cell span{margin-top:3px;color:#64748b;font-size:11px}.matrix-table td{width:132px;min-width:132px;height:74px;padding:5px;vertical-align:top;background:#fff}.unfilled-row td,.unfilled-row .person-cell{background:#fff8f8}.matrix-cell-content{display:flex;min-height:62px;flex-direction:column;gap:5px}.shift-pill{width:100%;padding:7px 7px 7px 9px;border:0;border-left:4px solid var(--position-color);border-radius:10px;color:#1f2937;background:color-mix(in srgb,var(--position-color) 15%,white);text-align:left}.shift-pill:active{transform:scale(.98)}.shift-pill strong,.shift-pill span,.shift-pill em{display:block}.shift-pill strong{font-size:11px}.shift-pill span{margin-top:2px;overflow:hidden;font-size:10px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}.shift-pill em{margin-top:3px;color:#b91c1c;font-size:9px;font-style:normal;font-weight:800}.shift-pill .override-icon{display:inline;color:#d97706}.shift-pill.extra .override-message{color:#b91c1c}.shift-pill.unfilled{border-top:1px solid #fecaca;border-right:1px solid #fecaca;border-bottom:1px solid #fecaca;background:#fff1f2}.shift-pill.extra{border:1px solid #60a5fa;border-left:4px solid #2563eb;color:#1e3a8a;background:#dbeafe}.shift-pill.extra em{color:#1d4ed8}.cell-add-actions{display:flex;justify-content:center;gap:6px;margin-top:auto}.add-button{width:28px;min-height:26px;border:0;border-radius:9px;color:#fff;font-size:18px;font-weight:700}.empty-mark{margin:auto;color:#cbd5e1;font-size:16px}.editor-state{padding:28px 20px;border:1px solid #e2e8f0;border-radius:20px;color:#64748b;background:#fff;text-align:center}.editor-state.error{color:#b91c1c;background:#fff7f7}.editor-modal-overlay{z-index:3000}.editor-modal{width:min(94vw,560px);max-height:min(86dvh,760px);overflow-y:auto;text-align:left}.modal-close-button{position:sticky;z-index:8;top:0;display:grid;width:40px;height:40px;margin:-8px -4px 5px auto;padding:0;place-items:center;border:1px solid #fecaca;border-radius:50%;color:#dc2626;background:#fff1f2;box-shadow:0 5px 14px rgba(220,38,38,.14);font-size:27px;font-weight:500;line-height:1}.modal-close-button:active{transform:scale(.94);background:#fee2e2}.modal-close-button:disabled{cursor:not-allowed;opacity:.45}.modal-title{margin-bottom:2px;text-align:left}.modal-time,.extra-employee-name{color:#475569;font-size:16px;font-weight:800}.current-assignment{display:flex;flex-direction:column;gap:4px;margin-top:17px;padding:14px;border-radius:15px;background:#f1f5f9}.current-assignment span,.current-assignment small{color:#64748b;font-size:11px;font-weight:700}.current-assignment strong{color:#111827;font-size:17px}.assignment-warnings,.warning-list{display:flex;flex-direction:column;gap:5px;margin-top:11px;padding:12px;border:1px solid #fed7aa;border-radius:13px;color:#9a3412;background:#fff7ed;font-size:12px}.main-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.main-actions button,.candidate-card>button,.employee-shift-card>button,.create-extra-button{min-height:42px;border:0;border-radius:12px;font-size:13px;font-weight:800}.change-button,.candidate-card>button,.employee-shift-card>button,.create-extra-button{color:#fff;background:#2563eb}.remove-button{color:#b91c1c;background:#fee2e2}.section-title{margin:18px 0 9px;color:#334155;font-size:13px;font-weight:900;text-transform:uppercase}.candidate-list,.employee-shift-list{display:grid;gap:9px}.candidate-card,.employee-shift-card{padding:12px;border:1px solid #e2e8f0;border-radius:15px;background:#fff}.candidate-main{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.candidate-main>div,.employee-shift-card>div{display:flex;flex-direction:column;gap:3px}.candidate-main strong,.employee-shift-card strong{color:#111827;font-size:14px}.candidate-main>div>span{color:#d97706;font-size:13px}.candidate-status{display:inline-block;padding:5px 7px;border-radius:8px;font-size:10px;font-weight:850;line-height:1.25;text-align:center}.candidate-status.available{color:#166534;background:#dcfce7}.candidate-status.partial{color:#1d4ed8;background:#dbeafe}.candidate-status.preferred{color:#92400e;background:#fef3c7}.candidate-status.blocked{color:#b91c1c;background:#fee2e2}.other-shift{margin-top:8px;padding:7px 9px;border-radius:9px;color:#b91c1c;background:#fef2f2;font-size:11px;font-weight:800}.candidate-card>button,.employee-shift-card>button{width:100%;margin-top:10px}.employee-shift-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}.employee-shift-card>div>span{color:#64748b;font-size:12px}.employee-shift-card>button{grid-column:1/-1}.extra-mode-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.extra-mode-buttons button{min-height:44px;border:1px solid #cbd5e1;border-radius:12px;color:#475569;background:#fff;font-size:12px;font-weight:800}.extra-mode-buttons button.active{border-color:#2563eb;color:#1d4ed8;background:#dbeafe}.custom-time-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.custom-time-grid>div{display:flex;flex-direction:column;gap:6px}.custom-time-grid span{color:#64748b;font-size:11px;font-weight:900;text-transform:uppercase}.custom-time-grid button{min-height:48px;border:1.5px solid #93c5fd;border-radius:13px;color:#1d4ed8;background:#eff6ff;font-size:20px;font-weight:850}.create-extra-button{width:100%;margin-top:14px}.empty-list{padding:18px 14px;border-radius:13px;color:#64748b;background:#f8fafc;font-size:13px;line-height:1.45;text-align:center}.modal-error{margin-top:12px;padding:10px 12px;border-radius:11px;color:#b91c1c;background:#fee2e2;font-size:12px;font-weight:700}.confirm-overlay{z-index:4000}.confirm-dialog{width:min(92vw,430px)}.warning-icon{color:#fff;background:#d97706}.remove-icon{color:#fff;background:#ef4444}.confirm-button{color:#fff;background:#d97706}.time-picker-overlay{z-index:4100}@media(max-width:660px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.matrix-toolbar{align-items:stretch;flex-direction:column}.toolbar-actions{justify-content:flex-start}.save-state{margin-right:auto}.matrix-scroll{max-height:calc(100dvh - 330px)}.person-cell{width:124px;min-width:124px;max-width:124px}.day-head,.matrix-table td{width:122px;min-width:122px}.main-actions{grid-template-columns:1fr}}
 .day-head.day-incomplete {
   color: #b91c1c;
   background: #fff1f2;
@@ -1091,32 +1549,41 @@ const formatDayMonth = key => {
   color: #fecaca;
 }
 
-.extra-add {
-  width: 32px;
-  min-height: 24px;
-  border: 1px solid transparent;
-  color: #94a3b8;
-  background: transparent;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.extra-add:hover,
-.extra-add:focus-visible {
-  border-color: #d8b4fe;
-  color: #7e22ce;
-  background: #f3e8ff;
-}
-
 .shift-pill {
   position: relative;
 }
 
-.extra-availability-marker {
+.shift-pill.has-availability-marker {
+  padding-right: 28px;
+}
+
+.shift-pill.has-multiple-availability-markers {
+  min-height: 49px;
+}
+
+.shift-pill .shift-availability-markers {
   position: absolute;
+  z-index: 2;
   top: 5px;
   right: 5px;
+  display: flex;
+  width: 18px;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  overflow: visible;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: normal;
+  text-overflow: clip;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.shift-availability-marker {
+  position: relative;
   display: inline-flex;
+  flex: 0 0 18px;
   width: 18px;
   height: 18px;
   align-items: center;
@@ -1131,20 +1598,50 @@ const formatDayMonth = key => {
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
 }
 
-.extra-availability-marker.unavailable {
+.shift-availability-marker.unavailable {
   background: #ef4444;
 }
 
-.extra-availability-marker.preferred-off {
-  color: #713f12;
-  background: #facc15;
+.shift-availability-marker.partial-outside-range {
+  background: #ef4444;
 }
 
-.extra-availability-marker.partial {
+.shift-availability-marker.preferred-off {
+  color: #ffffff;
+  background: #facc15;
+  font-size: 10px;
+  text-shadow: 0 1px 2px rgba(113, 63, 18, 0.35);
+}
+
+.shift-availability-marker.partial {
   background: #3b82f6;
 }
 
-/* Modal po kliknięciu zielonego plusa:
+.shift-availability-marker.partial::before,
+.shift-availability-marker.partial::after {
+  position: absolute;
+  content: '';
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.shift-availability-marker.partial::before {
+  top: 3px;
+  left: 8px;
+  width: 2px;
+  height: 6px;
+}
+
+.shift-availability-marker.partial::after {
+  top: 8px;
+  left: 8px;
+  width: 6px;
+  height: 2px;
+  transform: rotate(35deg);
+  transform-origin: left center;
+}
+
+/* Modal po kliknięciu neutralnego plusa:
    status ma własny wiersz, aby długi komunikat nie nachodził na zmianę. */
 .employee-shift-card {
   grid-template-columns: minmax(0, 1fr);
@@ -1164,5 +1661,248 @@ const formatDayMonth = key => {
 
 .employee-shift-card > button {
   grid-column: 1;
+}
+
+.cell-add-actions {
+  min-height: 44px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+}
+
+.add-button.quick-add {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  color: #475569;
+  background: #f8fafc;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.08);
+  font-size: 23px;
+  line-height: 1;
+}
+
+.add-button.quick-add:hover,
+.add-button.quick-add:focus-visible {
+  border-color: #94a3b8;
+  color: #1f2937;
+  background: #f1f5f9;
+}
+
+.add-button.quick-add.quick-add-vacancy {
+  border-color: #a7e8bc;
+  color: #27834a;
+  background: #eefbf2;
+}
+
+.add-button.quick-add.quick-add-vacancy:hover,
+.add-button.quick-add.quick-add-vacancy:focus-visible {
+  border-color: #7bd49a;
+  color: #176b37;
+  background: #e2f8e9;
+}
+
+.add-button.quick-add.quick-add-extra {
+  border-color: #d8b4fe;
+  color: #7e22ce;
+  background: #f7f0ff;
+}
+
+.add-button.quick-add.quick-add-extra:hover,
+.add-button.quick-add.quick-add-extra:focus-visible {
+  border-color: #c084fc;
+  color: #6b21a8;
+  background: #f1e4ff;
+}
+
+.modal-employee-action-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-employee-action-row > strong,
+.modal-employee-heading .modal-title {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.modal-employee-heading {
+  margin-bottom: 2px;
+}
+
+.extra-shift-shortcut {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid #c084fc;
+  border-radius: 9px;
+  color: #6b21a8;
+  background: #f3e8ff;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.extra-shift-shortcut:active {
+  transform: scale(0.97);
+  background: #e9d5ff;
+}
+
+.template-assignment-status {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.header-actions {
+  display: flex;
+  max-width: 340px;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.status-badge.partially_published {
+  color: #92400e;
+  background: #fef3c7;
+  text-align: right;
+  text-transform: none;
+}
+
+.status-badge.published {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.publish-schedule-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  background: #16a34a;
+  box-shadow: 0 5px 14px rgba(22, 163, 74, 0.2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.unpublished-changes-notice {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  color: #9a3412;
+  background: #fff7ed;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.publication-overlay,
+.publication-success-overlay {
+  z-index: 4200;
+}
+
+.publication-dialog {
+  width: min(92vw, 440px);
+  max-height: min(88dvh, 700px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.publication-icon,
+.publication-success-icon {
+  color: #ffffff;
+  background: #16a34a;
+}
+
+.publication-message {
+  line-height: 1.5;
+}
+
+.publication-date-field {
+  display: flex;
+  margin-top: 17px;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.publication-date-field span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.publication-date-field input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 52px;
+  padding: 11px 14px;
+  border: 1.5px solid #86efac;
+  border-radius: 13px;
+  box-sizing: border-box;
+  color: #14532d;
+  background: #f0fdf4;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.publication-vacancies-info {
+  margin-top: 13px;
+  padding: 11px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  color: #854d0e;
+  background: #fffbeb;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.publication-confirm-button {
+  color: #ffffff;
+  background: #16a34a;
+}
+
+.publication-confirm-button:disabled {
+  background: #bbf7d0;
+}
+
+.publication-actions {
+  margin-top: 24px;
+}
+
+@media (max-width: 420px) {
+  .heading-row {
+    flex-direction: column;
+  }
+
+  .header-actions,
+  .publish-schedule-button {
+    width: 100%;
+    max-width: none;
+  }
+
+  .header-actions {
+    align-items: stretch;
+  }
+
+  .status-badge.partially_published {
+    text-align: center;
+  }
+
+  .modal-employee-action-row {
+    align-items: flex-start;
+  }
 }
 </style>

@@ -4,7 +4,10 @@ import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'fi
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
-import { normalizePositionAssignments } from '../utils/employeeAssignments.js'
+import {
+  normalizeCompensation,
+  normalizePositionAssignments
+} from '../utils/employeeAssignments.js'
 import { cleanupEmployeeReferences } from '../utils/employeeDataCleanup.js'
 
 const normalizeEmployee = (employee, id = null) => ({
@@ -22,9 +25,10 @@ const normalizeEmployee = (employee, id = null) => ({
       .map(groupId => String(groupId || '').trim())
       .filter(Boolean)
   )],
+  compensation: normalizeCompensation(employee),
   positionAssignments: normalizePositionAssignments(employee?.positionAssignments),
   permissionProfileId: employee?.permissionProfileId || null,
-  schemaVersion: 2
+  schemaVersion: 3
 })
 
 export const useEmployeesStore = defineStore('employees', () => {

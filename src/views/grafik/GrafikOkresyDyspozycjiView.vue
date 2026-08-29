@@ -665,6 +665,56 @@
 
 
     <div
+      v-if="scheduleConflictModal.visible"
+      class="app-dialog-overlay"
+      @click.self="closeScheduleConflictModal"
+    >
+      <div class="app-dialog-card">
+        <div class="app-dialog-icon">
+          ⚠️
+        </div>
+
+        <div class="app-dialog-title">
+          Nie można otworzyć dyspozycji
+        </div>
+
+        <div class="app-dialog-message">
+          <p>
+            Wybrany okres obejmuje dni należące już do utworzonego grafiku.
+          </p>
+
+          <p v-if="scheduleConflictModal.conflicts.length">
+            <strong>
+              {{ scheduleConflictModal.conflicts[0].name }}
+            </strong>
+            ({{ formatDate(scheduleConflictModal.conflicts[0].dateFrom) }}–{{ formatDate(scheduleConflictModal.conflicts[0].dateTo) }})
+            <template v-if="scheduleConflictModal.conflicts.length > 1">
+              oraz {{ scheduleConflictModal.conflicts.length - 1 }}
+              {{ scheduleConflictModal.conflicts.length === 2 ? 'inny grafik' : 'inne grafiki' }}.
+            </template>
+          </p>
+
+          <p>
+            Osoba z uprawnieniem do zarządzania grafikiem nadal może
+            wprowadzać dyspozycje dla wszystkich pracowników, także gdy
+            okres dyspozycji pozostaje zamknięty.
+          </p>
+        </div>
+
+        <div class="app-dialog-actions">
+          <button
+            class="app-dialog-button app-dialog-ok"
+            type="button"
+            @click="closeScheduleConflictModal"
+          >
+            Rozumiem
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <div
       v-if="showDeleteModal"
       class="app-dialog-overlay"
       @click.self="closeDeleteModal"
@@ -691,14 +741,12 @@
         </div>
 
         <div class="app-dialog-title">
-          Usuń okres?
+          Usunąć okres dyspozycji?
         </div>
 
         <div class="app-dialog-message">
-          Czy na pewno chcesz usunąć okres
-          „{{ periodToDelete?.name }}”?
-
-          Tej operacji nie można cofnąć.
+          Okres i jego ustawienia zostaną usunięte.
+          Zapisane dyspozycje pozostaną w kalendarzu.
         </div>
 
         <div class="app-dialog-actions">
@@ -720,7 +768,7 @@
             {{
               periodsStore.isSaving
                 ? 'Usuwanie...'
-                : 'Usuń'
+                : 'Usuń okres'
             }}
           </button>
         </div>
@@ -740,10 +788,14 @@ import {
 } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
-import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
+import {
+  AVAILABILITY_PERIOD_ERROR_CODES,
+  useScheduleAvailabilityPeriodsStore
+} from '../../stores/scheduleAvailabilityPeriodsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
+import { isPeriodEffectivelyOpen } from '../../utils/scheduleCreationValidation.js'
 
 const router = useRouter()
 
@@ -776,6 +828,11 @@ const loadError = ref('')
 
 const showDeleteModal = ref(false)
 const periodToDelete = ref(null)
+
+const scheduleConflictModal = ref({
+  visible: false,
+  conflicts: []
+})
 
 const showDatePickerModal = ref(false)
 const datePickerTarget = ref(null)
@@ -1026,6 +1083,32 @@ const closeCreateModal = () => {
   editingPeriodStatus.value = null
   newPeriodBlockedDates.value = []
   createError.value = ''
+}
+
+const closeScheduleConflictModal = () => {
+  scheduleConflictModal.value = {
+    visible: false,
+    conflicts: []
+  }
+}
+
+const handlePeriodOpenError = error => {
+  if (
+    error?.code !==
+    AVAILABILITY_PERIOD_ERROR_CODES.SCHEDULE_CONFLICT
+  ) {
+    return false
+  }
+
+  closeCreateModal()
+  scheduleConflictModal.value = {
+    visible: true,
+    conflicts: Array.isArray(error.conflicts)
+      ? error.conflicts
+      : []
+  }
+
+  return true
 }
 
 
@@ -1528,6 +1611,10 @@ const openCurrentPeriod = async () => {
 
     closeCreateModal()
   } catch (error) {
+    if (handlePeriodOpenError(error)) {
+      return
+    }
+
     createError.value =
       error?.message ||
       'Nie udało się otworzyć dyspozycji.'
@@ -1680,36 +1767,6 @@ const getDemandModelName = (modelId) => {
 
 
 
-const isPeriodEffectivelyOpen = (period) => {
-  if (period?.status !== 'open') {
-    return false
-  }
-
-  if (!period.closesAt) {
-    return false
-  }
-
-  const closesAtDate =
-    typeof period.closesAt.toDate === 'function'
-      ? period.closesAt.toDate()
-      : new Date(period.closesAt)
-
-  if (
-    Number.isNaN(closesAtDate.getTime()) ||
-    closesAtDate.getTime() < Date.now()
-  ) {
-    return false
-  }
-
-  const todayDateKey =
-    formatDateKey(new Date())
-
-  return (
-    period.dateTo &&
-    period.dateTo >= todayDateKey
-  )
-}
-
 const getPeriodStatusLabel = (period) => {
   if (isPeriodEffectivelyOpen(period)) {
     return 'Dyspozycje otwarte'
@@ -1842,6 +1899,10 @@ const reopenCurrentPeriod = async () => {
 
     closeCreateModal()
   } catch (error) {
+    if (handlePeriodOpenError(error)) {
+      return
+    }
+
     createError.value =
       error?.message ||
       'Nie udało się ponownie otworzyć okresu.'

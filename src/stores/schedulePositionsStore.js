@@ -4,6 +4,9 @@ import { collection, doc, getDoc, onSnapshot, setDoc, deleteDoc, serverTimestamp
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import {
+  normalizeSchedulePositionColor
+} from '../utils/schedulePositionColors.js'
 
 export const useSchedulePositionsStore = defineStore('schedulePositions', () => {
   const positions = ref([])
@@ -80,6 +83,9 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
         id: positionRef.id,
         nazwa: String(positionData.nazwa || '').trim(),
         defaultHourlyRate: Math.max(0, Number(positionData.defaultHourlyRate) || 0),
+        scheduleColor: normalizeSchedulePositionColor(
+          positionData.scheduleColor
+        ),
         active: positionData.active !== false,
         displayOrder: Number(positionData.displayOrder) || positions.value.length + 1,
         schemaVersion: 2,
@@ -105,6 +111,9 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
         id: positionId,
         nazwa: String(updatedData.nazwa || '').trim(),
         defaultHourlyRate: Math.max(0, Number(updatedData.defaultHourlyRate) || 0),
+        scheduleColor: normalizeSchedulePositionColor(
+          updatedData.scheduleColor
+        ),
         active: updatedData.active !== false,
         schemaVersion: 2,
         updatedAt: serverTimestamp()

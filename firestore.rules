@@ -99,7 +99,7 @@ service cloud.firestore {
         allow read, write: if true;
       }
 
-      // 7. Nagłówki grafików roboczych i opublikowanych.
+      // 7. Nagłówki grafików i ich stany publikacji.
       // Manager logujący się kodem i PIN-em zapisuje tu także kolejne wersje.
       match /grafiki/{scheduleId} {
         allow read, write: if true;
@@ -108,7 +108,106 @@ service cloud.firestore {
       // Każdy dzień grafiku jest osobnym dokumentem.
       // Dokument przechowuje osobno wersję roboczą i ostatnią publikację.
       match /grafik_dni/{scheduleDayId} {
-        allow read, write: if true;
+        allow read, delete: if true;
+        allow create, update: if
+          scheduleDayId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.id == scheduleDayId &&
+          request.resource.data.date == scheduleDayId &&
+          request.resource.data.scheduleId is string &&
+          request.resource.data.scheduleId.size() > 0;
+      }
+
+      // Bezpieczna projekcja opublikowanego nagłówka dla przyszłego
+      // widoku pracownika. Docelowe ograniczenie odczytu zostanie dodane
+      // razem z właściwą tożsamością pracownika w Firebase Auth.
+      match /grafiki_opublikowane/{scheduleId} {
+        allow read: if true;
+        allow create, update: if
+          request.resource.data.keys().hasOnly([
+            'id',
+            'scheduleId',
+            'name',
+            'dateFrom',
+            'dateTo',
+            'publicationStatus',
+            'publishedUntil',
+            'publishedDaysCount',
+            'publishedRevision',
+            'publishedAt',
+            'lastPublishedAt',
+            'schemaVersion',
+            'updatedAt'
+          ]) &&
+          request.resource.data.keys().hasAll([
+            'id',
+            'scheduleId',
+            'name',
+            'dateFrom',
+            'dateTo',
+            'publicationStatus',
+            'publishedUntil',
+            'publishedDaysCount',
+            'publishedRevision',
+            'publishedAt',
+            'lastPublishedAt',
+            'schemaVersion',
+            'updatedAt'
+          ]) &&
+          request.resource.data.id == scheduleId &&
+          request.resource.data.scheduleId == scheduleId &&
+          request.resource.data.publicationStatus in [
+            'partially_published',
+            'published'
+          ] &&
+          request.resource.data.publishedUntil is string &&
+          request.resource.data.publishedDaysCount is int &&
+          request.resource.data.publishedDaysCount > 0 &&
+          request.resource.data.publishedRevision is int &&
+          request.resource.data.publishedRevision > 0 &&
+          request.resource.data.publishedAt is timestamp &&
+          request.resource.data.lastPublishedAt is timestamp &&
+          request.resource.data.schemaVersion == 1 &&
+          request.resource.data.updatedAt is timestamp;
+      }
+
+      // Odchudzone dni zawierają wyłącznie obsadzone, opublikowane zmiany.
+      match /grafik_opublikowane_dni/{dateKey} {
+        allow read: if true;
+        allow create, update: if
+          dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'date',
+            'scheduleId',
+            'publishedRevision',
+            'employeeIds',
+            'shifts',
+            'schemaVersion',
+            'publishedAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.keys().hasAll([
+            'id',
+            'date',
+            'scheduleId',
+            'publishedRevision',
+            'employeeIds',
+            'shifts',
+            'schemaVersion',
+            'publishedAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.id == dateKey &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.scheduleId is string &&
+          request.resource.data.scheduleId.size() > 0 &&
+          request.resource.data.publishedRevision is int &&
+          request.resource.data.publishedRevision > 0 &&
+          request.resource.data.employeeIds is list &&
+          request.resource.data.shifts is list &&
+          request.resource.data.schemaVersion == 1 &&
+          request.resource.data.publishedAt is timestamp &&
+          request.resource.data.updatedAt is timestamp;
       }
 
       // Rejestr przyszłych publikacji i aktualizacji grafiku.

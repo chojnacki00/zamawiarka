@@ -1421,6 +1421,15 @@ import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsS
 import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, where } from 'firebase/firestore'
 import { db } from '../../firebase.js'
 import { getCompetencyStars } from '../../utils/employeeAssignments.js'
+import {
+  isPeriodEffectivelyOpen as isAvailabilityPeriodEffectivelyOpen
+} from '../../utils/scheduleCreationValidation.js'
+import {
+  buildManagerAvailabilityWrite,
+  canEditAvailabilityDate,
+  findAvailabilityPeriodForDate,
+  getAvailabilityDocumentId
+} from '../../utils/scheduleAvailability.js'
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
@@ -1689,9 +1698,11 @@ const canEditSelectedAvailability = computed(() => {
   }
 
   return selectedDates.every(dateKey => {
-    return Boolean(
-      getEditablePeriodForDateKey(dateKey)
-    )
+    return canEditAvailabilityDate({
+      periods: periodsStore.periods,
+      dateKey,
+      isEffectivelyOpen: isPeriodEffectivelyOpen
+    })
   })
 })
 
@@ -2179,85 +2190,43 @@ const saveTeamAvailability = async (
     const availabilityPeriod =
       getPeriodForDateKey(dateKey)
 
-    const documentId = `${employee.id}_${dateKey}`
+    const currentAvailability =
+      currentTeamAvailability[employee.id] || null
+
+    const employeeEntry =
+      currentAvailability?.employeeEntry || null
+
+    const managerWrite = buildManagerAvailabilityWrite({
+      employeeId: employee.id,
+      dateKey,
+      periodId: availabilityPeriod?.id || null,
+      type: teamEditAvailabilityType.value,
+      timeFrom: teamEditTimeFrom.value,
+      timeTo: teamEditTimeTo.value,
+      note: teamEditNote.value.trim(),
+      editorId: teamAvailabilityEditor.value.id,
+      editorName: teamAvailabilityEditor.value.name,
+      enteredAt: serverTimestamp(),
+      employeeEntry
+    })
 
     const availabilityRef = doc(
       db,
       'users',
       restaurantId,
       'grafik_dyspozycyjnosc',
-      documentId
+      managerWrite.documentId
     )
-
-    const currentAvailability =
-      currentTeamAvailability[employee.id] || null
-
-    const employeeEntry =
-  currentAvailability?.employeeEntry || null
-
-    const managerEntry = {
-      periodId: availabilityPeriod?.id || null,
-
-      type: teamEditAvailabilityType.value,
-
-      timeFrom:
-        teamEditAvailabilityType.value === 'partial'
-          ? teamEditTimeFrom.value
-          : null,
-
-      timeTo:
-        teamEditAvailabilityType.value === 'partial'
-          ? teamEditTimeTo.value
-          : null,
-
-      note: teamEditNote.value.trim(),
-
-      enteredById:
-        teamAvailabilityEditor.value.id,
-
-      enteredByName:
-        teamAvailabilityEditor.value.name,
-
-      enteredAt: serverTimestamp()
-    }
-
-    const availabilityData = {
-      employeeId: employee.id,
-      date: dateKey,
-      periodId: availabilityPeriod?.id || null,
-
-      type: managerEntry.type,
-      timeFrom: managerEntry.timeFrom,
-      timeTo: managerEntry.timeTo,
-      note: managerEntry.note,
-
-      effectiveSource: 'manager',
-      managerEntry,
-
-      updatedAt: serverTimestamp()
-    }
-
-    if (employeeEntry) {
-      availabilityData.employeeEntry = employeeEntry
-    }
 
     await commitAvailabilityMutations({
       restaurantId,
       dateKeys: [dateKey],
       expectedVersions,
-      mutations: [
-        restoredEmployeeEntry.type === 'full' &&
-        !restoredEmployeeEntry.note
-          ? {
-              type: 'delete',
-              ref: availabilityRef
-            }
-          : {
-              type: 'set',
-              ref: availabilityRef,
-              data: availabilityData
-            }
-      ]
+      mutations: [{
+        type: 'set',
+        ref: availabilityRef,
+        data: managerWrite.data
+      }]
     })
 
     await loadTeamAvailabilityForDay(dateKey)
@@ -2344,7 +2313,7 @@ const restoreEmployeeAvailability = async (
       'users',
       restaurantId,
       'grafik_dyspozycyjnosc',
-      `${employeeId}_${dateKey}`
+      getAvailabilityDocumentId(employeeId, dateKey)
     )
 
     const availabilityData = {
@@ -2630,64 +2599,32 @@ changedDateKeys.push(dateKey)
       const employeeEntry =
   currentAvailability?.employeeEntry || null
 
-      const managerEntry = {
-        periodId: availabilityPeriod?.id || null,
-
-        type: selectedAvailabilityType.value,
-
-        timeFrom:
-          selectedAvailabilityType.value === 'partial'
-            ? availabilityTimeFrom.value
-            : null,
-
-        timeTo:
-          selectedAvailabilityType.value === 'partial'
-            ? availabilityTimeTo.value
-            : null,
-
-        note: availabilityNote.value.trim(),
-
-        enteredById:
-          teamAvailabilityEditor.value.id,
-
-        enteredByName:
-          teamAvailabilityEditor.value.name,
-
-        enteredAt: serverTimestamp()
-      }
-
-      const availabilityData = {
+      const managerWrite = buildManagerAvailabilityWrite({
         employeeId: employee.id,
-        date: dateKey,
+        dateKey,
         periodId: availabilityPeriod?.id || null,
-
-        type: managerEntry.type,
-        timeFrom: managerEntry.timeFrom,
-        timeTo: managerEntry.timeTo,
-        note: managerEntry.note,
-
-        effectiveSource: 'manager',
-        managerEntry,
-
-        updatedAt: serverTimestamp()
-      }
-
-      if (employeeEntry) {
-        availabilityData.employeeEntry = employeeEntry
-      }
+        type: selectedAvailabilityType.value,
+        timeFrom: availabilityTimeFrom.value,
+        timeTo: availabilityTimeTo.value,
+        note: availabilityNote.value.trim(),
+        editorId: teamAvailabilityEditor.value.id,
+        editorName: teamAvailabilityEditor.value.name,
+        enteredAt: serverTimestamp(),
+        employeeEntry
+      })
 
       const availabilityRef = doc(
         db,
         'users',
         restaurantId,
         'grafik_dyspozycyjnosc',
-        `${employee.id}_${dateKey}`
+        managerWrite.documentId
       )
 
       mutations.push({
         type: 'set',
         ref: availabilityRef,
-        data: availabilityData
+        data: managerWrite.data
       })
     })
 
@@ -3344,7 +3281,7 @@ const saveAvailability = async (retryCount = 0) => {
         'users',
         restaurantId,
         'grafik_dyspozycyjnosc',
-        `${employeeId}_${dateKey}`
+      getAvailabilityDocumentId(employeeId, dateKey)
       )
 
       if (existingManagerEntry) {
@@ -3896,7 +3833,7 @@ const removeManagerAvailability = async (
       'users',
       restaurantId,
       'grafik_dyspozycyjnosc',
-      `${employeeId}_${dateKey}`
+      getAvailabilityDocumentId(employeeId, dateKey)
     )
 
     await commitAvailabilityMutations({
@@ -4054,65 +3991,26 @@ const todayDateKey = new Intl.DateTimeFormat(
   }
 ).format(new Date())
 
-const getTimestampMilliseconds = (timestamp) => {
-  if (!timestamp) {
-    return 0
-  }
-
-  if (typeof timestamp.toMillis === 'function') {
-    return timestamp.toMillis()
-  }
-
-  if (typeof timestamp.toDate === 'function') {
-    return timestamp.toDate().getTime()
-  }
-
-  return new Date(timestamp).getTime()
-}
-
 const isPeriodEffectivelyOpen = (period) => {
-  if (period?.status !== 'open') {
-    return false
-  }
-
-  if (
-    getTimestampMilliseconds(period.closesAt) <
-    periodsClock.value
-  ) {
-    return false
-  }
-
-  return Boolean(
-    period.dateTo &&
-    period.dateTo >= todayDateKey
-  )
+  return isAvailabilityPeriodEffectivelyOpen(period, {
+    nowMs: periodsClock.value,
+    todayDateKey
+  })
 }
 
 const getOpenPeriodForDateKey = (dateKey) => {
-  if (!dateKey) {
-    return null
-  }
-
-  return periodsStore.periods.find(period => {
-    return (
-      isPeriodEffectivelyOpen(period) &&
-      period.dateFrom <= dateKey &&
-      period.dateTo >= dateKey
-    )
-  }) || null
+  return findAvailabilityPeriodForDate({
+    periods: periodsStore.periods,
+    dateKey,
+    isPeriodAllowed: isPeriodEffectivelyOpen
+  })
 }
 
 const getPeriodForDateKey = (dateKey) => {
-  if (!dateKey) {
-    return null
-  }
-
-  return periodsStore.periods.find(period => {
-    return (
-      period.dateFrom <= dateKey &&
-      period.dateTo >= dateKey
-    )
-  }) || null
+  return findAvailabilityPeriodForDate({
+    periods: periodsStore.periods,
+    dateKey
+  })
 }
 
 const isDateBlockedInPeriod = (period, dateKey) => {
@@ -4207,13 +4105,12 @@ const canSelectAvailabilityDate = (dateKey) => {
     return true
   }
 
-  if (canManageSchedule.value) {
-    return true
-  }
-
-  return Boolean(
-    getEditablePeriodForDateKey(dateKey)
-  )
+  return canEditAvailabilityDate({
+    periods: periodsStore.periods,
+    dateKey,
+    isManager: canManageSchedule.value,
+    isEffectivelyOpen: isPeriodEffectivelyOpen
+  })
 }
 
 

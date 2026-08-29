@@ -20,6 +20,18 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthStore } from './authStore.js'
+import {
+  getScheduleRangeConflicts,
+  isPeriodEffectivelyOpen
+} from '../utils/scheduleCreationValidation.js'
+import {
+  applyAvailabilityPeriodDeletion,
+  buildAvailabilityPeriodDeletePlan
+} from '../utils/scheduleAvailability.js'
+
+export const AVAILABILITY_PERIOD_ERROR_CODES = Object.freeze({
+  SCHEDULE_CONFLICT: 'availability-period/schedule-conflict'
+})
 
 export const useScheduleAvailabilityPeriodsStore = defineStore(
   'scheduleAvailabilityPeriods',
@@ -72,6 +84,50 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         restaurantId,
         'grafik_okresy_dyspozycji'
       )
+    }
+
+    const assertPeriodDoesNotOverlapSchedule = async (
+      restaurantId,
+      period
+    ) => {
+      const schedulesSnapshot = await getDocs(
+        collection(
+          db,
+          'users',
+          restaurantId,
+          'grafiki'
+        )
+      )
+
+      const conflicts = getScheduleRangeConflicts({
+        schedules: schedulesSnapshot.docs.map(
+          documentSnapshot => ({
+            id: documentSnapshot.id,
+            ...documentSnapshot.data()
+          })
+        ),
+        dateFrom: period.dateFrom,
+        dateTo: period.dateTo
+      })
+
+      if (!conflicts.length) {
+        return
+      }
+
+      const error = new Error(
+        'Nie można otworzyć dyspozycji dla dni objętych utworzonym grafikiem.'
+      )
+
+      error.code =
+        AVAILABILITY_PERIOD_ERROR_CODES.SCHEDULE_CONFLICT
+      error.conflicts = conflicts.map(schedule => ({
+        id: schedule.id,
+        name: schedule.name || 'Grafik bez nazwy',
+        dateFrom: schedule.dateFrom || '',
+        dateTo: schedule.dateTo || ''
+      }))
+
+      throw error
     }
 
 
@@ -257,30 +313,6 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         )
       })
     }
-
-    const isPeriodEffectivelyOpen = (period) => {
-      if (period?.status !== 'open') {
-        return false
-      }
-
-      if (
-        getTimestampMilliseconds(period.closesAt) <
-        Date.now()
-      ) {
-        return false
-      }
-
-      const todayDateKey =
-        formatLocalDateKey(new Date())
-
-      return (
-        period.dateTo &&
-        period.dateTo >= todayDateKey
-      )
-    }
-
-
-
 
         const fetchPeriods = async () => {
       const periodsRef = await getPeriodsCollectionRef()
@@ -667,19 +699,23 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
+        const [deleteTarget] =
+          buildAvailabilityPeriodDeletePlan(periodId)
+
         await deleteDoc(
           doc(
             db,
             'users',
             restaurantId,
-            'grafik_okresy_dyspozycji',
-            periodId
+            deleteTarget.collectionName,
+            deleteTarget.documentId
           )
         )
 
-        periods.value = periods.value.filter(
-          period => period.id !== periodId
-        )
+        periods.value = applyAvailabilityPeriodDeletion(
+          { periods: periods.value },
+          periodId
+        ).periods
       } catch (error) {
         console.error(
           'Błąd usuwania okresu dyspozycji:',
@@ -1052,6 +1088,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
+        await assertPeriodDoesNotOverlapSchedule(
+          restaurantId,
+          period
+        )
+
         const periodRef = doc(
           db,
           'users',
@@ -1340,6 +1381,11 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       isSaving.value = true
 
       try {
+        await assertPeriodDoesNotOverlapSchedule(
+          restaurantId,
+          period
+        )
+
         const newClosesAt = getEndOfDayTimestamp(closesOn)
         const batch = writeBatch(db)
 

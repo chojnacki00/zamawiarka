@@ -41,7 +41,7 @@ const getLegacyMode = (source, key, fallback) => {
   return fallback
 }
 
-const normalizeSettings = settings => {
+export const normalizeGeneratorSettings = settings => {
   const source = settings || {}
   const defaults = DEFAULT_GENERATOR_SETTINGS.profileRules
 
@@ -142,7 +142,7 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
 
         this.hasStoredSettings = Boolean(storedData)
         this.settings = storedData
-          ? normalizeSettings(storedData)
+          ? normalizeGeneratorSettings(storedData)
           : cloneSettings(DEFAULT_GENERATOR_SETTINGS)
         this.isLoaded = true
 
@@ -168,7 +168,7 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
 
         const employeeAuthStore = useEmployeeAuthStore()
         const auth = getAuth()
-        const normalizedSettings = normalizeSettings(nextSettings)
+        const normalizedSettings = normalizeGeneratorSettings(nextSettings)
 
         await setDoc(
           doc(db, 'users', restaurantId, 'grafik_ustawienia', 'generator'),

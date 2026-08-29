@@ -43,7 +43,7 @@
           <input v-model="form.aktywny" type="checkbox">
         </section>
 
-        <article class="accordion-card" :class="{ open: openSections.basic }">
+        <article :ref="element => setSectionElement('basic', element)" class="accordion-card" :class="{ open: openSections.basic }">
           <button class="accordion-toggle" type="button" @click="toggleSection('basic')"><span><b>1</b>Dane podstawowe</span><i>{{ openSections.basic ? '−' : '+' }}</i></button>
           <section v-if="openSections.basic" class="accordion-content">
             <div class="two-columns">
@@ -56,18 +56,31 @@
           </section>
         </article>
 
-        <article class="accordion-card" :class="{ open: openSections.employment }">
-          <button class="accordion-toggle" type="button" @click="toggleSection('employment')"><span><b>2</b>Forma zatrudnienia i wymiar pracy</span><i>{{ openSections.employment ? '−' : '+' }}</i></button>
+        <article :ref="element => setSectionElement('employment', element)" class="accordion-card" :class="{ open: openSections.employment }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('employment')"><span><b>2</b>Zatrudnienie i wynagrodzenie</span><i>{{ openSections.employment ? '−' : '+' }}</i></button>
           <section v-if="openSections.employment" class="accordion-content">
+            <label class="form-field"><span>Rodzaj wynagrodzenia *</span><select v-model="form.compensation.type"><option value="hourly">Stawka godzinowa</option><option value="fixed_monthly">Stałe wynagrodzenie miesięczne</option></select></label>
+            <template v-if="isHourlyCompensation">
+              <label class="form-field rate-field"><span>Stawka ogólna *</span><div class="rate-input"><input v-model="form.compensation.generalHourlyRate" type="number" min="0.01" step="0.01" inputmode="decimal" required @wheel="blurFinancialInputOnWheel"><b>zł/h</b></div></label>
+              <p class="field-note">Stawka ogólna będzie używana przy zmianach dodatkowych bez stanowiska oraz przy zmianach dodatkowych na stanowisku, którego pracownik nie ma przypisanego.</p>
+            </template>
+            <template v-else>
+              <label class="form-field rate-field"><span>Miesięczne wynagrodzenie *</span><div class="rate-input monthly-rate-input"><input v-model="form.compensation.monthlySalary" type="number" min="0.01" step="0.01" inputmode="decimal" required @wheel="blurFinancialInputOnWheel"><b>zł/mies.</b></div></label>
+              <p class="field-note">Stałe wynagrodzenie jest miesięczne i nie zależy od liczby zmian ani przepracowanych godzin.</p>
+            </template>
             <label class="form-field"><span>Profil zatrudnienia</span><select v-model="form.employmentProfileId"><option :value="null">Bez profilu zatrudnienia</option><option v-for="profile in employmentProfilesStore.profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select></label>
             <label class="form-field" :class="{ disabled: !form.employmentProfileId }"><span>Wymiar pracy</span><div class="range-heading"><strong>{{ form.employmentPercentage }}%</strong><small>Zakres 5–200%, krok 5%</small></div><input v-model.number="form.employmentPercentage" type="range" min="5" max="200" step="5" :disabled="!form.employmentProfileId"></label>
             <p v-if="!form.employmentProfileId" class="field-note">Bez profilu zatrudnienia nie obowiązują limity profilu, a wymiar pracy nie jest stosowany.</p>
-            <p v-else class="field-note">Wymiar skaluje cel godzin i tolerancję. Nie zmienia odpoczynków, przerw ani pozostałych limitów bezpieczeństwa.</p>
-            <div v-if="scaledEmploymentSummary" class="employment-summary"><strong>Przeliczone dla pracownika</strong><span>{{ scaledEmploymentSummary }}</span></div>
+            <p v-else class="field-note">Wymiar skaluje cel godzin, tolerancję i maksimum tygodniowe. Nie zmienia maksimum dziennego, odpoczynków, przerw ani pozostałych reguł profilu.</p>
+            <div v-if="scaledEmploymentSummary" class="employment-summary">
+              <strong>Przeliczone dla pracownika</strong>
+              <span v-for="line in scaledEmploymentSummary.lines" :key="line.label"><b>{{ line.label }}:</b> {{ line.value }}</span>
+              <small v-if="scaledEmploymentSummary.monthlyNote">Stały cel planistyczny dla każdego miesiąca. Nie uwzględnia różnic w liczbie dni roboczych ani świąt.</small>
+            </div>
           </section>
         </article>
 
-        <article class="accordion-card" :class="{ open: openSections.groups }">
+        <article :ref="element => setSectionElement('groups', element)" class="accordion-card" :class="{ open: openSections.groups }">
           <button class="accordion-toggle" type="button" @click="toggleSection('groups')"><span><b>3</b>Grupy pracownicze</span><i>{{ openSections.groups ? '−' : '+' }}</i></button>
           <section v-if="openSections.groups" class="accordion-content">
             <p class="field-note">Pracownik może należeć do kilku grup albo nie należeć do żadnej.</p>
@@ -76,21 +89,23 @@
           </section>
         </article>
 
-        <article class="accordion-card" :class="{ open: openSections.positions }">
-          <button class="accordion-toggle" type="button" @click="toggleSection('positions')"><span><b>4</b>Stanowiska, kompetencje i stawki</span><i>{{ openSections.positions ? '−' : '+' }}</i></button>
+        <article :ref="element => setSectionElement('positions', element)" class="accordion-card" :class="{ open: openSections.positions }">
+          <button class="accordion-toggle" type="button" @click="toggleSection('positions')"><span><b>4</b>{{ isHourlyCompensation ? 'Stanowiska, kompetencje i stawki' : 'Stanowiska i kompetencje' }}</span><i>{{ openSections.positions ? '−' : '+' }}</i></button>
           <section v-if="openSections.positions" class="accordion-content">
             <button class="add-position" type="button" :disabled="!positionPickerPositions.length" @click="openPositionPicker">＋ Przypisz stanowisko</button>
             <div v-if="!form.positionAssignments.length" class="inline-empty">Brak przypisanych stanowisk.</div>
             <article v-for="assignment in form.positionAssignments" :key="assignment.positionId" class="assignment-card">
               <div class="assignment-heading"><span><strong>{{ getPosition(assignment.positionId)?.nazwa || 'Nieznane stanowisko' }}</strong><small v-if="getPosition(assignment.positionId)?.active === false">Stanowisko nieaktywne</small></span><button type="button" @click="removePositionAssignment(assignment.positionId)">Usuń</button></div>
               <div class="stars-row"><span>Kompetencje</span><div><button v-for="star in 5" :key="star" type="button" :class="{ active: assignment.competencyStars >= star }" @click="assignment.competencyStars = star">★</button></div></div>
-              <label class="form-field rate-field"><span>Stawka godzinowa</span><div class="rate-input"><input :value="getDisplayedRate(assignment)" type="number" min="0" step="0.01" inputmode="decimal" @input="setAssignmentRate(assignment, $event.target.value)"><b>zł/h</b></div></label>
-              <div class="rate-footer"><small>Domyślna stawka stanowiska: {{ formatRate(getPosition(assignment.positionId)?.defaultHourlyRate) }}</small><button v-if="assignment.hourlyRateOverride !== null" type="button" @click="assignment.hourlyRateOverride = null">Przywróć stawkę stanowiska</button></div>
+              <template v-if="isHourlyCompensation">
+                <label class="form-field rate-field"><span>Stawka godzinowa</span><div class="rate-input"><input :value="assignmentRateInputs[assignment.positionId] ?? ''" type="number" min="0.01" step="0.01" inputmode="decimal" @input="setAssignmentRateInput(assignment, $event.target.value)" @blur="commitAssignmentRate(assignment)" @wheel="blurFinancialInputOnWheel"><b>zł/h</b></div></label>
+                <div class="rate-footer"><small>Domyślna stawka stanowiska: {{ formatRate(getPosition(assignment.positionId)?.defaultHourlyRate) }}</small><button v-if="assignment.hourlyRateOverride !== null" type="button" @click="restoreAssignmentRate(assignment)">Przywróć stawkę stanowiska</button></div>
+              </template>
             </article>
           </section>
         </article>
 
-        <article class="accordion-card" :class="{ open: openSections.permissions }">
+        <article :ref="element => setSectionElement('permissions', element)" class="accordion-card" :class="{ open: openSections.permissions }">
           <button class="accordion-toggle" type="button" @click="toggleSection('permissions')"><span><b>5</b>Profil uprawnień</span><i>{{ openSections.permissions ? '−' : '+' }}</i></button>
           <section v-if="openSections.permissions" class="accordion-content"><label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label><p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p></section>
         </article>
@@ -108,7 +123,7 @@
         <div class="position-picker-list">
           <label v-for="position in positionPickerPositions" :key="position.id" class="choice-row" :class="{ selected: positionPickerSelection.includes(position.id), inactive: position.active === false }">
             <input v-model="positionPickerSelection" type="checkbox" :value="position.id">
-            <span><strong>{{ position.nazwa }}</strong><small>{{ formatRate(position.defaultHourlyRate) }}<template v-if="position.active === false"> · stanowisko nieaktywne</template></small></span>
+            <span><strong>{{ position.nazwa }}</strong><small v-if="isHourlyCompensation || position.active === false"><template v-if="isHourlyCompensation">{{ formatRate(position.defaultHourlyRate) }}</template><template v-if="isHourlyCompensation && position.active === false"> · </template><template v-if="position.active === false">stanowisko nieaktywne</template></small></span>
           </label>
         </div>
         <div class="form-actions"><button class="cancel-button" type="button" @click="closePositionPicker">Anuluj</button><button class="save-button" type="button" @click="applyPositionSelection">Zastosuj</button></div>
@@ -130,7 +145,15 @@ import { useEmployeesStore } from '../stores/employeesStore.js'
 import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
 import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
-import { getScaledEmploymentProfile } from '../utils/employmentRules.js'
+import {
+  COMPENSATION_TYPES,
+  getEffectiveHourlyRate,
+  normalizeMoneyValue
+} from '../utils/employeeAssignments.js'
+import {
+  getScaledEmploymentProfile,
+  roundHours
+} from '../utils/employmentRules.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -153,8 +176,27 @@ const pairingCode = ref('')
 const formError = ref('')
 const closedSections = () => ({ basic: false, employment: false, groups: false, positions: false, permissions: false })
 const openSections = ref(closedSections())
+const sectionElements = ref({})
+const assignmentRateInputs = ref({})
 
-const createEmptyForm = () => ({ imie: '', nazwisko: '', telefon: '', email: '', pin: '', aktywny: true, employmentProfileId: null, employmentPercentage: 100, employeeGroupIds: [], positionAssignments: [], permissionProfileId: '' })
+const createEmptyForm = () => ({
+  imie: '',
+  nazwisko: '',
+  telefon: '',
+  email: '',
+  pin: '',
+  aktywny: true,
+  employmentProfileId: null,
+  employmentPercentage: 100,
+  employeeGroupIds: [],
+  compensation: {
+    type: COMPENSATION_TYPES.HOURLY,
+    generalHourlyRate: null,
+    monthlySalary: null
+  },
+  positionAssignments: [],
+  permissionProfileId: ''
+})
 const form = ref(createEmptyForm())
 
 const isLoading = computed(() => employeesStore.isLoading || positionsStore.isLoading || groupsStore.isLoading || permissionProfilesStore.isLoading || employmentProfilesStore.isLoading)
@@ -176,13 +218,66 @@ const availablePermissionProfiles = computed(() => {
 })
 const selectableGroups = computed(() => groupsStore.groups.filter(group => group.active !== false || form.value.employeeGroupIds.includes(group.id)))
 const positionPickerPositions = computed(() => positionsStore.positions.filter(position => position.active !== false || form.value.positionAssignments.some(assignment => assignment.positionId === position.id)))
+const isHourlyCompensation = computed(() => (
+  form.value.compensation.type ===
+  COMPENSATION_TYPES.HOURLY
+))
+const formatSettlementPeriodUnit = period => {
+  const amount = Number(period?.amount) || 1
+  if (period?.unit === 'day') return `${amount} dni`
+  if (period?.unit === 'week') return `${amount} tyg.`
+  return `${amount} mies.`
+}
+const getTargetUnitLabel = profile => {
+  if (profile.targetHours?.unit === 'week') return 'tydzień'
+  if (profile.targetHours?.unit === 'month') return 'miesiąc'
+  return `okres rozliczeniowy (${formatSettlementPeriodUnit(profile.settlementPeriod)})`
+}
 const scaledEmploymentSummary = computed(() => {
   const profile = employmentProfilesStore.profiles.find(item => item.id === form.value.employmentProfileId)
   const scaled = getScaledEmploymentProfile(form.value, profile)
-  if (!scaled?.targetHours?.applies) return ''
-  const unit = scaled.targetHours.unit === 'week' ? 'tydzień' : 'okres rozliczeniowy'
-  const tolerance = scaled.targetTolerance?.applies ? `, tolerancja −${scaled.targetTolerance.minusHours}/+${scaled.targetTolerance.plusHours} h` : ''
-  return `${scaled.targetHours.amount} h / ${unit}${tolerance}`
+  if (!scaled) return null
+
+  const lines = []
+  if (scaled.targetHours?.applies) {
+    const unit = getTargetUnitLabel(scaled)
+    const targetHours = Number(scaled.targetHours.amount) || 0
+    lines.push({
+      label: 'Cel',
+      value: `${roundHours(targetHours)} h / ${unit}`
+    })
+
+    if (scaled.targetTolerance?.applies) {
+      const minusHours = Number(
+        scaled.targetTolerance.minusHours
+      ) || 0
+      const plusHours = Number(
+        scaled.targetTolerance.plusHours
+      ) || 0
+      lines.push({
+        label: 'Zakres celu',
+        value: `${roundHours(Math.max(0, targetHours - minusHours))}–${roundHours(targetHours + plusHours)} h / ${unit}`
+      })
+      lines.push({
+        label: 'Tolerancja',
+        value: `−${roundHours(minusHours)}/+${roundHours(plusHours)} h`
+      })
+    }
+  }
+
+  if (scaled.maximumWeeklyHours?.applies) {
+    lines.push({
+      label: 'Maksimum tygodniowe',
+      value: `${roundHours(scaled.maximumWeeklyHours.hours)} h`
+    })
+  }
+
+  if (!lines.length) return null
+  return {
+    lines,
+    monthlyNote: scaled.targetHours?.applies &&
+      scaled.targetHours.unit === 'month'
+  }
 })
 
 onMounted(async () => {
@@ -192,17 +287,64 @@ onMounted(async () => {
 const toggleSection = section => {
   const shouldOpen = !openSections.value[section]
   openSections.value = { ...closedSections(), [section]: shouldOpen }
+  if (shouldOpen) scrollToSection(section)
 }
-const openOnlySection = section => { openSections.value = { ...closedSections(), [section]: true } }
+const openOnlySection = section => {
+  openSections.value = { ...closedSections(), [section]: true }
+  scrollToSection(section)
+}
+const setSectionElement = (section, element) => {
+  if (element) sectionElements.value[section] = element
+}
+const scrollToSection = async section => {
+  await nextTick()
+  sectionElements.value[section]?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  })
+}
 const handleBack = () => { if (isFormOpen.value) cancelForm(); else router.push('/ustawienia') }
 const getPermissionProfileName = profileId => permissionProfilesStore.profiles.find(profile => profile.id === profileId)?.nazwa || 'Brak profilu'
 const getPosition = positionId => positionsStore.positions.find(position => position.id === positionId)
 const formatRate = value => `${Number(value || 0).toFixed(2).replace('.', ',')} zł/h`
 const getDisplayedRate = assignment => assignment.hourlyRateOverride ?? Number(getPosition(assignment.positionId)?.defaultHourlyRate || 0)
+const formatMoneyInput = value => {
+  const normalizedValue = normalizeMoneyValue(value)
+  return normalizedValue === null ? '' : String(normalizedValue)
+}
+const syncAssignmentRateInputs = () => {
+  const currentInputs = assignmentRateInputs.value
+  assignmentRateInputs.value = Object.fromEntries(
+    form.value.positionAssignments.map(assignment => [
+      assignment.positionId,
+      Object.prototype.hasOwnProperty.call(
+        currentInputs,
+        assignment.positionId
+      )
+        ? currentInputs[assignment.positionId]
+        : formatMoneyInput(getDisplayedRate(assignment))
+    ])
+  )
+}
 
 const openForm = (employee = null) => {
   editingEmployeeId.value = employee?.id || null
-  form.value = employee ? { ...createEmptyForm(), ...employee, employeeGroupIds: [...employee.employeeGroupIds], positionAssignments: employee.positionAssignments.map(assignment => ({ ...assignment })) } : createEmptyForm()
+  form.value = employee
+    ? {
+        ...createEmptyForm(),
+        ...employee,
+        compensation: {
+          ...createEmptyForm().compensation,
+          ...employee.compensation
+        },
+        employeeGroupIds: [...employee.employeeGroupIds],
+        positionAssignments: employee.positionAssignments.map(
+          assignment => ({ ...assignment })
+        )
+      }
+    : createEmptyForm()
+  assignmentRateInputs.value = {}
+  syncAssignmentRateInputs()
   if (!employee) generateRandomPin()
   openSections.value = closedSections()
   formError.value = ''
@@ -224,17 +366,101 @@ const applyPositionSelection = () => {
   form.value.positionAssignments = positionPickerPositions.value
     .filter(position => selectedIds.has(position.id))
     .map(position => existingAssignments.get(position.id) || { positionId: position.id, competencyStars: 5, hourlyRateOverride: null })
+  syncAssignmentRateInputs()
   closePositionPicker()
 }
-const removePositionAssignment = positionId => { form.value.positionAssignments = form.value.positionAssignments.filter(assignment => assignment.positionId !== positionId) }
-const setAssignmentRate = (assignment, value) => {
-  const parsed = Number(value)
-  const defaultRate = Number(getPosition(assignment.positionId)?.defaultHourlyRate || 0)
-  assignment.hourlyRateOverride = Number.isFinite(parsed) && Math.abs(parsed - defaultRate) >= 0.005 ? Math.max(0, Math.round(parsed * 100) / 100) : null
+const removePositionAssignment = positionId => {
+  form.value.positionAssignments = form.value.positionAssignments.filter(
+    assignment => assignment.positionId !== positionId
+  )
+  syncAssignmentRateInputs()
+}
+const setAssignmentRateInput = (assignment, value) => {
+  assignmentRateInputs.value = {
+    ...assignmentRateInputs.value,
+    [assignment.positionId]: value
+  }
+}
+const commitAssignmentRate = assignment => {
+  const rawValue = assignmentRateInputs.value[assignment.positionId]
+  if (String(rawValue ?? '').trim() === '') {
+    assignment.hourlyRateOverride = null
+    setAssignmentRateInput(
+      assignment,
+      formatMoneyInput(getDisplayedRate(assignment))
+    )
+    return true
+  }
+
+  const parsed = normalizeMoneyValue(rawValue)
+  if (parsed === null) return false
+
+  const defaultRate = normalizeMoneyValue(
+    getPosition(assignment.positionId)?.defaultHourlyRate
+  ) ?? 0
+  assignment.hourlyRateOverride = Math.abs(parsed - defaultRate) >= 0.005
+    ? Math.max(0, parsed)
+    : null
+  setAssignmentRateInput(
+    assignment,
+    formatMoneyInput(getDisplayedRate(assignment))
+  )
+  return true
+}
+const restoreAssignmentRate = assignment => {
+  assignment.hourlyRateOverride = null
+  setAssignmentRateInput(
+    assignment,
+    formatMoneyInput(getDisplayedRate(assignment))
+  )
+}
+const blurFinancialInputOnWheel = event => {
+  if (event.currentTarget === document.activeElement) {
+    event.currentTarget.blur()
+  }
 }
 
 const validateForm = () => {
+  form.value.positionAssignments.forEach(commitAssignmentRate)
   if (!form.value.imie.trim() || !form.value.nazwisko.trim() || form.value.pin.trim().length !== 4) { openOnlySection('basic'); return 'Uzupełnij imię, nazwisko i czterocyfrowy PIN.' }
+  if (isHourlyCompensation.value) {
+    const generalHourlyRate = normalizeMoneyValue(
+      form.value.compensation.generalHourlyRate
+    )
+
+    if (!Number.isFinite(generalHourlyRate) || generalHourlyRate <= 0) {
+      openOnlySection('employment')
+      return 'Uzupełnij prawidłową stawkę ogólną większą od zera.'
+    }
+
+    const assignmentWithoutRate = form.value.positionAssignments.find(
+      assignment => {
+        const position = getPosition(assignment.positionId)
+        const effectiveRate = getEffectiveHourlyRate(
+          form.value,
+          position
+        )
+        return !Number.isFinite(effectiveRate) || effectiveRate <= 0
+      }
+    )
+
+    if (assignmentWithoutRate) {
+      openOnlySection('positions')
+      const positionName = getPosition(
+        assignmentWithoutRate.positionId
+      )?.nazwa || 'Nieznane stanowisko'
+      return `Uzupełnij stawkę dla stanowiska „${positionName}”.`
+    }
+  } else {
+    const monthlySalary = normalizeMoneyValue(
+      form.value.compensation.monthlySalary
+    )
+
+    if (!Number.isFinite(monthlySalary) || monthlySalary <= 0) {
+      openOnlySection('employment')
+      return 'Uzupełnij prawidłowe miesięczne wynagrodzenie większe od zera.'
+    }
+  }
   if (!form.value.permissionProfileId) { openOnlySection('permissions'); return 'Wybierz wymagany profil uprawnień.' }
   if (form.value.employmentProfileId && (form.value.employmentPercentage < 5 || form.value.employmentPercentage > 200 || form.value.employmentPercentage % 5 !== 0)) { openOnlySection('employment'); return 'Wymiar pracy musi mieścić się w zakresie 5–200% i być wielokrotnością 5%.' }
   return ''
@@ -245,7 +471,17 @@ const saveEmployee = async () => {
   if (formError.value || isSaving.value) return
   isSaving.value = true
   try {
-    const payload = { ...form.value, employmentPercentage: form.value.employmentProfileId ? form.value.employmentPercentage : 100, employeeGroupIds: [...form.value.employeeGroupIds], positionAssignments: form.value.positionAssignments.map(assignment => ({ ...assignment })) }
+    const payload = {
+      ...form.value,
+      employmentPercentage: form.value.employmentProfileId
+        ? form.value.employmentPercentage
+        : 100,
+      employeeGroupIds: [...form.value.employeeGroupIds],
+      compensation: { ...form.value.compensation },
+      positionAssignments: form.value.positionAssignments.map(
+        assignment => ({ ...assignment })
+      )
+    }
     if (editingEmployeeId.value) await employeesStore.updateEmployee(editingEmployeeId.value, payload)
     else await employeesStore.addEmployee(payload)
     cancelForm()
@@ -282,10 +518,14 @@ const generatePairingCode = async () => {
 
 <style scoped>
 .team-scroll { background: #f6f7f9; }.team-toolbar { position: sticky; top: 0; z-index: 5; padding: 16px; border-bottom: 1px solid #e5e7eb; background: rgba(246,247,249,.95); backdrop-filter: blur(14px); }.add-employee { width: 100%; padding: 14px; border: 1px solid #bae6fd; border-radius: 14px; background: #e0f2fe; color: #0369a1; font-size: 16px; font-weight: 750; }.search-field { position: relative; display: block; margin-top: 11px; }.search-field span { position: absolute; top: 9px; left: 13px; color: #9ca3af; font-size: 22px; }.search-field input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 40px; border: 1px solid #d1d5db; border-radius: 12px; background: white; font-size: 16px; }.employee-list { display: grid; gap: 10px; padding: 14px 16px 24px; }.employee-card { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 15px; background: white; box-shadow: 0 3px 12px rgba(15,23,42,.04); }.employee-card.inactive { opacity: .58; }.employee-main { display: grid; flex: 1; min-width: 0; gap: 8px; padding: 0; border: 0; background: transparent; text-align: left; }.employee-main strong { color: #111827; font-size: 16px; }.employee-badges { display: flex; flex-wrap: wrap; gap: 5px; }.employee-badges small { padding: 3px 7px; border-radius: 6px; background: #f1f5f9; color: #475569; font-weight: 650; }.delete-icon { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; padding: 0; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; color: #dc2626; }.empty-state, .inline-empty { padding: 28px 14px; color: #9ca3af; text-align: center; }.employee-form { display: grid; gap: 11px; padding: 14px 14px 32px; }.form-status-card, .accordion-card { border: 1px solid #e5e7eb; border-radius: 16px; background: white; box-shadow: 0 3px 12px rgba(15,23,42,.04); }.form-status-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px; }.form-status-card span { display: grid; gap: 3px; }.form-status-card small { color: #6b7280; }.form-status-card input { width: 23px; height: 23px; accent-color: #10b981; }.accordion-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 16px; border: 0; background: transparent; color: #111827; font-size: 15px; font-weight: 750; text-align: left; }.accordion-toggle span { display: flex; align-items: center; gap: 10px; }.accordion-toggle b { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: #e0f2fe; color: #0284c7; font-size: 12px; }.accordion-toggle i { color: #94a3b8; font-size: 22px; font-style: normal; }.accordion-content { padding: 0 16px 16px; border-top: 1px solid #f1f5f9; }.two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.form-field { display: grid; gap: 7px; margin-top: 15px; color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; }.form-field input, .form-field select { width: 100%; box-sizing: border-box; min-height: 46px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 11px; background: white; color: #0f172a; font-size: 16px; text-transform: none; }.form-field.disabled { opacity: .48; }.pin-row { display: grid; grid-template-columns: 86px 46px minmax(0, 1fr); gap: 7px; }.pin-row .pin-input { width: 86px; text-align: center; letter-spacing: .12em; }.pin-row button, .add-position { min-height: 44px; padding: 0 12px; border: 1px solid #bae6fd; border-radius: 10px; background: #f0f9ff; color: #0369a1; font-weight: 700; }.pin-row .dice-button { padding: 0; font-size: 21px; }.range-heading { display: flex; align-items: center; justify-content: space-between; }.range-heading strong { color: #0284c7; font-size: 20px; }.range-heading small { color: #94a3b8; text-transform: none; }.form-field input[type="range"] { padding: 0; accent-color: #0ea5e9; }.field-note { margin: 12px 0 0; color: #64748b; font-size: 13px; line-height: 1.5; }.choice-row { display: flex; align-items: center; gap: 11px; min-height: 72px; box-sizing: border-box; margin-top: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; }.choice-row.selected { border-color: #7dd3fc; background: #f0f9ff; }.choice-row.inactive { opacity: .58; }.choice-row input { width: 20px; height: 20px; flex: 0 0 20px; accent-color: #0ea5e9; }.choice-row span { display: grid; min-width: 0; gap: 2px; }.choice-row small { display: -webkit-box; overflow: hidden; min-height: 32px; color: #64748b; line-height: 16px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }.add-position { width: 100%; margin-top: 10px; }.add-position:disabled { opacity: .4; }.assignment-card { margin-top: 12px; padding: 13px; border: 1px solid #e2e8f0; border-radius: 13px; background: #f8fafc; }.assignment-heading, .stars-row, .rate-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.assignment-heading span { display: grid; gap: 2px; }.assignment-heading small { color: #dc2626; }.assignment-heading button, .rate-footer button { padding: 6px 8px; border: 0; background: transparent; color: #dc2626; font-size: 12px; font-weight: 700; }.stars-row { margin-top: 13px; color: #64748b; font-size: 13px; font-weight: 700; }.stars-row button { padding: 1px; border: 0; background: transparent; color: #cbd5e1; font-size: 25px; }.stars-row button.active { color: #eab308; }.rate-field { margin-top: 12px; }.rate-input { position: relative; }.rate-input input { padding-right: 52px; }.rate-input b { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #64748b; text-transform: none; }.rate-footer { align-items: flex-start; margin-top: 8px; }.rate-footer small { color: #64748b; line-height: 1.35; }.rate-footer button { color: #0284c7; text-align: right; }.form-error { margin: 2px 0; padding: 12px; border: 1px solid #fecaca; border-radius: 11px; background: #fef2f2; color: #b91c1c; font-size: 13px; }.form-actions { display: flex; gap: 10px; margin-top: 8px; }.form-actions button, .full { flex: 1; min-height: 48px; border-radius: 12px; font-weight: 750; }.cancel-button { border: 1px solid #cbd5e1; background: white; color: #475569; }.save-button { border: 0; background: #0ea5e9; color: white; }.danger-button { border: 0; background: #ef4444; color: white; }.dialog-card { max-width: 340px; text-align: center; }.dialog-card p, .position-picker-card p { color: #64748b; line-height: 1.45; }.position-picker-card { width: min(390px, calc(100vw - 28px)); max-height: min(680px, calc(100vh - 40px)); overflow: auto; }.position-picker-list { margin-top: 14px; }.pairing-code { margin: 18px 0; color: #0369a1; font-size: 36px; font-weight: 800; letter-spacing: .16em; }.full { width: 100%; padding: 0 20px; }
-.employment-summary { display: grid; gap: 4px; margin-top: 12px; padding: 12px; border-radius: 11px; background: #f0f9ff; color: #075985; font-size: 13px; }
+.employment-summary { display: grid; gap: 5px; margin-top: 12px; padding: 12px; border-radius: 11px; background: #f0f9ff; color: #075985; font-size: 13px; }
+.employment-summary span { line-height: 1.4; }
+.employment-summary span b { color: #0c4a6e; }
+.employment-summary small { margin-top: 3px; color: #64748b; line-height: 1.45; }
+.monthly-rate-input input { padding-right: 82px; }
 .search-field input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
 .search-field input::placeholder { color: #94a3b8; opacity: 1; -webkit-text-fill-color: #94a3b8; }
-.accordion-card { overflow: hidden; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.accordion-card { overflow: hidden; scroll-margin-top: 14px; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
 .accordion-card.open { border-color: #7dd3fc; background: #f0f9ff; box-shadow: 0 5px 18px rgba(14, 165, 233, .13); }
 .accordion-card.open .accordion-toggle { background: #e8f7ff; }
 .accordion-card.open .accordion-content { background: rgba(255, 255, 255, .8); }

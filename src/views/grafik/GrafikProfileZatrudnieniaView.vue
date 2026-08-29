@@ -133,6 +133,7 @@
                 <span>Cel godzinowy dotyczy</span>
                 <select v-model="form.targetHours.unit" @change="handleTargetUnitChange">
                   <option value="week">Jednego tygodnia</option>
+                  <option value="month">Jednego miesiąca</option>
                   <option value="settlementPeriod">Całego okresu rozliczeniowego</option>
                 </select>
               </label>
@@ -237,7 +238,7 @@
               v-if="rule.key === 'maximumWeeklyHours' && weeklyHoursConflict"
               class="employment-value-error"
             >
-              Przy obecnym celu minimum wynosi {{ minimumWeeklyHours }} godz. tygodniowo.
+              {{ weeklyMaximumValidationMessage }}
             </p>
           </article>
         </section>
@@ -436,6 +437,10 @@ import {
   createDefaultEmploymentProfile,
   useScheduleEmploymentProfilesStore
 } from '../../stores/scheduleEmploymentProfilesStore.js'
+import {
+  getRequiredWeeklyMaximumHours,
+  getWeeklyMaximumValidationMessage
+} from '../../utils/employmentRules.js'
 
 const router = useRouter()
 const profilesStore = useScheduleEmploymentProfilesStore()
@@ -456,30 +461,14 @@ const settlementPeriodMaximum = computed(() => {
   return 12
 })
 
-const minimumWeeklyHours = computed(() => {
-  if (!form.targetHours.applies) return 1
-
-  const targetAmount = Number(form.targetHours.amount)
-  if (!Number.isFinite(targetAmount)) return 1
-  if (form.targetHours.unit === 'week') return Math.ceil(targetAmount * 10) / 10
-  if (!form.settlementPeriod.applies) return 1
-
-  const periodAmount = Number(form.settlementPeriod.amount)
-  if (!Number.isFinite(periodAmount) || periodAmount <= 0) return 1
-
-  let settlementWeeks = periodAmount
-  if (form.settlementPeriod.unit === 'day') settlementWeeks = periodAmount / 7
-  if (form.settlementPeriod.unit === 'month') {
-    settlementWeeks = periodAmount * (365.2425 / 12 / 7)
-  }
-
-  return Math.ceil((targetAmount / settlementWeeks) * 10) / 10
-})
-
-const weeklyHoursConflict = computed(() => (
-  form.targetHours.applies
-  && form.maximumWeeklyHours.applies
-  && Number(form.maximumWeeklyHours.hours) < minimumWeeklyHours.value
+const minimumWeeklyHours = computed(() => (
+  getRequiredWeeklyMaximumHours(form) ?? 1
+))
+const weeklyMaximumValidationMessage = computed(() => (
+  getWeeklyMaximumValidationMessage(form)
+))
+const weeklyHoursConflict = computed(() => Boolean(
+  weeklyMaximumValidationMessage.value
 ))
 
 const hourRules = [
@@ -674,6 +663,10 @@ const saveProfile = async () => {
   editorError.value = ''
   try {
     normalizeSettlementPeriodAmount()
+    const validationMessage = getWeeklyMaximumValidationMessage(
+      form
+    )
+    if (validationMessage) throw new Error(validationMessage)
     await profilesStore.saveProfile(form)
     showEditor.value = false
     showFeedback(
@@ -705,7 +698,11 @@ const deleteProfile = async () => {
 
 const formatTarget = profile => {
   if (!profile.targetHours?.applies) return 'bez celu godzin'
-  const suffix = profile.targetHours.unit === 'week' ? 'godz./tydz.' : 'godz./okres'
+  const suffix = profile.targetHours.unit === 'week'
+    ? 'godz./tydz.'
+    : profile.targetHours.unit === 'month'
+      ? 'godz./mies.'
+      : 'godz./okres'
   return `${profile.targetHours.amount} ${suffix}`
 }
 
@@ -923,7 +920,7 @@ onMounted(async () => {
 .employment-value-grid {
   margin-top: 11px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 9px;
 }
 .employment-value-grid label { display: grid; gap: 5px; }

@@ -97,13 +97,15 @@
             :key="uprawnienie.key"
             @click="!isPermissionDisabled(uprawnienie.key) && togglePermission(uprawnienie.key)"
             class="item-card"
+            :aria-disabled="isPermissionDisabled(uprawnienie.key)"
             :style="{
               border: newProfilePermissions[uprawnienie.key] ? '1px solid #10b981' : '1px solid transparent',
               backgroundColor: newProfilePermissions[uprawnienie.key] ? '#ecfdf5' : 'white',
-              opacity: isPermissionDisabled(uprawnienie.key) ? '0.4' : '1',
-              pointerEvents: isPermissionDisabled(uprawnienie.key) ? 'none' : 'auto'
+              opacity: isPermissionDisabled(uprawnienie.key) ? '0.55' : '1',
+              pointerEvents: isPermissionDisabled(uprawnienie.key) ? 'none' : 'auto',
+              cursor: isPermissionDisabled(uprawnienie.key) ? 'not-allowed' : 'pointer'
             }"
-            style="padding: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s;"
+            style="padding: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;"
           >
             <span translate="no" class="notranslate" style="font-size: 14px; color: #374151; font-weight: 500; line-height: 1.4; padding-right: 15px;">
               {{ uprawnienie.label }}
@@ -184,6 +186,10 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { PERMISSIONS_DICTIONARY } from '../config/permissions.js'
 import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
+import {
+  normalizePermissionDependencies,
+  togglePermissionWithDependencies
+} from '../utils/permissionDependencies.js'
 
 const router = useRouter()
 const profilesStore = usePermissionProfilesStore()
@@ -216,9 +222,12 @@ const openForm = (profile = null) => {
     editingProfileId.value = profile.id
     newProfileName.value = profile.nazwa
     newProfilePermissions.value = {}
+    const normalizedPermissions = normalizePermissionDependencies(
+      profile.uprawnienia
+    )
     PERMISSIONS_DICTIONARY.forEach(modul => {
       modul.permissions.forEach(perm => {
-        newProfilePermissions.value[perm.key] = profile.uprawnienia?.[perm.key] || false
+        newProfilePermissions.value[perm.key] = normalizedPermissions[perm.key] || false
       })
     })
   } else {
@@ -240,6 +249,10 @@ const cancelForm = () => {
 }
 
 const isPermissionDisabled = (permKey) => {
+  if (permKey === 'can_manage_schedule') {
+    return !newProfilePermissions.value['can_view_schedule']
+  }
+
   // Blokady dla Zamawiarki
   if (permKey === 'can_create_orders' || permKey === 'can_edit_products') {
     return !newProfilePermissions.value['can_view_zamawiarka']
@@ -254,6 +267,17 @@ const isPermissionDisabled = (permKey) => {
 const togglePermission = (key) => {
   // Zabezpieczenie przed kliknięciem w zablokowany element
   if (isPermissionDisabled(key)) return;
+
+  if (
+    key === 'can_view_schedule' ||
+    key === 'can_manage_schedule'
+  ) {
+    newProfilePermissions.value = togglePermissionWithDependencies(
+      newProfilePermissions.value,
+      key
+    )
+    return
+  }
 
   // Główna zmiana wartości
   newProfilePermissions.value[key] = !newProfilePermissions.value[key]
@@ -283,7 +307,9 @@ const saveProfile = async () => {
   try {
     const profileData = {
       nazwa: newProfileName.value,
-      uprawnienia: { ...newProfilePermissions.value }
+      uprawnienia: normalizePermissionDependencies(
+        newProfilePermissions.value
+      )
     }
 
     if (editingProfileId.value) {

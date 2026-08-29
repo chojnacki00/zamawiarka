@@ -7,6 +7,70 @@ export const getEmployeeFullName = employee => {
   )
 }
 
+export const COMPENSATION_TYPES = {
+  HOURLY: 'hourly',
+  FIXED_MONTHLY: 'fixed_monthly'
+}
+
+export const normalizeMoneyValue = value => {
+  if (
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ''
+  ) {
+    return null
+  }
+
+  const parsedValue = Number(
+    typeof value === 'string'
+      ? value.trim().replace(',', '.')
+      : value
+  )
+  return Number.isFinite(parsedValue)
+    ? Math.round(parsedValue * 100) / 100
+    : null
+}
+
+export const getCompensationType = employee => (
+  employee?.compensation?.type ===
+    COMPENSATION_TYPES.FIXED_MONTHLY
+    ? COMPENSATION_TYPES.FIXED_MONTHLY
+    : COMPENSATION_TYPES.HOURLY
+)
+
+export const getGeneralHourlyRate = employee => {
+  const compensationRate = normalizeMoneyValue(
+    employee?.compensation?.generalHourlyRate
+  )
+
+  if (compensationRate !== null) return compensationRate
+
+  const legacyRates = [
+    employee?.generalHourlyRate,
+    employee?.stawka,
+    employee?.hourlyRate,
+    employee?.stawkaGodzinowa
+  ]
+
+  for (const legacyRate of legacyRates) {
+    const normalizedRate = normalizeMoneyValue(legacyRate)
+    if (normalizedRate !== null) return normalizedRate
+  }
+
+  return null
+}
+
+export const getMonthlySalary = employee => normalizeMoneyValue(
+  employee?.compensation?.monthlySalary ??
+  employee?.monthlySalary
+)
+
+export const normalizeCompensation = employee => ({
+  type: getCompensationType(employee),
+  generalHourlyRate: getGeneralHourlyRate(employee),
+  monthlySalary: getMonthlySalary(employee)
+})
+
 export const resolveShiftEmployeeName = (shift, employee = null) => {
   const snapshotName = String(
     shift?.employeeNameSnapshot || ''
@@ -32,6 +96,13 @@ export const getCompetencyStars = (employee, positionId) => {
 }
 
 export const getEffectiveHourlyRate = (employee, position) => {
+  if (
+    getCompensationType(employee) !==
+    COMPENSATION_TYPES.HOURLY
+  ) {
+    return null
+  }
+
   const assignment = getPositionAssignment(employee, position?.id)
   if (!assignment) return null
 
