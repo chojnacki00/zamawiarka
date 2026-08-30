@@ -8,6 +8,26 @@ export const isValidAccountEmail = value => (
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeAccountEmail(value))
 )
 
+export const requireRestaurantContextId = restaurantId => {
+  const normalizedId = String(restaurantId || '').trim()
+
+  if (!normalizedId) {
+    throw new Error(
+      'Kontekst restauracji nie został jeszcze wybrany. Odśwież widok lub wróć do wyboru restauracji.'
+    )
+  }
+
+  return normalizedId
+}
+
+export const resolveLegacyOwnerBootstrapRestaurantId = ({
+  authUid,
+  emailVerified
+} = {}) => {
+  if (!emailVerified) return null
+  return requireRestaurantContextId(authUid)
+}
+
 const toDate = value => {
   if (value instanceof Date) return value
   if (typeof value?.toDate === 'function') return value.toDate()
@@ -169,6 +189,59 @@ export const assertInvitationCanBeAccepted = ({
 
   return true
 }
+
+export const assertInvitationMembershipMatch = ({
+  invitation,
+  restaurantId,
+  employeeId
+} = {}) => {
+  if (
+    String(invitation?.restaurantId || '').trim() !==
+    requireRestaurantContextId(restaurantId)
+  ) {
+    throw new Error('Zaproszenie dotyczy innej restauracji.')
+  }
+
+  if (
+    String(invitation?.employeeId || '').trim() !==
+    String(employeeId || '').trim() ||
+    !hasText(employeeId)
+  ) {
+    throw new Error('Zaproszenie dotyczy innego pracownika.')
+  }
+
+  return true
+}
+
+export const canUsePrivilegedEmployeeActions = ({
+  sessionMode,
+  firebaseUser,
+  hasActiveContext
+} = {}) => (
+  sessionMode === 'firebase_account' &&
+  hasText(firebaseUser?.uid) &&
+  hasActiveContext === true
+)
+
+const LEGACY_PIN_READ_PERMISSIONS = new Set([
+  'can_view_foodcost',
+  'can_view_schedule',
+  'can_view_zamawiarka'
+])
+
+export const canUseEmployeePermissionInSession = ({
+  permissionKey,
+  permissionEnabled,
+  sessionMode
+} = {}) => (
+  permissionEnabled === true && (
+    sessionMode === 'firebase_account' ||
+    (
+      sessionMode === 'legacy_pin' &&
+      LEGACY_PIN_READ_PERMISSIONS.has(permissionKey)
+    )
+  )
+)
 
 export const canViewScheduleWithMembership = ({
   membership,

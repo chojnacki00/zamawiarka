@@ -10,7 +10,6 @@ import {
   deleteDoc,
   serverTimestamp
 } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 
@@ -24,28 +23,9 @@ export const useScheduleDemandModelsStore = defineStore(
     let listenerRestaurantId = null
     let listenerReadyPromise = null
 
-    const getRestaurantId = () => {
-      return new Promise((resolve) => {
-        const employeeAuthStore = useEmployeeAuthStore()
-
-        if (employeeAuthStore.restaurantId) {
-          resolve(employeeAuthStore.restaurantId)
-          return
-        }
-
-        const auth = getAuth()
-
-        if (auth.currentUser) {
-          resolve(auth.currentUser.uid)
-          return
-        }
-
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          unsubscribe()
-          resolve(user ? user.uid : null)
-        })
-      })
-    }
+    const getRestaurantId = async () => (
+      useEmployeeAuthStore().requireRestaurantId()
+    )
 
     const getModelsCollectionRef = async () => {
       const restaurantId = await getRestaurantId()

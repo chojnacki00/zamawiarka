@@ -11,11 +11,9 @@ import {
   where
 } from 'firebase/firestore'
 import {
-  getAuth,
-  onAuthStateChanged
+  getAuth
 } from 'firebase/auth'
 import { db } from '../firebase.js'
-import { useAuthStore } from './authStore.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import {
   DEFAULT_GENERATOR_SETTINGS,
@@ -105,36 +103,9 @@ export const useScheduleDraftsStore = defineStore(
     const isLoading = ref(false)
     const isCreating = ref(false)
 
-    const getRestaurantId = () => {
-      return new Promise(resolve => {
-        const authStore = useAuthStore()
-        const employeeAuthStore = useEmployeeAuthStore()
-
-        if (employeeAuthStore.restaurantId) {
-          resolve(employeeAuthStore.restaurantId)
-          return
-        }
-
-        if (authStore.currentCompany?.uid) {
-          resolve(authStore.currentCompany.uid)
-          return
-        }
-
-        const auth = getAuth()
-
-        if (auth.currentUser) {
-          resolve(auth.currentUser.uid)
-          return
-        }
-
-        let unsubscribe = () => {}
-
-        unsubscribe = onAuthStateChanged(auth, user => {
-          unsubscribe()
-          resolve(user ? user.uid : null)
-        })
-      })
-    }
+    const getRestaurantId = async () => (
+      useEmployeeAuthStore().requireRestaurantId()
+    )
 
     const getCreationSafety = async ({ dateFrom, dateTo }) => {
       if (!isValidDateRange(dateFrom, dateTo)) {

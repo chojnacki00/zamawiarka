@@ -9,7 +9,6 @@ import {
   serverTimestamp,
   setDoc
 } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 
@@ -20,25 +19,9 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   let listenerRestaurantId = null
   let listenerReadyPromise = null
 
-  const getRestaurantId = () => new Promise(resolve => {
-    const employeeAuthStore = useEmployeeAuthStore()
-    if (employeeAuthStore.restaurantId) {
-      resolve(employeeAuthStore.restaurantId)
-      return
-    }
-
-    const auth = getAuth()
-    if (auth.currentUser) {
-      resolve(auth.currentUser.uid)
-      return
-    }
-
-    let unsubscribe = () => {}
-    unsubscribe = onAuthStateChanged(auth, user => {
-      unsubscribe()
-      resolve(user?.uid || null)
-    })
-  })
+  const getRestaurantId = async () => (
+    useEmployeeAuthStore().requireRestaurantId()
+  )
 
   const sortGroups = () => {
     groups.value.sort((first, second) => {

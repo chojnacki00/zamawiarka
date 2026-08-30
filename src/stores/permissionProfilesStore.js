@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { normalizePermissionDependencies } from '../utils/permissionDependencies.js'
@@ -21,28 +20,9 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   let listenerUid = null
   let listenerReadyPromise = null
 
-  // Ta funkcja teraz CIERPLIWIE czeka, aż Firebase potwierdzi sesję
-  const getUid = () => {
-    return new Promise((resolve) => {
-      // 1. Najpierw sprawdzamy, czy działa sesja pracownika (PIN)
-      const employeeAuthStore = useEmployeeAuthStore()
-      if (employeeAuthStore.restaurantId) {
-        resolve(employeeAuthStore.restaurantId)
-        return
-      }
-
-      // 2. Jeśli to nie pracownik, odpalamy starą logikę dla Szefa
-      const auth = getAuth()
-      if (auth.currentUser) {
-        resolve(auth.currentUser.uid)
-      } else {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          unsubscribe()
-          resolve(user ? user.uid : null)
-        })
-      }
-    })
-  }
+  const getUid = async () => (
+    useEmployeeAuthStore().requireRestaurantId()
+  )
 
   const fetchProfiles = async () => {
     const uid = await getUid()

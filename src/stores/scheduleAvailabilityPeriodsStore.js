@@ -16,10 +16,8 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
-import { useAuthStore } from './authStore.js'
 import {
   getScheduleRangeConflicts,
   isPeriodEffectivelyOpen
@@ -42,34 +40,9 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
     let unsubscribePeriods = null
 
-    const getRestaurantId = () => {
-      return new Promise((resolve) => {
-        const employeeAuthStore = useEmployeeAuthStore()
-        const authStore = useAuthStore()
-
-        if (employeeAuthStore.restaurantId) {
-          resolve(employeeAuthStore.restaurantId)
-          return
-        }
-
-        if (authStore.currentCompany?.uid) {
-          resolve(authStore.currentCompany.uid)
-          return
-        }
-
-        const auth = getAuth()
-
-        if (auth.currentUser) {
-          resolve(auth.currentUser.uid)
-          return
-        }
-
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          unsubscribe()
-          resolve(user ? user.uid : null)
-        })
-      })
-    }
+    const getRestaurantId = async () => (
+      useEmployeeAuthStore().requireRestaurantId()
+    )
 
     const getPeriodsCollectionRef = async () => {
       const restaurantId = await getRestaurantId()

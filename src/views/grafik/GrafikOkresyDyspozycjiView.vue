@@ -795,6 +795,7 @@ import {
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
+import { useAccountSessionStore } from '../../stores/accountSessionStore.js'
 import { isPeriodEffectivelyOpen } from '../../utils/scheduleCreationValidation.js'
 
 const router = useRouter()
@@ -807,6 +808,7 @@ const demandModelsStore =
 
 const employeeAuthStore = useEmployeeAuthStore()
 const authStore = useAuthStore()
+const accountSessionStore = useAccountSessionStore()
 
 const { periods } = storeToRefs(periodsStore)
 
@@ -873,7 +875,7 @@ const currentEditor = computed(() => {
   }
 
   return {
-    id: authStore.currentCompany?.uid || null,
+    id: accountSessionStore.authUser?.uid || null,
     name: 'Administrator'
   }
 })

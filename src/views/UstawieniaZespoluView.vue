@@ -119,7 +119,12 @@
                 <template v-if="!accountAccess">
                   <label class="form-field"><span>E-mail zaproszenia</span><input v-model="invitationEmail" type="email" autocomplete="off" placeholder="pracownik@example.com"></label>
                   <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Zaproś' }}</button>
-                  <small>Zaproszenie zostanie zapisane na 7 dni. W tym etapie aplikacja nie wysyła automatycznej wiadomości — pracownik zakłada konto z tym samym adresem.</small>
+                  <small>Zaproszenie zostanie zapisane na 7 dni. Aplikacja nie wysyła go automatycznie — przekaż pracownikowi link po zapisaniu.</small>
+                  <div v-if="activationLink" class="activation-link-box">
+                    <label class="form-field"><span>Link aktywacyjny</span><input :value="activationLink" type="text" readonly></label>
+                    <button class="invite-button" type="button" @click="copyActivationLink">Kopiuj link aktywacyjny</button>
+                    <small>Pracownik sam zakłada konto, potwierdza e-mail wysłany przez Firebase, a następnie przyjmuje oczekujące zaproszenie.</small>
+                  </div>
                 </template>
                 <button v-else-if="accountAccess.status === 'active'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
                 <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
@@ -156,7 +161,6 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useAuthStore } from '../stores/authStore.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 import { useEmployeeGroupsStore } from '../stores/employeeGroupsStore.js'
@@ -175,7 +179,6 @@ import {
 } from '../utils/employmentRules.js'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const accountSessionStore = useAccountSessionStore()
 const employeeAuthStore = useEmployeeAuthStore()
 const groupsStore = useEmployeeGroupsStore()
@@ -199,6 +202,7 @@ const openSections = ref(closedSections())
 const sectionElements = ref({})
 const assignmentRateInputs = ref({})
 const invitationEmail = ref('')
+const activationLink = ref('')
 const accountAccess = ref(null)
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
@@ -377,6 +381,7 @@ const openForm = (employee = null) => {
   openSections.value = closedSections()
   formError.value = ''
   invitationEmail.value = employee?.email || ''
+  activationLink.value = ''
   accountAccess.value = null
   accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
@@ -392,6 +397,7 @@ const cancelForm = () => {
   editingEmployeeId.value = null
   formError.value = ''
   invitationEmail.value = ''
+  activationLink.value = ''
   accountAccess.value = null
   accountAccessMessage.value = ''
   nextTick(() => {
@@ -559,6 +565,7 @@ const inviteEmployee = async () => {
 
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
+  activationLink.value = ''
   try {
     await accountSessionStore.createInvitation({
       employee: {
@@ -566,13 +573,27 @@ const inviteEmployee = async () => {
       },
       email: invitationEmail.value
     })
+    activationLink.value = `${window.location.origin}/rejestracja`
     accountAccessMessage.value =
-      'Zaproszenie zapisano. Pracownik ma 7 dni na aktywację konta.'
+      'Zaproszenie zapisano. Przekaż pracownikowi link aktywacyjny — aplikacja nie wysłała wiadomości z zaproszeniem.'
   } catch (error) {
     accountAccessMessage.value = error?.message ||
       'Nie udało się zapisać zaproszenia.'
   } finally {
     isAccountActionPending.value = false
+  }
+}
+
+const copyActivationLink = async () => {
+  if (!activationLink.value) return
+
+  try {
+    await navigator.clipboard.writeText(activationLink.value)
+    accountAccessMessage.value = 'Link aktywacyjny skopiowano.'
+  } catch (error) {
+    console.error('Nie udało się skopiować linku aktywacyjnego:', error)
+    accountAccessMessage.value =
+      'Nie udało się skopiować linku. Zaznacz go i skopiuj ręcznie.'
   }
 }
 
@@ -612,8 +633,13 @@ const executeDelete = async () => {
 
 const generatePairingCode = async () => {
   if (!editingEmployeeId.value) return
-  const restaurantId = employeeAuthStore.restaurantId || authStore.currentCompany?.uid
-  if (!restaurantId) return
+  let restaurantId
+  try {
+    restaurantId = employeeAuthStore.requireRestaurantId()
+  } catch (error) {
+    alert(error.message)
+    return
+  }
   try {
     const expiredQuery = query(collection(db, 'pairing_codes'), where('companyUid', '==', restaurantId), where('expiresAt', '<', new Date()))
     const expiredSnapshot = await getDocs(expiredQuery)
@@ -635,6 +661,9 @@ const generatePairingCode = async () => {
 .account-access-card { display: grid; gap: 10px; margin-top: 16px; padding: 14px; border: 1px solid #dbeafe; border-radius: 13px; background: #f8fafc; }
 .account-access-card > strong { color: #0f172a; }
 .account-access-card > small { color: #64748b; line-height: 1.45; }
+.activation-link-box { display: grid; gap: 9px; padding: 11px; border: 1px solid #bfdbfe; border-radius: 11px; background: #eff6ff; }
+.activation-link-box input { color: #1e3a8a; background: #fff; font-size: 13px; }
+.activation-link-box small { color: #475569; line-height: 1.45; }
 .account-access-status { margin: 0; padding: 8px 10px; border-radius: 9px; color: #475569; background: #e2e8f0; font-size: 13px; font-weight: 700; }
 .account-access-status.active { color: #047857; background: #d1fae5; }
 .account-access-status.blocked { color: #b91c1c; background: #fee2e2; }

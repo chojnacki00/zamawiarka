@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
+import { getAuth } from 'firebase/auth'
 import { db } from '../firebase.js'
-import { useAuthStore } from './authStore.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 
 const SETTINGS_MODES = ['hard', 'suggestion', 'off']
@@ -106,21 +105,7 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
   actions: {
     async getRestaurantId() {
       const employeeAuthStore = useEmployeeAuthStore()
-      const authStore = useAuthStore()
-
-      if (employeeAuthStore.restaurantId) return employeeAuthStore.restaurantId
-      if (authStore.currentCompany?.uid) return authStore.currentCompany.uid
-
-      const auth = getAuth()
-      if (auth.currentUser) return auth.currentUser.uid
-
-      return new Promise(resolve => {
-        let unsubscribe = () => {}
-        unsubscribe = onAuthStateChanged(auth, user => {
-          unsubscribe()
-          resolve(user?.uid || null)
-        })
-      })
+      return employeeAuthStore.requireRestaurantId()
     },
 
     async fetchSettings(force = false) {

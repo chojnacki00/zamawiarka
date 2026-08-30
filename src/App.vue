@@ -966,10 +966,7 @@ export default {
     const accountSessionStore = useAccountSessionStore()
 
     const getCurrentRestaurantId = () => (
-      accountSessionStore.currentRestaurantId ||
-      employeeAuthStore.restaurantId ||
-      authStore.currentCompany?.uid ||
-      null
+      employeeAuthStore.restaurantId || null
     )
 
     // =========================
@@ -1496,30 +1493,12 @@ const resetCompanyDataState = () => {
 
 
 
-// Obserwujemy logowanie pracownika
-    watch(() => employeeAuthStore.currentEmployee, (pracownik) => {
-      // Jeśli pracownik jest zalogowany, a dane jeszcze "kręcą kółkiem" - ładujemy je!
-      if (pracownik && !isDataLoaded.value) {
-        console.log('Wykryto logowanie pracownika, uruchamiam ładowanie danych...')
-        loadCompanyDataWithFallback()
-      }
-    }, { immediate: true })
-
-
-
-
-
-const loadCompanyDataWithFallback = async () => {
+const loadSelectedRestaurantData = async () => {
   isHydrating.value = true
   isDataLoaded.value = false
 
   try {
-    const uid = getCurrentRestaurantId() || localStorage.getItem('gm_saved_rest_id')
-
-    if (!uid) {
-      resetCompanyDataState()
-      return
-    }
+    const uid = employeeAuthStore.requireRestaurantId()
 
     const cloudState = await loadUserStateFromFirestore(uid)
 
@@ -1735,7 +1714,7 @@ if (backupData.collections) {
   }
 }
 
-      await loadCompanyDataWithFallback();
+      await loadSelectedRestaurantData();
       await showAlert('Kopia zapasowa wczytana pomyślnie! Aplikacja zostanie odświeżona.', 'Sukces', '✅');
       
       // Magiczna linijka – robi automatyczne F5, gwarantując idealne załadowanie widoku
@@ -5317,38 +5296,43 @@ let unsubscribeAuth = null
 
 
 // === OBSERWATOR LOGOWANIA PRACOWNIKA (Pobiera dane wg uprawnień) ===
-watch(() => employeeAuthStore.currentEmployee, async (newEmployee) => {
-  if (newEmployee && !authStore.currentUser && !authStore.user) {
-    const companyUid = localStorage.getItem('gm_saved_rest_id') || employeeAuthStore.companyId
-    
-    if (companyUid) {
-      isLoggedIn.value = true
-      
-      // 1. Podstawowe dane pobieramy zawsze (żeby aplikacja w ogóle działała)
-      await loadCompanyDataWithFallback()
-      if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
+let activatedLegacyRestaurantId = null
 
-      // Wyciągamy uprawnienia pracownika (jeśli ich nie ma, to traktujemy jako pusty obiekt)
-      const uprawnienia = newEmployee.uprawnienia || {}
-
-      // 2. Moduł: ZAMAWIARKA (Towary, Koszyk, Zamówienia PDF)
-      // Pobieramy tylko, jeśli pracownik ma podgląd zamawiarki LUB może edytować towary
-      if (uprawnienia.can_view_zamawiarka || uprawnienia.can_edit_products) {
-        if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
-        if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
-        if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
-      }
-
-      // 3. Moduł: RENTOWNOŚĆ / FOOD COST
-      // Pobieramy menu tylko, jeśli pracownik ma podgląd rentowności LUB może edytować menu
-      if (uprawnienia.can_view_foodcost || uprawnienia.can_edit_menu) {
-        if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
-      }
-      
-      // Moduły "Zarządzanie Aplikacją" nie wymagają ciągłego pobierania w App.vue, 
-      // więc nie musimy tu dla nich nic subskrybować.
-    }
+const activateLegacyPinRestaurant = async newEmployee => {
+  if (
+    !newEmployee ||
+    employeeAuthStore.sessionMode !== 'legacy_pin' ||
+    auth.currentUser ||
+    authStore.currentUser ||
+    authStore.user
+  ) {
+    activatedLegacyRestaurantId = null
+    return
   }
+
+  const companyUid = employeeAuthStore.requireRestaurantId()
+  if (activatedLegacyRestaurantId === companyUid && isDataLoaded.value) return
+
+  activatedLegacyRestaurantId = companyUid
+  isLoggedIn.value = true
+
+  await loadSelectedRestaurantData()
+  if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
+
+  const uprawnienia = newEmployee.uprawnienia || {}
+  if (uprawnienia.can_view_zamawiarka || uprawnienia.can_edit_products) {
+    if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
+    if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
+    if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
+  }
+
+  if (uprawnienia.can_view_foodcost || uprawnienia.can_edit_menu) {
+    if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+  }
+}
+
+watch(() => employeeAuthStore.currentEmployee, async newEmployee => {
+  await activateLegacyPinRestaurant(newEmployee)
 })
 // ==============================================================================
 
@@ -5395,7 +5379,7 @@ const activateAccountRestaurant = async () => {
   ].some(permission => employeePermissions[permission] === true)
 
   if (needsBusinessData) {
-    await loadCompanyDataWithFallback()
+    await loadSelectedRestaurantData()
     subscribeUserState(restaurantId)
   } else {
     resetCompanyDataState()
@@ -5508,20 +5492,7 @@ onMounted(() => {
 
       // 2. Sprawdzamy czy mamy zalogowanego PRACOWNIKA
       if (employeeAuthStore.currentEmployee) {
-        // Używamy naszego odkrytego klucza: gm_saved_rest_id
-        const companyUid = localStorage.getItem('gm_saved_rest_id') || employeeAuthStore.companyId
-        
-        if (companyUid) {
-          isLoggedIn.value = true
-          
-          // Pobieramy dane używając ID z parowania!
-          await loadCompanyDataWithFallback() 
-          if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
-          if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
-          if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
-          if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
-          if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
-        }
+        await activateLegacyPinRestaurant(employeeAuthStore.currentEmployee)
       } 
       // 3. Jeśli nie ma pracownika i nie jesteśmy na ekranie logowania PIN, wyrzucamy na login
       else if (!['/logowanie', '/login', '/rejestracja'].includes(currentPath)) {

@@ -1662,11 +1662,7 @@ const selectedAvailabilityEmployee = computed(() => {
 
 
 const availabilityRestaurantId = computed(() => {
-  return (
-    employeeAuthStore.restaurantId ||
-    authStore.currentCompany?.uid ||
-    null
-  )
+  return employeeAuthStore.restaurantId || null
 })
 
 

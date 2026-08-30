@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { webcrypto } from 'node:crypto'
 import {
   assertInvitationCanBeAccepted,
+  assertInvitationMembershipMatch,
   buildAccountDocument,
   buildInvitationDocument,
   buildMembershipDocument,
+  canUseEmployeePermissionInSession,
+  canUsePrivilegedEmployeeActions,
   canManageScheduleWithMembership,
   canViewScheduleWithMembership,
   containsForbiddenCredentialData,
   isValidAccountEmail,
+  requireRestaurantContextId,
+  resolveLegacyOwnerBootstrapRestaurantId,
   resolveMembershipSelection
 } from '../src/utils/employeeIdentity.js'
 import {
@@ -41,6 +47,10 @@ const memberships = [{
   employeeId: 'employee-8',
   status: 'active'
 }]
+const firestoreRules = readFileSync(
+  new URL('../firestore.rules', import.meta.url),
+  'utf8'
+)
 
 test('rozdziela authUid, restaurantId i employeeId', () => {
   const member = buildMembershipDocument({
@@ -55,6 +65,28 @@ test('rozdziela authUid, restaurantId i employeeId', () => {
   assert.equal(member.restaurantId, 'restaurant-1')
   assert.equal(member.employeeId, 'employee-1')
   assert.notEqual(member.authUid, member.restaurantId)
+})
+
+test('brak wybranego kontekstu restauracji nie wraca do authUid', () => {
+  assert.throws(
+    () => requireRestaurantContextId(null),
+    /Kontekst restauracji/
+  )
+  assert.equal(
+    requireRestaurantContextId('restaurant-1'),
+    'restaurant-1'
+  )
+})
+
+test('bootstrap restauracji z authUid jest jawnym wyjątkiem właściciela', () => {
+  assert.equal(resolveLegacyOwnerBootstrapRestaurantId({
+    authUid: 'owner-auth-1',
+    emailVerified: true
+  }), 'owner-auth-1')
+  assert.equal(resolveLegacyOwnerBootstrapRestaurantId({
+    authUid: 'employee-auth-1',
+    emailVerified: false
+  }), null)
 })
 
 test('waliduje adres e-mail używany przez konto i zaproszenie', () => {
@@ -147,6 +179,28 @@ test('wygasłe zaproszenie jest odrzucane', () => {
   }), /wygasło/)
 })
 
+test('zaproszenie nie może utworzyć członkostwa w innej restauracji', () => {
+  assert.throws(() => assertInvitationMembershipMatch({
+    invitation: {
+      restaurantId: 'restaurant-1',
+      employeeId: 'employee-1'
+    },
+    restaurantId: 'restaurant-2',
+    employeeId: 'employee-1'
+  }), /innej restauracji/)
+})
+
+test('zaproszenie nie może utworzyć członkostwa dla innego pracownika', () => {
+  assert.throws(() => assertInvitationMembershipMatch({
+    invitation: {
+      restaurantId: 'restaurant-1',
+      employeeId: 'employee-1'
+    },
+    restaurantId: 'restaurant-1',
+    employeeId: 'employee-2'
+  }), /innego pracownika/)
+})
+
 test('dokumenty tożsamości nie zawierają hasła ani jawnego PIN-u', () => {
   const account = buildAccountDocument({
     authUid: 'account-1',
@@ -192,6 +246,77 @@ test('can_view_schedule i can_manage_schedule pozostają oddzielne', () => {
     membership,
     permissions: { can_manage_schedule: true }
   }), true)
+})
+
+test('uprzywilejowane operacje pracownika wymagają konta Firebase i kontekstu', () => {
+  assert.equal(canUsePrivilegedEmployeeActions({
+    sessionMode: 'legacy_pin',
+    firebaseUser: null,
+    hasActiveContext: false
+  }), false)
+  assert.equal(canUsePrivilegedEmployeeActions({
+    sessionMode: 'firebase_account',
+    firebaseUser: { uid: 'account-1' },
+    hasActiveContext: false
+  }), false)
+  assert.equal(canUsePrivilegedEmployeeActions({
+    sessionMode: 'firebase_account',
+    firebaseUser: { uid: 'account-1' },
+    hasActiveContext: true
+  }), true)
+})
+
+test('legacy PIN zachowuje odczyt, ale nie daje uprawnień do zapisów', () => {
+  assert.equal(canUseEmployeePermissionInSession({
+    permissionKey: 'can_view_schedule',
+    permissionEnabled: true,
+    sessionMode: 'legacy_pin'
+  }), true)
+  assert.equal(canUseEmployeePermissionInSession({
+    permissionKey: 'can_manage_schedule',
+    permissionEnabled: true,
+    sessionMode: 'legacy_pin'
+  }), false)
+  assert.equal(canUseEmployeePermissionInSession({
+    permissionKey: 'can_edit_products',
+    permissionEnabled: true,
+    sessionMode: 'legacy_pin'
+  }), false)
+  assert.equal(canUseEmployeePermissionInSession({
+    permissionKey: 'can_future_privileged_action',
+    permissionEnabled: true,
+    sessionMode: 'legacy_pin'
+  }), false)
+  assert.equal(canUseEmployeePermissionInSession({
+    permissionKey: 'can_manage_schedule',
+    permissionEnabled: true,
+    sessionMode: 'firebase_account'
+  }), true)
+})
+
+test('reguły wiążą akceptację zaproszenia z kontem i atomowym członkostwem', () => {
+  assert.match(firestoreRules, /function hasVerifiedEmail\(\)/)
+  assert.match(
+    firestoreRules,
+    /invitation\.emailNormalized == request\.auth\.token\.get\('email', null\)/
+  )
+  assert.match(firestoreRules, /invitationBefore\.data\.expiresAt > request\.time/)
+  assert.match(firestoreRules, /invitationBefore\.data\.status == 'pending'/)
+  assert.match(firestoreRules, /incoming\.restaurantId == restaurantId/)
+  assert.match(firestoreRules, /data\.employeeId == incoming\.employeeId/)
+  assert.match(firestoreRules, /getAfter\(invitationPath\)/)
+})
+
+test('reguły ograniczają bootstrap właściciela do istniejących starych danych', () => {
+  assert.match(
+    firestoreRules,
+    /function isLegacyOwnerBootstrapRestaurant\(restaurantId\)/
+  )
+  assert.match(
+    firestoreRules,
+    /exists\(\/databases\/\$\(database\)\/documents\/users\/\$\(restaurantId\)\/app\/state\)/
+  )
+  assert.doesNotMatch(firestoreRules, /allow\s+(read|write)(,\s*(read|write))*:\s*if\s+true/)
 })
 
 test('lokalny PIN zapisuje tylko sól i weryfikator oraz blokuje po błędach', async () => {

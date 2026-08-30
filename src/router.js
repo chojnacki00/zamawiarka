@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js' // <-- NOWOŚĆ: Importujemy nasz sklep z uprawnieniami
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
+import { canUsePrivilegedEmployeeActions } from './utils/employeeIdentity.js'
 
 import LoginView from './views/LoginView.vue'
 import HomeView from './views/HomeView.vue'
@@ -120,6 +121,11 @@ router.beforeEach(async (to, from, next) => {
 
   const hasEmployeeSession =
     Boolean(employeeStore.currentEmployee)
+  const hasAuthenticatedEmployeeContext = canUsePrivilegedEmployeeActions({
+    sessionMode: employeeStore.sessionMode,
+    firebaseUser,
+    hasActiveContext: accountSessionStore.hasActiveContext
+  })
 
   // ZASADA 1: Zalogowany Pracownik chce wejść na logowanie -> odsyłamy na stronę główną
   if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login' || to.path === '/rejestracja')) {
@@ -140,6 +146,13 @@ router.beforeEach(async (to, from, next) => {
     ].includes(to.path) || to.path.startsWith('/grafik/grafiki/')
   ) {
     if (hasEmployeeSession) {
+      if (!hasAuthenticatedEmployeeContext) {
+        console.warn(
+          'Strażnik: Sesja PIN nie może zarządzać grafikiem.'
+        )
+        return next('/grafik')
+      }
+
       if (
         !employeeStore.hasPermission(
           'can_manage_schedule'
@@ -176,6 +189,13 @@ router.beforeEach(async (to, from, next) => {
   ].includes(to.path)
 
   if (hasEmployeeSession && isManagerRoute) {
+    if (!hasAuthenticatedEmployeeContext) {
+      console.warn(
+        'Strażnik: Sesja PIN nie może wykonywać operacji administracyjnych.'
+      )
+      return next('/')
+    }
+
     // Odpytujemy nasz system o uprawnienia pracownika
     // WAŻNE: To musi być wywołane wewnątrz strażnika, żeby Pinia działała poprawnie
     const employeeAuthStore = useEmployeeAuthStore()

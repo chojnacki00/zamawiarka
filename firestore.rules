@@ -12,6 +12,14 @@ service cloud.firestore {
         request.auth.token.get('email', null) is string;
     }
 
+    // Jedyny przejściowy wyjątek UID -> restaurantId. Obsługuje wyłącznie
+    // istniejącego właściciela z danymi starej aplikacji pod users/{uid}/app/state.
+    function isLegacyOwnerBootstrapRestaurant(restaurantId) {
+      return hasVerifiedEmail() &&
+        restaurantId == request.auth.uid &&
+        exists(/databases/$(database)/documents/users/$(restaurantId)/app/state);
+    }
+
     function memberDocument(restaurantId) {
       return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
     }
@@ -141,8 +149,7 @@ service cloud.firestore {
     function isValidOwnerBootstrap(restaurantId, memberId) {
       let restaurant = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId));
       let incoming = request.resource.data;
-      return hasVerifiedEmail() &&
-        restaurantId == request.auth.uid &&
+      return isLegacyOwnerBootstrapRestaurant(restaurantId) &&
         memberId == request.auth.uid &&
         restaurant.data.ownerAuthUid == request.auth.uid &&
         incoming.authUid == request.auth.uid &&
@@ -186,11 +193,10 @@ service cloud.firestore {
 
     match /restaurants/{restaurantId} {
       allow get: if hasActiveMembership(restaurantId) || (
-        hasVerifiedEmail() && request.auth.uid == restaurantId
+        isLegacyOwnerBootstrapRestaurant(restaurantId)
       );
       allow list: if hasActiveMembership(restaurantId);
-      allow create: if hasVerifiedEmail() &&
-        restaurantId == request.auth.uid &&
+      allow create: if isLegacyOwnerBootstrapRestaurant(restaurantId) &&
         request.resource.data.keys().hasOnly([
           'id',
           'name',
@@ -204,9 +210,8 @@ service cloud.firestore {
         request.resource.data.status == 'active';
       allow update: if (
         isRestaurantOwner(restaurantId) ||
-        (
-          hasVerifiedEmail() &&
-          request.auth.uid == restaurantId &&
+          (
+          isLegacyOwnerBootstrapRestaurant(restaurantId) &&
           resource.data.ownerAuthUid == request.auth.uid
         )
       ) &&
@@ -555,7 +560,7 @@ service cloud.firestore {
 
       match /app/state {
         allow read: if hasActiveMembership(restaurantId) || (
-          hasVerifiedEmail() && request.auth.uid == restaurantId
+          isLegacyOwnerBootstrapRestaurant(restaurantId)
         );
         allow create, update: if isRestaurantOwner(restaurantId) ||
           hasPermission(restaurantId, 'can_edit_products') ||

@@ -759,12 +759,7 @@ import {
   query,
   where
 } from 'firebase/firestore'
-import {
-  getAuth,
-  onAuthStateChanged
-} from 'firebase/auth'
 import { db } from '../../firebase.js'
-import { useAuthStore } from '../../stores/authStore.js'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
@@ -780,7 +775,6 @@ import {
 } from '../../utils/scheduleCreationValidation.js'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const employeeAuthStore = useEmployeeAuthStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
@@ -882,31 +876,7 @@ onMounted(() => {
 })
 
 const getRestaurantId = () => {
-  return new Promise(resolve => {
-    if (employeeAuthStore.restaurantId) {
-      resolve(employeeAuthStore.restaurantId)
-      return
-    }
-
-    if (authStore.currentCompany?.uid) {
-      resolve(authStore.currentCompany.uid)
-      return
-    }
-
-    const auth = getAuth()
-
-    if (auth.currentUser) {
-      resolve(auth.currentUser.uid)
-      return
-    }
-
-    let unsubscribe = () => {}
-
-    unsubscribe = onAuthStateChanged(auth, user => {
-      unsubscribe()
-      resolve(user ? user.uid : null)
-    })
-  })
+  return Promise.resolve(employeeAuthStore.requireRestaurantId())
 }
 
 const analyzeRange = async () => {

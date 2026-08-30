@@ -2,6 +2,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../firebase.js'
+import {
+  canUseEmployeePermissionInSession,
+  requireRestaurantContextId
+} from '../utils/employeeIdentity.js'
 
 export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
   const currentEmployee = ref(null)
@@ -131,8 +135,17 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     if (!currentEmployee.value || !currentEmployee.value.uprawnienia) {
       return false
     }
-    return currentEmployee.value.uprawnienia[permissionKey] === true
+    return canUseEmployeePermissionInSession({
+      permissionKey,
+      permissionEnabled:
+        currentEmployee.value.uprawnienia[permissionKey],
+      sessionMode: sessionMode.value
+    })
   }
+
+  const requireRestaurantId = () => (
+    requireRestaurantContextId(restaurantId.value)
+  )
 
   const setAuthenticatedRestaurantContext = ({
     restId,
@@ -169,6 +182,7 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     login,
     logout,
     hasPermission,
+    requireRestaurantId,
     setAuthenticatedRestaurantContext,
     clearAuthenticatedRestaurantContext
   }

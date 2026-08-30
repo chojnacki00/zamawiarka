@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { collection, doc, getDoc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import {
@@ -15,24 +14,9 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
   let listenerUid = null
   let listenerReadyPromise = null
 
-  const getUid = () => {
-    return new Promise((resolve) => {
-      const employeeAuthStore = useEmployeeAuthStore()
-      if (employeeAuthStore.restaurantId) {
-        resolve(employeeAuthStore.restaurantId)
-        return
-      }
-      const auth = getAuth()
-      if (auth.currentUser) {
-        resolve(auth.currentUser.uid)
-      } else {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          unsubscribe()
-          resolve(user ? user.uid : null)
-        })
-      }
-    })
-  }
+  const getUid = async () => (
+    useEmployeeAuthStore().requireRestaurantId()
+  )
 
   const fetchPositions = async () => {
     const uid = await getUid()

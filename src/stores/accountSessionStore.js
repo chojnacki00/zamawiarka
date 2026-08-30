@@ -20,12 +20,14 @@ import { auth, db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import {
   assertInvitationCanBeAccepted,
+  assertInvitationMembershipMatch,
   buildAccountDocument,
   buildInvitationDocument,
   buildMembershipDocument,
   buildRestaurantDocument,
   isValidAccountEmail,
   normalizeAccountEmail,
+  resolveLegacyOwnerBootstrapRestaurantId,
   resolveMembershipSelection
 } from '../utils/employeeIdentity.js'
 import {
@@ -359,22 +361,34 @@ export const useAccountSessionStore = defineStore(
       user,
       availableMemberships
     }) => {
-      if (!user.emailVerified) return false
+      // Jedyny jawny wyjątek przejściowy UID -> restaurantId. Dotyczy wyłącznie
+      // istniejącego właściciela z dawnym dokumentem users/{uid}/app/state.
+      const legacyRestaurantId = resolveLegacyOwnerBootstrapRestaurantId({
+        authUid: user.uid,
+        emailVerified: user.emailVerified
+      })
+      if (!legacyRestaurantId) return false
 
       if (availableMemberships.some(
-        membership => membership.restaurantId === user.uid
+        membership => membership.restaurantId === legacyRestaurantId
       )) return false
 
-      const legacyStateRef = doc(db, 'users', user.uid, 'app', 'state')
+      const legacyStateRef = doc(
+        db,
+        'users',
+        legacyRestaurantId,
+        'app',
+        'state'
+      )
       const legacyStateSnapshot = await getDoc(legacyStateRef)
 
       if (!legacyStateSnapshot.exists()) return false
 
-      const restaurantRef = doc(db, 'restaurants', user.uid)
+      const restaurantRef = doc(db, 'restaurants', legacyRestaurantId)
       const memberRef = doc(
         db,
         'restaurants',
-        user.uid,
+        legacyRestaurantId,
         'members',
         user.uid
       )
@@ -388,7 +402,7 @@ export const useAccountSessionStore = defineStore(
 
         if (!restaurantSnapshot.exists()) {
           transaction.set(restaurantRef, buildRestaurantDocument({
-            restaurantId: user.uid,
+            restaurantId: legacyRestaurantId,
             name: getRestaurantNameFallback(user),
             ownerAuthUid: user.uid,
             createdAt: now
@@ -398,7 +412,7 @@ export const useAccountSessionStore = defineStore(
         if (!memberSnapshot.exists()) {
           transaction.set(memberRef, buildMembershipDocument({
             authUid: user.uid,
-            restaurantId: user.uid,
+            restaurantId: legacyRestaurantId,
             role: 'owner',
             createdAt: now
           }))
@@ -593,6 +607,12 @@ export const useAccountSessionStore = defineStore(
       })
 
       const restaurantId = invitation.restaurantId
+      const employeeId = invitation.employeeId
+      assertInvitationMembershipMatch({
+        invitation,
+        restaurantId,
+        employeeId
+      })
       const memberRef = doc(
         db,
         'restaurants',
@@ -617,6 +637,11 @@ export const useAccountSessionStore = defineStore(
           authUser: user,
           now: new Date()
         })
+        assertInvitationMembershipMatch({
+          invitation: invitationSnapshot.data(),
+          restaurantId,
+          employeeId
+        })
 
         if (memberSnapshot.exists()) {
           throw new Error('To konto ma już członkostwo w restauracji.')
@@ -626,7 +651,7 @@ export const useAccountSessionStore = defineStore(
         transaction.set(memberRef, buildMembershipDocument({
           authUid: user.uid,
           restaurantId,
-          employeeId: invitationSnapshot.data().employeeId,
+          employeeId,
           permissionProfileId:
             invitationSnapshot.data().permissionProfileId || null,
           invitationId: invitationSnapshot.id,
