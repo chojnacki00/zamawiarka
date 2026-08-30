@@ -304,7 +304,8 @@ test('reguły wiążą akceptację zaproszenia z kontem i atomowym członkostwem
   assert.match(firestoreRules, /invitationBefore\.data\.status == 'pending'/)
   assert.match(firestoreRules, /incoming\.restaurantId == restaurantId/)
   assert.match(firestoreRules, /data\.employeeId == incoming\.employeeId/)
-  assert.match(firestoreRules, /getAfter\(invitationPath\)/)
+  assert.match(firestoreRules, /!existsAfter\(invitationPath\)/)
+  assert.match(firestoreRules, /let memberAfter = getAfter\(memberPath\)/)
 })
 
 test('reguły ograniczają bootstrap właściciela do istniejących starych danych', () => {

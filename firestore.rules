@@ -73,12 +73,12 @@ service cloud.firestore {
     }
 
     function canViewSchedule(restaurantId) {
-      return hasPermission(restaurantId, 'can_view_schedule') ||
-        hasPermission(restaurantId, 'can_manage_schedule');
+      return hasPermission(restaurantId, 'can_view_schedule');
     }
 
     function canManageSchedule(restaurantId) {
-      return hasPermission(restaurantId, 'can_manage_schedule');
+      return hasPermission(restaurantId, 'can_view_schedule') &&
+        hasPermission(restaurantId, 'can_manage_schedule');
     }
 
     function canManageEmployees(restaurantId) {
@@ -99,18 +99,37 @@ service cloud.firestore {
         invitation.emailNormalized == request.auth.token.get('email', null);
     }
 
-    function invitationWasAcceptedAtomically(restaurantId, invitationId) {
+    function invitationWasConsumedAtomically(restaurantId, invitationId) {
       let invitationPath = /databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(invitationId);
       let invitationBefore = get(invitationPath);
-      let invitationAfter = getAfter(invitationPath);
       return invitationBefore.data.status == 'pending' &&
         invitationBefore.data.acceptedAt == null &&
         invitationBefore.data.acceptedByAuthUid == null &&
         invitationBefore.data.expiresAt > request.time &&
         invitationMatchesAuthenticatedEmail(invitationBefore.data) &&
-        invitationAfter.data.status == 'accepted' &&
-        invitationAfter.data.acceptedByAuthUid == request.auth.uid &&
-        invitationAfter.data.acceptedAt is timestamp;
+        !existsAfter(invitationPath);
+    }
+
+    function invitationIsConsumedByAuthenticatedAccount(
+      restaurantId,
+      invitationId
+    ) {
+      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid);
+      let memberAfter = getAfter(memberPath);
+      return invitationMatchesAuthenticatedEmail(resource.data) &&
+        resource.data.status == 'pending' &&
+        resource.data.acceptedAt == null &&
+        resource.data.acceptedByAuthUid == null &&
+        resource.data.expiresAt > request.time &&
+        existsAfter(memberPath) &&
+        memberAfter.data.authUid == request.auth.uid &&
+        memberAfter.data.restaurantId == restaurantId &&
+        memberAfter.data.employeeId == resource.data.employeeId &&
+        memberAfter.data.permissionProfileId ==
+          resource.data.permissionProfileId &&
+        memberAfter.data.invitationId == invitationId &&
+        memberAfter.data.role == 'employee' &&
+        memberAfter.data.status == 'active';
     }
 
     function isValidInvitedMembership(restaurantId, memberId) {
@@ -138,7 +157,7 @@ service cloud.firestore {
         incoming.createdAt is timestamp &&
         incoming.acceptedAt is timestamp &&
         employee.data.aktywny != false &&
-        invitationWasAcceptedAtomically(
+        invitationWasConsumedAtomically(
           restaurantId,
           incoming.invitationId
         ) &&
@@ -275,19 +294,12 @@ service cloud.firestore {
           request.resource.data.expiresAt > request.time &&
           request.resource.data.acceptedAt == null &&
           request.resource.data.acceptedByAuthUid == null;
-        allow update: if invitationMatchesAuthenticatedEmail(resource.data) &&
-          resource.data.status == 'pending' &&
-          resource.data.expiresAt > request.time &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status',
-            'acceptedAt',
-            'acceptedByAuthUid'
-          ]) &&
-          request.resource.data.status == 'accepted' &&
-          request.resource.data.acceptedAt is timestamp &&
-          request.resource.data.acceptedByAuthUid == request.auth.uid &&
-          getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.status == 'active';
-        allow delete: if canManageEmployees(restaurantId);
+        allow update: if false;
+        allow delete: if canManageEmployees(restaurantId) ||
+          invitationIsConsumedByAuthenticatedAccount(
+            restaurantId,
+            invitationId
+          );
       }
     }
 

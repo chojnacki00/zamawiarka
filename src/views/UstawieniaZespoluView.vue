@@ -115,7 +115,7 @@
               <strong>Dostęp przez konto GastroManager</strong>
               <p v-if="!canUseFirebaseAccountAccess" class="field-note">Zarządzanie nowym dostępem wymaga zalogowania kontem Firebase z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
               <template v-else>
-                <p v-if="accountAccess" class="account-access-status" :class="accountAccess.status">{{ accountAccess.status === 'active' ? 'Aktywne członkostwo' : 'Dostęp zablokowany' }}</p>
+                <p v-if="accountAccess" class="account-access-status" :class="accountAccess.status">{{ accountAccess.status === 'active' ? 'Aktywne członkostwo' : accountAccess.status === 'pending' ? 'Oczekujące zaproszenie' : 'Dostęp zablokowany' }}</p>
                 <template v-if="!accountAccess">
                   <label class="form-field"><span>E-mail zaproszenia</span><input v-model="invitationEmail" type="email" autocomplete="off" placeholder="pracownik@example.com"></label>
                   <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Zaproś' }}</button>
@@ -127,6 +127,7 @@
                   </div>
                 </template>
                 <button v-else-if="accountAccess.status === 'active'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
+                <button v-else-if="accountAccess.status === 'pending'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="cancelEmployeeInvitation">Anuluj zaproszenie</button>
                 <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
               </template>
             </div>
@@ -159,7 +160,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
@@ -168,6 +169,7 @@ import { useEmployeesStore } from '../stores/employeesStore.js'
 import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
 import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
+import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
 import {
   COMPENSATION_TYPES,
   getEffectiveHourlyRate,
@@ -314,6 +316,15 @@ const scaledEmploymentSummary = computed(() => {
 
 onMounted(async () => {
   await Promise.all([employeesStore.fetchEmployees(), positionsStore.fetchPositions(), groupsStore.fetchGroups(), permissionProfilesStore.fetchProfiles(), employmentProfilesStore.fetchProfiles()])
+  void accountSessionStore.cleanupCurrentRestaurantTemporaryData()
+    .then(result => {
+      if (
+        result &&
+        (!result.invitations.completed || !result.pairingCodes.completed)
+      ) {
+        console.warn('Nie wszystkie dane tymczasowe zostały wyczyszczone.')
+      }
+    })
 })
 
 const toggleSection = section => {
@@ -620,6 +631,30 @@ const blockEmployeeAccess = async () => {
   }
 }
 
+const cancelEmployeeInvitation = async () => {
+  if (
+    !accountAccess.value?.id ||
+    !editingEmployeeId.value ||
+    isAccountActionPending.value
+  ) return
+
+  isAccountActionPending.value = true
+  accountAccessMessage.value = ''
+  try {
+    await accountSessionStore.cancelInvitation({
+      invitationId: accountAccess.value.id,
+      employeeId: editingEmployeeId.value
+    })
+    accountAccess.value = null
+    accountAccessMessage.value = 'Zaproszenie zostało anulowane i usunięte.'
+  } catch (error) {
+    accountAccessMessage.value = error?.message ||
+      'Nie udało się anulować zaproszenia.'
+  } finally {
+    isAccountActionPending.value = false
+  }
+}
+
 const executeDelete = async () => {
   if (!employeeToDelete.value) return
   try { await employeesStore.deleteEmployee(employeeToDelete.value.id); employeeToDelete.value = null }
@@ -641,9 +676,16 @@ const generatePairingCode = async () => {
     return
   }
   try {
-    const expiredQuery = query(collection(db, 'pairing_codes'), where('companyUid', '==', restaurantId), where('expiresAt', '<', new Date()))
-    const expiredSnapshot = await getDocs(expiredQuery)
-    await Promise.all(expiredSnapshot.docs.map(codeSnapshot => deleteDoc(codeSnapshot.ref)))
+    const cleanupResult = await cleanupExpiredPairingCodes({
+      db,
+      restaurantId
+    })
+    if (!cleanupResult.completed) {
+      console.warn(
+        'Nie udało się wyczyścić wygasłych kodów parowania:',
+        cleanupResult.error
+      )
+    }
     const code = String(Math.floor(100000 + Math.random() * 900000))
     await setDoc(doc(db, 'pairing_codes', code), { companyUid: restaurantId, employeeId: editingEmployeeId.value, employeeName: form.value.imie, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + 3 * 60 * 1000) })
     pairingCode.value = code
@@ -666,6 +708,7 @@ const generatePairingCode = async () => {
 .activation-link-box small { color: #475569; line-height: 1.45; }
 .account-access-status { margin: 0; padding: 8px 10px; border-radius: 9px; color: #475569; background: #e2e8f0; font-size: 13px; font-weight: 700; }
 .account-access-status.active { color: #047857; background: #d1fae5; }
+.account-access-status.pending { color: #92400e; background: #fef3c7; }
 .account-access-status.blocked { color: #b91c1c; background: #fee2e2; }
 .invite-button, .block-access-button { min-height: 44px; padding: 10px 13px; border-radius: 10px; font-weight: 750; }
 .invite-button { border: 1px solid #bae6fd; background: #e0f2fe; color: #0369a1; }

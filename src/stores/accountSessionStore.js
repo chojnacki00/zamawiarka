@@ -36,6 +36,10 @@ import {
   setLocalPin,
   verifyLocalPin
 } from '../utils/localPinLock.js'
+import {
+  cleanupExpiredInvitations,
+  cleanupExpiredPairingCodes
+} from '../services/temporaryDataCleanup.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -657,11 +661,7 @@ export const useAccountSessionStore = defineStore(
           invitationId: invitationSnapshot.id,
           createdAt: now
         }))
-        transaction.update(invitation.ref, {
-          status: 'accepted',
-          acceptedAt: now,
-          acceptedByAuthUid: user.uid
-        })
+        transaction.delete(invitation.ref)
       })
 
       await initializeForUser(user, { force: true })
@@ -681,6 +681,15 @@ export const useAccountSessionStore = defineStore(
       ) {
         throw new Error('Nie masz uprawnienia do zapraszania pracowników.')
       }
+
+      void cleanupExpiredInvitations({ db, restaurantId }).then(result => {
+        if (!result.completed) {
+          console.warn(
+            'Nie udało się wyczyścić wygasłych zaproszeń:',
+            result.error
+          )
+        }
+      })
 
       const invitationRef = doc(collection(
         db,
@@ -760,7 +769,8 @@ export const useAccountSessionStore = defineStore(
     const getEmployeeAccountAccess = async employeeId => {
       if (!currentRestaurantId.value || !employeeId) return null
 
-      const snapshot = await getDocs(query(
+      const [memberSnapshot, invitationSnapshot] = await Promise.all([
+        getDocs(query(
         collection(
           db,
           'restaurants',
@@ -768,12 +778,92 @@ export const useAccountSessionStore = defineStore(
           'members'
         ),
         where('employeeId', '==', employeeId)
+        )),
+        getDocs(query(
+          collection(
+            db,
+            'restaurants',
+            currentRestaurantId.value,
+            'invitations'
+          ),
+          where('employeeId', '==', employeeId)
+        ))
+      ])
+
+      if (!memberSnapshot.empty) {
+        const snapshot = memberSnapshot.docs[0]
+        return {
+          id: snapshot.id,
+          accessType: 'membership',
+          ...snapshot.data()
+        }
+      }
+
+      const now = Date.now()
+      const pendingInvitation = invitationSnapshot.docs.find(snapshot => (
+        snapshot.data().status === 'pending' &&
+        snapshot.data().expiresAt?.toMillis?.() > now
       ))
 
-      if (snapshot.empty) return null
+      return pendingInvitation
+        ? {
+            id: pendingInvitation.id,
+            accessType: 'invitation',
+            ...pendingInvitation.data()
+          }
+        : null
+    }
 
-      const memberSnapshot = snapshot.docs[0]
-      return { id: memberSnapshot.id, ...memberSnapshot.data() }
+    const cancelInvitation = async ({ invitationId, employeeId }) => {
+      const restaurantId = currentRestaurantId.value
+      if (!restaurantId || !invitationId || !employeeId) {
+        throw new Error('Brak danych zaproszenia do anulowania.')
+      }
+      if (
+        !isOwner.value &&
+        permissions.value.can_manage_employees !== true
+      ) {
+        throw new Error('Nie masz uprawnienia do anulowania zaproszeń.')
+      }
+
+      const invitationRef = doc(
+        db,
+        'restaurants',
+        restaurantId,
+        'invitations',
+        invitationId
+      )
+
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(invitationRef)
+        if (!snapshot.exists()) return
+
+        const invitation = snapshot.data()
+        if (
+          invitation.restaurantId !== restaurantId ||
+          invitation.employeeId !== employeeId
+        ) {
+          throw new Error('Zaproszenie nie należy do tego pracownika.')
+        }
+
+        transaction.delete(invitationRef)
+      })
+    }
+
+    const cleanupCurrentRestaurantTemporaryData = async () => {
+      const restaurantId = currentRestaurantId.value
+      if (
+        !restaurantId ||
+        (!isOwner.value &&
+          permissions.value.can_manage_employees !== true)
+      ) return null
+
+      const [invitations, pairingCodes] = await Promise.all([
+        cleanupExpiredInvitations({ db, restaurantId }),
+        cleanupExpiredPairingCodes({ db, restaurantId })
+      ])
+
+      return { invitations, pairingCodes }
     }
 
     const syncEmployeeMembershipProfile = async ({
@@ -907,6 +997,8 @@ export const useAccountSessionStore = defineStore(
       selectRestaurant,
       acceptInvitation,
       createInvitation,
+      cancelInvitation,
+      cleanupCurrentRestaurantTemporaryData,
       getEmployeeAccountAccess,
       syncEmployeeMembershipProfile,
       blockRestaurantAccess,
