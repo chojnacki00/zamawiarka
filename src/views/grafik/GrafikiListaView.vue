@@ -398,7 +398,7 @@ const formatUpdatedAt = timestamp => {
 
 const getStatusLabel = schedule => {
   if (schedule?.publicationStatus === 'partially_published') {
-    return `Częściowo opublikowany do ${formatDate(
+    return `Opublikowano do ${formatDate(
       schedule.publishedUntil
     )}`
   }

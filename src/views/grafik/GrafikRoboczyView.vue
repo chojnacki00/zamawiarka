@@ -703,7 +703,7 @@ const publicationStatusLabel = computed(() => {
     schedule.value?.publicationStatus ===
     PUBLICATION_STATUSES.PARTIALLY_PUBLISHED
   ) {
-    return `Częściowo opublikowany do ${formatDate(
+    return `Opublikowano do ${formatDate(
       schedule.value.publishedUntil
     )}`
   }
