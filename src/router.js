@@ -4,6 +4,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js' // <-- NOWOŚĆ: Importujemy nasz sklep z uprawnieniami
+import { useAccountSessionStore } from './stores/accountSessionStore.js'
 
 import LoginView from './views/LoginView.vue'
 import HomeView from './views/HomeView.vue'
@@ -12,6 +13,8 @@ import RentownoscView from './views/RentownoscView.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: LoginView },
+  { path: '/rejestracja', name: 'Rejestracja', component: () => import('./views/RegisterView.vue') },
+  { path: '/konto', name: 'KontoDostep', component: () => import('./views/AccountAccessView.vue') },
   { path: '/', name: 'Home', component: HomeView },
   { path: '/zamawiarka', name: 'Zamawiarka', component: ZamawiarkaView },
   { path: '/rentownosc', name: 'Rentownosc', component: RentownoscView },
@@ -71,6 +74,36 @@ const getResolvedFirebaseUser = () => {
 
 router.beforeEach(async (to, from, next) => {
     const employeeStore = useEmployeeAuthStore()
+    const accountSessionStore = useAccountSessionStore()
+    const firebaseUser = await getResolvedFirebaseUser()
+
+  if (
+    firebaseUser &&
+    (!accountSessionStore.isInitialized ||
+      accountSessionStore.authUser?.uid !== firebaseUser.uid)
+  ) {
+    await accountSessionStore.initializeForUser(firebaseUser)
+  }
+
+  if (!firebaseUser && to.path === '/konto') {
+    return next('/login')
+  }
+
+  if (
+    firebaseUser &&
+    ['/login', '/rejestracja'].includes(to.path) &&
+    !accountSessionStore.requiresAccountAction
+  ) {
+    return next('/konto')
+  }
+
+  if (
+    firebaseUser &&
+    accountSessionStore.requiresAccountAction &&
+    to.path !== '/konto'
+  ) {
+    return next('/konto')
+  }
 
   const hasSavedEmployeeSession =
     Boolean(
@@ -89,7 +122,7 @@ router.beforeEach(async (to, from, next) => {
     Boolean(employeeStore.currentEmployee)
 
   // ZASADA 1: Zalogowany Pracownik chce wejść na logowanie -> odsyłamy na stronę główną
-  if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login')) {
+  if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login' || to.path === '/rejestracja')) {
     return next('/') 
   }
 
@@ -119,9 +152,6 @@ router.beforeEach(async (to, from, next) => {
         return next('/grafik')
       }
     } else {
-      const firebaseUser =
-        await getResolvedFirebaseUser()
-
       if (!firebaseUser) {
         console.warn(
           'Strażnik: Próba wejścia do zarządzania grafikiem bez logowania!'
@@ -170,8 +200,6 @@ router.beforeEach(async (to, from, next) => {
         return next('/grafik')
       }
     } else {
-      const firebaseUser = await getResolvedFirebaseUser()
-
       if (!firebaseUser) {
         console.warn(
           'Strażnik: Próba podglądu grafiku bez logowania!'

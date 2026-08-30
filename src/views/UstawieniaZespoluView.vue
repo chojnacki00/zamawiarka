@@ -52,7 +52,8 @@
             </div>
             <label class="form-field"><span>Numer telefonu</span><input v-model="form.telefon" type="tel" inputmode="tel" autocomplete="tel" placeholder="Np. +48 500 000 000"></label>
             <label class="form-field"><span>Adres e-mail</span><input v-model="form.email" type="email" inputmode="email" autocomplete="email"></label>
-            <label class="form-field"><span>PIN do logowania *</span><div class="pin-row"><input v-model="form.pin" class="pin-input" type="text" inputmode="numeric" maxlength="4"><button class="dice-button" type="button" aria-label="Wylosuj PIN" title="Wylosuj PIN" @click="generateRandomPin">🎲</button><button type="button" :disabled="!editingEmployeeId" @click="generatePairingCode">Paruj urządzenie</button></div></label>
+            <label class="form-field"><span>PIN starszego logowania *</span><div class="pin-row"><input v-model="form.pin" class="pin-input" type="text" inputmode="numeric" maxlength="4"><button class="dice-button" type="button" aria-label="Wylosuj PIN" title="Wylosuj PIN" @click="generateRandomPin">🎲</button><button type="button" :disabled="!editingEmployeeId" @click="generatePairingCode">Paruj urządzenie</button></div></label>
+            <p class="field-note">Mechanizm starszy pozostaje tymczasowo do czasu przetestowania kont Firebase pracowników.</p>
           </section>
         </article>
 
@@ -107,7 +108,24 @@
 
         <article :ref="element => setSectionElement('permissions', element)" class="accordion-card" :class="{ open: openSections.permissions }">
           <button class="accordion-toggle" type="button" @click="toggleSection('permissions')"><span><b>5</b>Profil uprawnień</span><i>{{ openSections.permissions ? '−' : '+' }}</i></button>
-          <section v-if="openSections.permissions" class="accordion-content"><label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label><p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p></section>
+          <section v-if="openSections.permissions" class="accordion-content">
+            <label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label>
+            <p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p>
+            <div v-if="editingEmployeeId" class="account-access-card">
+              <strong>Dostęp przez konto GastroManager</strong>
+              <p v-if="!canUseFirebaseAccountAccess" class="field-note">Zarządzanie nowym dostępem wymaga zalogowania kontem Firebase z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
+              <template v-else>
+                <p v-if="accountAccess" class="account-access-status" :class="accountAccess.status">{{ accountAccess.status === 'active' ? 'Aktywne członkostwo' : 'Dostęp zablokowany' }}</p>
+                <template v-if="!accountAccess">
+                  <label class="form-field"><span>E-mail zaproszenia</span><input v-model="invitationEmail" type="email" autocomplete="off" placeholder="pracownik@example.com"></label>
+                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Zaproś' }}</button>
+                  <small>Zaproszenie zostanie zapisane na 7 dni. W tym etapie aplikacja nie wysyła automatycznej wiadomości — pracownik zakłada konto z tym samym adresem.</small>
+                </template>
+                <button v-else-if="accountAccess.status === 'active'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
+                <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
+              </template>
+            </div>
+          </section>
         </article>
 
         <p v-if="formError" class="form-error">{{ formError }}</p>
@@ -139,6 +157,7 @@ import { useRouter } from 'vue-router'
 import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthStore } from '../stores/authStore.js'
+import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 import { useEmployeeGroupsStore } from '../stores/employeeGroupsStore.js'
 import { useEmployeesStore } from '../stores/employeesStore.js'
@@ -157,6 +176,7 @@ import {
 
 const router = useRouter()
 const authStore = useAuthStore()
+const accountSessionStore = useAccountSessionStore()
 const employeeAuthStore = useEmployeeAuthStore()
 const groupsStore = useEmployeeGroupsStore()
 const employeesStore = useEmployeesStore()
@@ -178,6 +198,10 @@ const closedSections = () => ({ basic: false, employment: false, groups: false, 
 const openSections = ref(closedSections())
 const sectionElements = ref({})
 const assignmentRateInputs = ref({})
+const invitationEmail = ref('')
+const accountAccess = ref(null)
+const accountAccessMessage = ref('')
+const isAccountActionPending = ref(false)
 
 const createEmptyForm = () => ({
   imie: '',
@@ -221,6 +245,10 @@ const positionPickerPositions = computed(() => positionsStore.positions.filter(p
 const isHourlyCompensation = computed(() => (
   form.value.compensation.type ===
   COMPENSATION_TYPES.HOURLY
+))
+const canUseFirebaseAccountAccess = computed(() => Boolean(
+  accountSessionStore.authUser &&
+  accountSessionStore.currentRestaurantId
 ))
 const formatSettlementPeriodUnit = period => {
   const amount = Number(period?.amount) || 1
@@ -348,12 +376,28 @@ const openForm = (employee = null) => {
   if (!employee) generateRandomPin()
   openSections.value = closedSections()
   formError.value = ''
+  invitationEmail.value = employee?.email || ''
+  accountAccess.value = null
+  accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
   positionPickerSelection.value = []
   isFormOpen.value = true
+  if (employee?.id && canUseFirebaseAccountAccess.value) {
+    loadEmployeeAccountAccess(employee.id)
+  }
 }
 
-const cancelForm = () => { isFormOpen.value = false; editingEmployeeId.value = null; formError.value = ''; nextTick(() => { if (scrollAreaRef.value) scrollAreaRef.value.scrollTop = 0 }) }
+const cancelForm = () => {
+  isFormOpen.value = false
+  editingEmployeeId.value = null
+  formError.value = ''
+  invitationEmail.value = ''
+  accountAccess.value = null
+  accountAccessMessage.value = ''
+  nextTick(() => {
+    if (scrollAreaRef.value) scrollAreaRef.value.scrollTop = 0
+  })
+}
 const generateRandomPin = () => { form.value.pin = String(Math.floor(1000 + Math.random() * 9000)) }
 const openPositionPicker = () => {
   positionPickerSelection.value = form.value.positionAssignments.map(assignment => assignment.positionId)
@@ -482,12 +526,77 @@ const saveEmployee = async () => {
         assignment => ({ ...assignment })
       )
     }
-    if (editingEmployeeId.value) await employeesStore.updateEmployee(editingEmployeeId.value, payload)
-    else await employeesStore.addEmployee(payload)
+    if (editingEmployeeId.value) {
+      await employeesStore.updateEmployee(editingEmployeeId.value, payload)
+      await accountSessionStore.syncEmployeeMembershipProfile({
+        employeeId: editingEmployeeId.value,
+        permissionProfileId: payload.permissionProfileId
+      })
+    } else {
+      await employeesStore.addEmployee(payload)
+    }
     cancelForm()
     searchQuery.value = ''
   } catch (error) { formError.value = 'Nie udało się zapisać pracownika.' }
   finally { isSaving.value = false }
+}
+
+const loadEmployeeAccountAccess = async employeeId => {
+  if (!employeeId) return
+
+  try {
+    accountAccess.value = await accountSessionStore
+      .getEmployeeAccountAccess(employeeId)
+  } catch (error) {
+    console.error('Błąd odczytu dostępu pracownika:', error)
+    accountAccessMessage.value =
+      'Nie udało się sprawdzić dostępu do konta.'
+  }
+}
+
+const inviteEmployee = async () => {
+  if (!editingEmployeeId.value || isAccountActionPending.value) return
+
+  isAccountActionPending.value = true
+  accountAccessMessage.value = ''
+  try {
+    await accountSessionStore.createInvitation({
+      employee: {
+        id: editingEmployeeId.value
+      },
+      email: invitationEmail.value
+    })
+    accountAccessMessage.value =
+      'Zaproszenie zapisano. Pracownik ma 7 dni na aktywację konta.'
+  } catch (error) {
+    accountAccessMessage.value = error?.message ||
+      'Nie udało się zapisać zaproszenia.'
+  } finally {
+    isAccountActionPending.value = false
+  }
+}
+
+const blockEmployeeAccess = async () => {
+  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+
+  isAccountActionPending.value = true
+  accountAccessMessage.value = ''
+  try {
+    await accountSessionStore.blockRestaurantAccess(
+      accountAccess.value.authUid
+    )
+    accountAccess.value = {
+      ...accountAccess.value,
+      status: 'blocked'
+    }
+    accountAccessMessage.value =
+      'Dostęp tego konta do restauracji został zablokowany.'
+  } catch (error) {
+    accountAccessMessage.value =
+      'Nie udało się zablokować dostępu.'
+  } finally {
+    isAccountActionPending.value = false
+  }
 }
 
 const executeDelete = async () => {
@@ -523,6 +632,17 @@ const generatePairingCode = async () => {
 .employment-summary span b { color: #0c4a6e; }
 .employment-summary small { margin-top: 3px; color: #64748b; line-height: 1.45; }
 .monthly-rate-input input { padding-right: 82px; }
+.account-access-card { display: grid; gap: 10px; margin-top: 16px; padding: 14px; border: 1px solid #dbeafe; border-radius: 13px; background: #f8fafc; }
+.account-access-card > strong { color: #0f172a; }
+.account-access-card > small { color: #64748b; line-height: 1.45; }
+.account-access-status { margin: 0; padding: 8px 10px; border-radius: 9px; color: #475569; background: #e2e8f0; font-size: 13px; font-weight: 700; }
+.account-access-status.active { color: #047857; background: #d1fae5; }
+.account-access-status.blocked { color: #b91c1c; background: #fee2e2; }
+.invite-button, .block-access-button { min-height: 44px; padding: 10px 13px; border-radius: 10px; font-weight: 750; }
+.invite-button { border: 1px solid #bae6fd; background: #e0f2fe; color: #0369a1; }
+.block-access-button { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
+.invite-button:disabled, .block-access-button:disabled { opacity: .55; }
+.account-access-message { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
 .search-field input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
 .search-field input::placeholder { color: #94a3b8; opacity: 1; -webkit-text-fill-color: #94a3b8; }
 .accordion-card { overflow: hidden; scroll-margin-top: 14px; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }

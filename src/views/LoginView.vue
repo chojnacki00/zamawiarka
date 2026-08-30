@@ -59,6 +59,25 @@
           <span>Logowanie...</span>
         </span>
       </button>
+
+      <button
+        class="login-link-button"
+        type="button"
+        :disabled="isLoggingIn"
+        @click="handlePasswordReset"
+      >
+        Nie pamiętasz hasła?
+      </button>
+
+      <button
+        class="login-link-button primary"
+        type="button"
+        @click="router.push('/rejestracja')"
+      >
+        Aktywuj konto pracownika
+      </button>
+
+      <p v-if="authMessage" class="login-message">{{ authMessage }}</p>
     </form>
   </div>
 </template>
@@ -66,8 +85,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { auth } from '../firebase.js'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { auth, authPersistenceReady } from '../firebase.js'
+import {
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword
+} from 'firebase/auth'
 
 const router = useRouter()
 
@@ -77,6 +99,7 @@ const authForm = ref({
 })
 
 const authError = ref('')
+const authMessage = ref('')
 const isLoggingIn = ref(false)
 
 const handleLogin = async () => {
@@ -84,6 +107,7 @@ const handleLogin = async () => {
   const password = String(authForm.value.password || '').trim()
 
   authError.value = ''
+  authMessage.value = ''
 
   if (!email) {
     authError.value = 'Wpisz e-mail'
@@ -98,13 +122,62 @@ const handleLogin = async () => {
   isLoggingIn.value = true
 
   try {
+    await authPersistenceReady
     await signInWithEmailAndPassword(auth, email, password)
-    router.push('/')
+    router.push('/konto')
   } catch (error) {
-    console.error('Firebase login error:', error.message)
+    console.error('Firebase login error:', error?.code || 'auth/login-failed')
     authError.value = 'Nieprawidłowy e-mail lub hasło'
   } finally {
     isLoggingIn.value = false
   }
 }
+
+const handlePasswordReset = async () => {
+  const email = String(authForm.value.email || '').trim().toLowerCase()
+  authError.value = ''
+  authMessage.value = ''
+
+  if (!email) {
+    authError.value = 'Wpisz e-mail, na który wysłać instrukcję.'
+    return
+  }
+
+  isLoggingIn.value = true
+  try {
+    await authPersistenceReady
+    await sendPasswordResetEmail(auth, email)
+    authMessage.value =
+      'Jeżeli konto istnieje, instrukcja zmiany hasła została wysłana.'
+  } catch (error) {
+    console.error(
+      'Błąd wysyłania resetu hasła:',
+      error?.code || 'auth/reset-failed'
+    )
+    authMessage.value =
+      'Jeżeli konto istnieje, instrukcja zmiany hasła została wysłana.'
+  } finally {
+    isLoggingIn.value = false
+  }
+}
 </script>
+
+<style scoped>
+.login-link-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  border: 0;
+  color: #64748b;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+.login-link-button.primary { color: #007aff; }
+.login-message {
+  margin: 14px 0 0;
+  color: #166534;
+  font-size: 13px;
+  line-height: 1.45;
+}
+</style>

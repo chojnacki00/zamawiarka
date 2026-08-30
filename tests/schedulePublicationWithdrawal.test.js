@@ -209,6 +209,11 @@ test('uprawnienie do wycofania odpowiada zarządzaniu grafikiem', () => {
   assert.equal(canUnpublishSchedule({
     hasEmployeeSession: true,
     employeePermissions: { can_manage_schedule: true }
+  }), false)
+  assert.equal(canUnpublishSchedule({
+    hasEmployeeSession: true,
+    employeePermissions: { can_manage_schedule: true },
+    hasAdminSession: true
   }), true)
   assert.equal(canUnpublishSchedule({ hasAdminSession: true }), true)
 })

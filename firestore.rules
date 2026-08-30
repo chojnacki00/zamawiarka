@@ -2,57 +2,371 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- KOLEKCJE GLOBALNE ---
-
-    // Kody parowania pozostają bez zmian na obecnym etapie.
-    match /pairing_codes/{codeId} {
-      allow read, write: if true;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // --- KOLEKCJE WŁAŚCICIELA (RESTAURACJI) ---
-    match /users/{userId} {
-      allow read: if true;
-      allow write: if request.auth != null &&
-        request.auth.uid == userId;
+    function hasVerifiedEmail() {
+      return isSignedIn() &&
+        request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.get('email', null) is string;
+    }
 
-      // 1. Zespół i pracownicy
-      match /employees/{empId} {
-        allow read, write: if true;
+    function memberDocument(restaurantId) {
+      return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    function employeeDocument(restaurantId, employeeId) {
+      return get(/databases/$(database)/documents/users/$(restaurantId)/employees/$(employeeId));
+    }
+
+    function permissionProfileDocument(restaurantId, profileId) {
+      return get(/databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId));
+    }
+
+    function hasActiveMembership(restaurantId) {
+      let member = memberDocument(restaurantId);
+      return hasVerifiedEmail() &&
+        member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.status == 'active' &&
+        (
+          member.data.role == 'owner' ||
+          (
+            member.data.role == 'employee' &&
+            member.data.employeeId is string &&
+            employeeDocument(restaurantId, member.data.employeeId).data.aktywny != false &&
+            employeeDocument(
+              restaurantId,
+              member.data.employeeId
+            ).data.permissionProfileId == member.data.permissionProfileId
+          )
+        );
+    }
+
+    function isRestaurantOwner(restaurantId) {
+      return hasActiveMembership(restaurantId) &&
+        memberDocument(restaurantId).data.role == 'owner';
+    }
+
+    function hasPermission(restaurantId, permissionKey) {
+      let member = memberDocument(restaurantId);
+      return hasActiveMembership(restaurantId) &&
+        (
+          member.data.role == 'owner' ||
+          (
+            member.data.permissionProfileId is string &&
+            permissionProfileDocument(
+              restaurantId,
+              member.data.permissionProfileId
+            ).data.uprawnienia[permissionKey] == true
+          )
+        );
+    }
+
+    function canViewSchedule(restaurantId) {
+      return hasPermission(restaurantId, 'can_view_schedule') ||
+        hasPermission(restaurantId, 'can_manage_schedule');
+    }
+
+    function canManageSchedule(restaurantId) {
+      return hasPermission(restaurantId, 'can_manage_schedule');
+    }
+
+    function canManageEmployees(restaurantId) {
+      return hasPermission(restaurantId, 'can_manage_employees');
+    }
+
+    function canManageRoles(restaurantId) {
+      return hasPermission(restaurantId, 'can_manage_roles');
+    }
+
+    function isOwnEmployee(restaurantId, employeeId) {
+      return hasActiveMembership(restaurantId) &&
+        memberDocument(restaurantId).data.employeeId == employeeId;
+    }
+
+    function invitationMatchesAuthenticatedEmail(invitation) {
+      return hasVerifiedEmail() &&
+        invitation.emailNormalized == request.auth.token.get('email', null);
+    }
+
+    function invitationWasAcceptedAtomically(restaurantId, invitationId) {
+      let invitationPath = /databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(invitationId);
+      let invitationBefore = get(invitationPath);
+      let invitationAfter = getAfter(invitationPath);
+      return invitationBefore.data.status == 'pending' &&
+        invitationBefore.data.acceptedAt == null &&
+        invitationBefore.data.acceptedByAuthUid == null &&
+        invitationBefore.data.expiresAt > request.time &&
+        invitationMatchesAuthenticatedEmail(invitationBefore.data) &&
+        invitationAfter.data.status == 'accepted' &&
+        invitationAfter.data.acceptedByAuthUid == request.auth.uid &&
+        invitationAfter.data.acceptedAt is timestamp;
+    }
+
+    function isValidInvitedMembership(restaurantId, memberId) {
+      let incoming = request.resource.data;
+      let employee = employeeDocument(restaurantId, incoming.employeeId);
+      return memberId == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'authUid',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'invitationId',
+          'role',
+          'status',
+          'createdAt',
+          'acceptedAt'
+        ]) &&
+        incoming.authUid == request.auth.uid &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId is string &&
+        incoming.permissionProfileId == employee.data.permissionProfileId &&
+        incoming.invitationId is string &&
+        incoming.role == 'employee' &&
+        incoming.status == 'active' &&
+        incoming.createdAt is timestamp &&
+        incoming.acceptedAt is timestamp &&
+        employee.data.aktywny != false &&
+        invitationWasAcceptedAtomically(
+          restaurantId,
+          incoming.invitationId
+        ) &&
+        get(/databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(incoming.invitationId)).data.employeeId == incoming.employeeId &&
+        get(/databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(incoming.invitationId)).data.permissionProfileId == incoming.permissionProfileId;
+    }
+
+    function isValidOwnerBootstrap(restaurantId, memberId) {
+      let restaurant = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId));
+      let incoming = request.resource.data;
+      return hasVerifiedEmail() &&
+        restaurantId == request.auth.uid &&
+        memberId == request.auth.uid &&
+        restaurant.data.ownerAuthUid == request.auth.uid &&
+        incoming.authUid == request.auth.uid &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == null &&
+        incoming.permissionProfileId == null &&
+        incoming.invitationId == null &&
+        incoming.role == 'owner' &&
+        incoming.status == 'active';
+    }
+
+    function membershipIdentityIsUnchanged() {
+      return request.resource.data.authUid == resource.data.authUid &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.invitationId == resource.data.invitationId &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.acceptedAt == resource.data.acceptedAt;
+    }
+
+    match /accounts/{authUid} {
+      allow read: if isSignedIn() && request.auth.uid == authUid;
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == authUid &&
+        request.resource.data.keys().hasOnly([
+          'authUid',
+          'email',
+          'displayName',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.authUid == authUid &&
+        request.resource.data.email == request.auth.token.get('email', null) &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /restaurants/{restaurantId} {
+      allow get: if hasActiveMembership(restaurantId) || (
+        hasVerifiedEmail() && request.auth.uid == restaurantId
+      );
+      allow list: if hasActiveMembership(restaurantId);
+      allow create: if hasVerifiedEmail() &&
+        restaurantId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'name',
+          'ownerAuthUid',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.id == restaurantId &&
+        request.resource.data.ownerAuthUid == request.auth.uid &&
+        request.resource.data.status == 'active';
+      allow update: if (
+        isRestaurantOwner(restaurantId) ||
+        (
+          hasVerifiedEmail() &&
+          request.auth.uid == restaurantId &&
+          resource.data.ownerAuthUid == request.auth.uid
+        )
+      ) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.ownerAuthUid == resource.data.ownerAuthUid;
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow get: if (
+          isSignedIn() && memberId == request.auth.uid
+        ) || canManageEmployees(restaurantId);
+        allow list: if canManageEmployees(restaurantId);
+        allow create: if isSignedIn() && (
+          isValidOwnerBootstrap(restaurantId, memberId) ||
+          isValidInvitedMembership(restaurantId, memberId)
+        );
+        allow update: if membershipIdentityIsUnchanged() && (
+          isRestaurantOwner(restaurantId) ||
+          (
+            canManageEmployees(restaurantId) &&
+            memberId != request.auth.uid
+          )
+        );
+        allow delete: if isRestaurantOwner(restaurantId) || (
+          canManageEmployees(restaurantId) &&
+          memberId != request.auth.uid
+        );
       }
 
-      // 2. Profile uprawnień
+      match /invitations/{invitationId} {
+        allow read: if canManageEmployees(restaurantId) ||
+          invitationMatchesAuthenticatedEmail(resource.data);
+        allow create: if canManageEmployees(restaurantId) &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'restaurantId',
+            'employeeId',
+            'permissionProfileId',
+            'email',
+            'emailNormalized',
+            'status',
+            'invitedByAuthUid',
+            'createdAt',
+            'expiresAt',
+            'acceptedAt',
+            'acceptedByAuthUid'
+          ]) &&
+          request.resource.data.id == invitationId &&
+          request.resource.data.restaurantId == restaurantId &&
+          request.resource.data.employeeId is string &&
+          request.resource.data.permissionProfileId ==
+            employeeDocument(
+              restaurantId,
+              request.resource.data.employeeId
+            ).data.permissionProfileId &&
+          request.resource.data.email == request.resource.data.emailNormalized &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.invitedByAuthUid == request.auth.uid &&
+          request.resource.data.createdAt is timestamp &&
+          request.resource.data.expiresAt is timestamp &&
+          request.resource.data.expiresAt > request.time &&
+          request.resource.data.acceptedAt == null &&
+          request.resource.data.acceptedByAuthUid == null;
+        allow update: if invitationMatchesAuthenticatedEmail(resource.data) &&
+          resource.data.status == 'pending' &&
+          resource.data.expiresAt > request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'acceptedAt',
+            'acceptedByAuthUid'
+          ]) &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.acceptedAt is timestamp &&
+          request.resource.data.acceptedByAuthUid == request.auth.uid &&
+          getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.status == 'active';
+        allow delete: if canManageEmployees(restaurantId);
+      }
+    }
+
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() &&
+        resource.data.authUid == request.auth.uid;
+    }
+
+    match /{path=**}/invitations/{invitationId} {
+      allow read: if invitationMatchesAuthenticatedEmail(resource.data);
+    }
+
+    match /pairing_codes/{codeId} {
+      allow read: if isSignedIn() &&
+        hasActiveMembership(resource.data.companyUid);
+      allow create: if isSignedIn() &&
+        canManageEmployees(request.resource.data.companyUid);
+      allow update, delete: if isSignedIn() &&
+        canManageEmployees(resource.data.companyUid);
+    }
+
+    match /users/{restaurantId} {
+      allow read: if hasActiveMembership(restaurantId);
+      allow create, update: if isRestaurantOwner(restaurantId);
+      allow delete: if false;
+
+      match /employees/{employeeId} {
+        allow read: if isOwnEmployee(restaurantId, employeeId) ||
+          canManageEmployees(restaurantId) ||
+          canManageSchedule(restaurantId);
+        allow create, update, delete: if canManageEmployees(restaurantId);
+      }
+
       match /permissionProfiles/{profileId} {
-        allow read, write: if true;
+        allow read: if hasActiveMembership(restaurantId) && (
+          memberDocument(restaurantId).data.permissionProfileId == profileId ||
+          canManageEmployees(restaurantId) ||
+          canManageRoles(restaurantId)
+        );
+        allow create, update, delete: if canManageRoles(restaurantId);
       }
 
-      // 3. Stanowiska do grafiku
       match /positions/{positionId} {
-        allow read, write: if true;
+        allow read: if canViewSchedule(restaurantId) ||
+          canManageEmployees(restaurantId) ||
+          canManageRoles(restaurantId);
+        allow create, update, delete: if canManageRoles(restaurantId);
       }
 
-      // 4. Niezależny słownik grup pracowniczych.
       match /employeeGroups/{groupId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageEmployees(restaurantId);
       }
 
-      // Modele zapotrzebowania są edytowane również przez managera z sesją PIN.
       match /scheduleDemandModels/{modelId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // 4. Dyspozycyjność pracowników
-      // Dostęp pozostaje zgodny z obecną aplikacją kod + PIN.
       match /grafik_dyspozycyjnosc/{availabilityId} {
-        allow read, write: if true;
+        allow read: if canManageSchedule(restaurantId) || (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId
+        );
+        allow create: if canManageSchedule(restaurantId) || (
+          hasActiveMembership(restaurantId) &&
+          request.resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
+          !request.resource.data.keys().hasAny(['managerEntry'])
+        );
+        allow update: if canManageSchedule(restaurantId) || (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
+          request.resource.data.employeeId == resource.data.employeeId &&
+          request.resource.data.get('managerEntry', null) ==
+            resource.data.get('managerEntry', null)
+        );
+        allow delete: if canManageSchedule(restaurantId) || (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
+          !resource.data.keys().hasAny(['managerEntry'])
+        );
       }
 
-      // Wersja stanu dyspozycji dla konkretnego dnia.
-      // Każdy prawidłowy zapis aplikacji zwiększa ją dokładnie o 1.
       match /grafik_dyspozycyjnosc_wersje/{dateKey} {
-        allow read: if true;
-
-        allow create: if
+        allow read: if hasActiveMembership(restaurantId);
+        allow create: if hasActiveMembership(restaurantId) &&
           request.resource.data.keys().hasOnly([
             'date',
             'version',
@@ -61,8 +375,7 @@ service cloud.firestore {
           request.resource.data.date == dateKey &&
           request.resource.data.version == 1 &&
           request.resource.data.updatedAt is timestamp;
-
-        allow update: if
+        allow update: if hasActiveMembership(restaurantId) &&
           request.resource.data.keys().hasOnly([
             'date',
             'version',
@@ -70,46 +383,36 @@ service cloud.firestore {
           ]) &&
           request.resource.data.date == dateKey &&
           request.resource.data.date == resource.data.date &&
-          request.resource.data.version ==
-            resource.data.version + 1 &&
+          request.resource.data.version == resource.data.version + 1 &&
           request.resource.data.updatedAt is timestamp;
+        allow delete: if canManageSchedule(restaurantId);
       }
 
-      // 5. Okresy dyspozycji
       match /grafik_okresy_dyspozycji/{periodId} {
-        allow read, write: if true;
+        allow read: if hasActiveMembership(restaurantId);
+        allow create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // Trwały stan pojedynczego dnia dyspozycji.
-      // Okresy mogą zostać usunięte bez utraty modelu przypisanego dniu.
       match /dyspozycje_dni/{dateKey} {
-        allow read, write: if true;
+        allow read: if hasActiveMembership(restaurantId);
+        allow create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // 6. Ustawienia generatora grafiku
-      // Manager logujący się kodem i PIN-em korzysta z tej ścieżki
-      // bez osobnej sesji Firebase Auth.
       match /grafik_ustawienia/{settingsId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // Profile zatrudnienia tworzone samodzielnie przez managera.
-      // Zawierają parametry i reguły przyszłego generatora grafiku.
       match /grafik_profile_zatrudnienia/{profileId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // 7. Nagłówki grafików i ich stany publikacji.
-      // Manager logujący się kodem i PIN-em zapisuje tu także kolejne wersje.
       match /grafiki/{scheduleId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // Każdy dzień grafiku jest osobnym dokumentem.
-      // Dokument przechowuje osobno wersję roboczą i ostatnią publikację.
       match /grafik_dni/{scheduleDayId} {
-        allow read, delete: if true;
-        allow create, update: if
+        allow read, delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
           scheduleDayId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
           request.resource.data.id == scheduleDayId &&
           request.resource.data.date == scheduleDayId &&
@@ -117,13 +420,10 @@ service cloud.firestore {
           request.resource.data.scheduleId.size() > 0;
       }
 
-      // Bezpieczna projekcja opublikowanego nagłówka dla przyszłego
-      // widoku pracownika. Docelowe ograniczenie odczytu zostanie dodane
-      // razem z właściwą tożsamością pracownika w Firebase Auth.
       match /grafiki_opublikowane/{scheduleId} {
-        allow read: if true;
-        allow delete: if true;
-        allow create, update: if
+        allow read: if canViewSchedule(restaurantId);
+        allow delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
           request.resource.data.keys().hasOnly([
             'id',
             'scheduleId',
@@ -171,11 +471,10 @@ service cloud.firestore {
           request.resource.data.updatedAt is timestamp;
       }
 
-      // Odchudzone dni zawierają wyłącznie obsadzone, opublikowane zmiany.
       match /grafik_opublikowane_dni/{dateKey} {
-        allow read: if true;
-        allow delete: if true;
-        allow create, update: if
+        allow read: if canViewSchedule(restaurantId);
+        allow delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
           dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
           request.resource.data.keys().hasOnly([
             'id',
@@ -212,38 +511,60 @@ service cloud.firestore {
           request.resource.data.updatedAt is timestamp;
       }
 
-      // Rejestr przyszłych publikacji i aktualizacji grafiku.
       match /grafik_aktualizacje/{updateId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
       }
 
-      // --- POZOSTAŁE MODUŁY ZAMAWIARKI ---
-
       match /cartItems/{itemId} {
-        allow read, write: if true;
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders') ||
+          hasPermission(restaurantId, 'can_edit_products');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_create_orders'
+        );
       }
 
       match /orders/{orderId} {
-        allow read, write: if true;
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_create_orders'
+        );
       }
 
       match /towary/{towarId} {
-        allow read, write: if true;
-      }
-
-      match /app/state {
-        allow read, write: if true;
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders') ||
+          hasPermission(restaurantId, 'can_edit_products');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_edit_products'
+        );
       }
 
       match /menuItems/{dishId} {
-        allow read, write: if true;
+        allow read: if hasPermission(restaurantId, 'can_view_foodcost') ||
+          hasPermission(restaurantId, 'can_edit_menu');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_edit_menu'
+        );
       }
 
-      // Reguła przejściowa dla pozostałych ścieżek.
+      match /app/state {
+        allow read: if hasActiveMembership(restaurantId) || (
+          hasVerifiedEmail() && request.auth.uid == restaurantId
+        );
+        allow create, update: if isRestaurantOwner(restaurantId) ||
+          hasPermission(restaurantId, 'can_edit_products') ||
+          hasPermission(restaurantId, 'can_edit_menu');
+        allow delete: if isRestaurantOwner(restaurantId);
+      }
+
       match /{allPaths=**} {
-        allow read: if true;
-        allow write: if request.auth != null &&
-          request.auth.uid == userId;
+        allow read, write: if false;
       }
     }
   }

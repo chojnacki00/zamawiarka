@@ -474,6 +474,13 @@ test('sam podstawowy dostęp do grafiku nie pozwala publikować', () => {
     employeePermissions: {
       can_manage_schedule: true
     }
+  }), false)
+  assert.equal(canPublishSchedule({
+    hasEmployeeSession: true,
+    employeePermissions: {
+      can_manage_schedule: true
+    },
+    hasAdminSession: true
   }), true)
   assert.equal(canPublishSchedule({ hasAdminSession: true }), true)
 })

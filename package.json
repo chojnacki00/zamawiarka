@@ -18,6 +18,7 @@
     "test:published-schedule-calendar": "node --test tests/publishedScheduleCalendar.test.js",
     "test:schedule-public-projection": "node --test tests/schedulePublicProjection.test.js",
     "test:schedule-position-colors": "node --test tests/schedulePositionColors.test.js",
+    "test:employee-identity": "node --test tests/employeeIdentity.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

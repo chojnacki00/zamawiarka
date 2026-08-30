@@ -7,6 +7,7 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
   const currentEmployee = ref(null)
   const restaurantId = ref(null)
   const isInitialized = ref(false)
+  const sessionMode = ref(null)
 
   let unsubscribeEmployee = null
 
@@ -50,6 +51,7 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
 
           currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
           restaurantId.value = savedRestId
+          sessionMode.value = 'legacy_pin'
           startEmployeeListener(savedRestId, savedEmpId)
 
         } else {
@@ -101,6 +103,7 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
 
       currentEmployee.value = { id: empSnap.id, ...empData, uprawnienia }
       restaurantId.value = restId
+      sessionMode.value = 'legacy_pin'
 
       localStorage.setItem('gm_emp_id', empSnap.id)
       localStorage.setItem('gm_rest_id', restId)
@@ -119,6 +122,7 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     }
     currentEmployee.value = null
     restaurantId.value = null
+    sessionMode.value = null
     localStorage.removeItem('gm_emp_id')
     localStorage.removeItem('gm_rest_id')
   }
@@ -130,13 +134,42 @@ export const useEmployeeAuthStore = defineStore('employeeAuth', () => {
     return currentEmployee.value.uprawnienia[permissionKey] === true
   }
 
+  const setAuthenticatedRestaurantContext = ({
+    restId,
+    employee = null,
+    permissions = {}
+  } = {}) => {
+    if (unsubscribeEmployee) {
+      unsubscribeEmployee()
+      unsubscribeEmployee = null
+    }
+
+    restaurantId.value = String(restId || '').trim() || null
+    currentEmployee.value = employee
+      ? { ...employee, uprawnienia: { ...permissions } }
+      : null
+    sessionMode.value = 'firebase_account'
+    isInitialized.value = true
+  }
+
+  const clearAuthenticatedRestaurantContext = () => {
+    if (sessionMode.value !== 'firebase_account') return
+
+    currentEmployee.value = null
+    restaurantId.value = null
+    sessionMode.value = null
+  }
+
   return {
     currentEmployee,
     restaurantId,
     isInitialized,
+    sessionMode,
     initSession,
     login,
     logout,
-    hasPermission
+    hasPermission,
+    setAuthenticatedRestaurantContext,
+    clearAuthenticatedRestaurantContext
   }
 })

@@ -42,7 +42,7 @@
         </div>
         <label class="form-field">
           <span>Nazwa stanowiska *</span>
-          <div class="locked-placeholder position-placeholder" :class="{ filled: form.nazwa }"><input v-model="form.nazwa" class="notranslate" type="text" autocomplete="off" translate="no" aria-label="Nazwa stanowiska"></div>
+          <div class="locked-placeholder position-placeholder" :class="{ filled: form.nazwa }"><input v-model="form.nazwa" class="notranslate position-name-input" type="text" autocomplete="off" translate="no" aria-label="Nazwa stanowiska"></div>
         </label>
         <label class="form-field">
           <span>Domyślna stawka godzinowa *</span>
@@ -274,6 +274,9 @@ const executeDelete = async () => {
 .form-field { display: grid; gap: 7px; margin-bottom: 18px; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .form-field input { width: 100%; box-sizing: border-box; padding: 13px; border: 1px solid #d1d5db; border-radius: 11px; font-size: 16px; }
 .locked-placeholder { position: relative; border-radius: 11px; background: #fff; }.locked-placeholder input { position: relative; z-index: 1; background: transparent; }.locked-placeholder::after { position: absolute; z-index: 2; top: 50%; left: 13px; transform: translateY(-50%); color: #9ca3af; font-size: 16px; font-weight: 400; text-transform: none; pointer-events: none; }.position-placeholder::after { content: "Np. Pizzer"; }.locked-placeholder.filled::after { display: none; }
+.position-name-input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
+.position-name-input:focus { border-color: #38bdf8; outline: none; box-shadow: 0 0 0 3px rgba(14, 165, 233, .14); }
+.position-placeholder:focus-within::after { color: #94a3b8; }
 .input-suffix { position: relative; }
 .input-suffix input { padding-right: 58px; }
 .input-suffix b { position: absolute; top: 50%; right: 13px; transform: translateY(-50%); color: #6b7280; font-size: 13px; text-transform: none; }

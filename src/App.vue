@@ -951,6 +951,7 @@ import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/authStore.js'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
+import { useAccountSessionStore } from './stores/accountSessionStore.js'
 
 export default {
   components: {
@@ -962,6 +963,14 @@ export default {
     const route = useRoute()
     const authStore = useAuthStore()
     const employeeAuthStore = useEmployeeAuthStore()
+    const accountSessionStore = useAccountSessionStore()
+
+    const getCurrentRestaurantId = () => (
+      accountSessionStore.currentRestaurantId ||
+      employeeAuthStore.restaurantId ||
+      authStore.currentCompany?.uid ||
+      null
+    )
 
     // =========================
     // STAN APLIKACJI - EKRAN ŁADOWANIA (Flash of Initial State)
@@ -1109,7 +1118,10 @@ const handleLogin = async () => {
 const handleLogout = async () => {
   // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
   const employeeAuthStore = useEmployeeAuthStore()
-  if (employeeAuthStore.currentEmployee || localStorage.getItem('gm_emp_id')) {
+  if (
+    !auth.currentUser &&
+    (employeeAuthStore.currentEmployee || localStorage.getItem('gm_emp_id'))
+  ) {
     
     // 1. Zdejmujemy dostęp w sklepie
     employeeAuthStore.logout() 
@@ -1136,8 +1148,12 @@ const handleLogout = async () => {
   if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null; }
   if (typeof unsubscribeMenuItems !== 'undefined' && unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null; }
 
-  // 2. Wylogowanie z Firebase
-  await signOut(auth)
+  // 2. Wylogowanie z Firebase i usunięcie lokalnego PIN-u urządzenia
+  if (accountSessionStore.authUser || auth.currentUser) {
+    await accountSessionStore.logoutCurrentDevice()
+  } else {
+    await signOut(auth)
+  }
 
   // 3. Czyszczenie stanu aplikacji
   isDataLoaded.value = false
@@ -1169,8 +1185,19 @@ const resetInactivityTimer = () => {
   // Włączamy stoper TYLKO wtedy, gdy zalogowany jest PRACOWNIK (przez PIN)
   if (employeeAuthStore.currentEmployee) {
     inactivityTimer = setTimeout(() => {
+      if (
+        auth.currentUser &&
+        accountSessionStore.localPinConfigured
+      ) {
+        accountSessionStore.lockApplication()
+        isDataLoaded.value = false
+        resetCompanyDataState()
+        router.replace('/konto')
+        return
+      }
+
       console.log('Brak aktywności. Wylogowywanie pracownika...')
-      handleLogout() // handleLogout domyślnie wyczyści tylko sesję kelnera
+      handleLogout()
     }, INACTIVITY_LIMIT)
   }
 }
@@ -1191,8 +1218,9 @@ watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
       isLoggedIn.value = false
     }
 
-    if (router.currentRoute.value.path !== '/logowanie') {
-      router.replace('/logowanie')
+    const targetPath = auth.currentUser ? '/konto' : '/logowanie'
+    if (router.currentRoute.value.path !== targetPath) {
+      router.replace(targetPath)
     }
   }
 })
@@ -1244,7 +1272,7 @@ const applyAppState = (state) => {
 
 const saveAllAppStateToCloud = async () => {
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
 
   if (!uid) return
 
@@ -1486,7 +1514,7 @@ const loadCompanyDataWithFallback = async () => {
   isDataLoaded.value = false
 
   try {
-    const uid = auth.currentUser?.uid || localStorage.getItem('gm_saved_rest_id')
+    const uid = getCurrentRestaurantId() || localStorage.getItem('gm_saved_rest_id')
 
     if (!uid) {
       resetCompanyDataState()
@@ -1544,7 +1572,8 @@ const COLLECTIONS_TO_BACKUP = [
 // --- FUNKCJA EKSPORTU ---
 const eksportujBackup = async () => {
   const user = auth.currentUser;
-  if (!user) return;
+  const restaurantId = getCurrentRestaurantId()
+  if (!user || !restaurantId) return;
 
   const confirmed = await showConfirm('Czy chcesz utworzyć pełną kopię zapasową swoich danych?', 'Utworzyć kopię?', '💾');
   if (!confirmed) return;
@@ -1557,7 +1586,7 @@ const eksportujBackup = async () => {
     };
 
     // 1. Pobieramy główny dokument stanu
-    const stateDoc = await getDoc(getUserStateDocRef(user.uid));
+    const stateDoc = await getDoc(getUserStateDocRef(restaurantId));
     if (stateDoc.exists()) {
       backupData.state = stateDoc.data();
       
@@ -1573,7 +1602,7 @@ for (const collectionName of COLLECTIONS_TO_BACKUP) {
   const collectionRef = collection(
     db,
     'users',
-    user.uid,
+    restaurantId,
     collectionName
   )
 
@@ -1640,14 +1669,15 @@ const wczytajBackup = async (event) => {
       }
 
       const user = auth.currentUser;
-      if (!user) return;
+      const restaurantId = getCurrentRestaurantId()
+      if (!user || !restaurantId) return;
 
       isDataLoaded.value = false;
 
       // 1. Zapisujemy główny stan aplikacji (nie zawiera już starych towarów)
       if (backupData.state) {
   await setDoc(
-    getUserStateDocRef(user.uid),
+    getUserStateDocRef(restaurantId),
     backupData.state
   )
 }
@@ -1668,7 +1698,7 @@ if (backupData.collections) {
       collection(
         db,
         'users',
-        user.uid,
+        restaurantId,
         colName
       )
     )
@@ -1692,7 +1722,7 @@ if (backupData.collections) {
       const documentRef = doc(
         db,
         'users',
-        user.uid,
+        restaurantId,
         colName,
         String(itemData.id)
       )
@@ -1991,7 +2021,7 @@ if (backupData.collections) {
           // MAGIA: Jeśli nazwa się zmieniła, aktualizujemy też wszystkie dania!
           if (oldName !== name) {
             // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
-            const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+            const uid = getCurrentRestaurantId()
             if (uid) {
               const batch = writeBatch(db) // Paczka aktualizacji dla Firestore
               
@@ -2035,7 +2065,7 @@ if (backupData.collections) {
       // MAGIA: Wyrzucamy usuniętą kategorię ze wszystkich dań (robią się "Brak")
       if (categoryNameToDelete) {
         // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
-        const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+        const uid = getCurrentRestaurantId()
         if (uid) {
           const batch = writeBatch(db)
           
@@ -2071,7 +2101,7 @@ const deleteMenuItem = async (id) => {
       if (!confirmed) return
       
       // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
-      const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+      const uid = getCurrentRestaurantId()
       if (!uid) return
 
       try {
@@ -2142,7 +2172,7 @@ const deleteMenuItem = async (id) => {
   }
   
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd zapisu dania: Brak ID restauracji/managera!")
     return
@@ -2600,7 +2630,7 @@ const selectedTowaryPdfFields = ref([
 // =========================
 const addToCart = async (productId) => {
   // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
 
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
@@ -2618,7 +2648,7 @@ const addToCart = async (productId) => {
 
   const removeFromCart = async (productId) => {
   // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
 
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
@@ -2649,7 +2679,7 @@ const addToCart = async (productId) => {
   if (!confirmed) return
 
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
@@ -2713,7 +2743,7 @@ const closeCustomCartItemModal = () => {
 
 const saveCustomCartItem = async () => {
   // POPRAWKA: Nowy strażnik ID
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
@@ -2792,7 +2822,7 @@ const saveQtyModal = async () => {
   if (!selectedProductForQty.value) return
 
   // POPRAWKA: Nowy strażnik ID
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
@@ -2849,7 +2879,7 @@ const deleteCartItemFromQtyModal = async () => {
   if (!selectedProductForQty.value) return
 
   // POPRAWKA: Nowy strażnik ID
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
@@ -4053,7 +4083,7 @@ const removeSelectedTowary = async () => {
   if (!confirmed) return
 
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd usuwania grupowego: Brak ID restauracji/managera!")
     return
@@ -4283,7 +4313,7 @@ const removeSelectedTowary = async () => {
   // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
   // =========================
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
 
   if (uid) {
     try {
@@ -4328,7 +4358,7 @@ const deleteTowar = async () => {
   if (!confirmed) return
 
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd usuwania: Brak ID restauracji/managera!")
     return
@@ -4781,7 +4811,7 @@ const saveCurrentOrderToRegister = async () => {
   }
 
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd zapisu zamówienia: Brak ID restauracji/managera!")
     return null
@@ -4864,7 +4894,7 @@ const deleteOrderFromRegister = async (orderId) => {
   if (!confirmed) return
 
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
-  const uid = auth.currentUser?.uid || employeeAuthStore.restaurantId
+  const uid = getCurrentRestaurantId()
   if (!uid) {
     console.warn("Błąd usuwania zamówienia: Brak ID restauracji/managera!")
     return
@@ -5323,6 +5353,106 @@ watch(() => employeeAuthStore.currentEmployee, async (newEmployee) => {
 // ==============================================================================
 
 
+const stopCompanyDataListeners = () => {
+  if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null }
+  if (unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null }
+  if (unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null }
+  if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null }
+  if (unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null }
+}
+
+let activatedRestaurantId = null
+
+const activateAccountRestaurant = async () => {
+  const user = auth.currentUser
+  const restaurantId = accountSessionStore.currentRestaurantId
+  if (!user || !restaurantId || !accountSessionStore.hasActiveContext) return
+  if (activatedRestaurantId === restaurantId && isDataLoaded.value) return
+
+  stopCompanyDataListeners()
+  activatedRestaurantId = restaurantId
+  const email = String(user.email || '').trim().toLowerCase()
+  currentCompany.value = {
+    uid: restaurantId,
+    authUid: user.uid,
+    username: email,
+    companyName:
+      accountSessionStore.currentRestaurant?.name ||
+      (email ? email.split('@')[0] : 'restauracja')
+  }
+  authStore.isLoggedIn = true
+  authStore.currentCompany = currentCompany.value
+  isLoggedIn.value = true
+
+  const employee = accountSessionStore.currentEmployee
+  const employeePermissions = accountSessionStore.permissions || {}
+  const needsBusinessData = !employee || [
+    'can_view_zamawiarka',
+    'can_create_orders',
+    'can_edit_products',
+    'can_view_foodcost',
+    'can_edit_menu'
+  ].some(permission => employeePermissions[permission] === true)
+
+  if (needsBusinessData) {
+    await loadCompanyDataWithFallback()
+    subscribeUserState(restaurantId)
+  } else {
+    resetCompanyDataState()
+    isDataLoaded.value = true
+  }
+
+  if (!employee) {
+    subscribeCartItems(restaurantId)
+    subscribeTowary(restaurantId)
+    subscribeOrders(restaurantId)
+    subscribeMenuItems(restaurantId)
+  } else {
+    if (
+      employeePermissions.can_view_zamawiarka ||
+      employeePermissions.can_create_orders ||
+      employeePermissions.can_edit_products
+    ) {
+      subscribeCartItems(restaurantId)
+      subscribeTowary(restaurantId)
+      subscribeOrders(restaurantId)
+    }
+    if (
+      employeePermissions.can_view_foodcost ||
+      employeePermissions.can_edit_menu
+    ) {
+      subscribeMenuItems(restaurantId)
+    }
+  }
+}
+
+watch(
+  () => [
+    accountSessionStore.isInitialized,
+    accountSessionStore.hasActiveContext,
+    accountSessionStore.currentRestaurantId
+  ],
+  async ([initialized, hasAccess]) => {
+    if (!auth.currentUser || !initialized) return
+
+    if (!hasAccess) {
+      activatedRestaurantId = null
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = true
+      if (router.currentRoute.value.path !== '/konto') {
+        await router.replace('/konto')
+      }
+      return
+    }
+
+    await activateAccountRestaurant()
+  },
+  { immediate: true }
+)
+
+
 
 
 onMounted(() => {
@@ -5336,6 +5466,8 @@ onMounted(() => {
 
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
+      await accountSessionStore.initializeForUser(null, { force: true })
+      activatedRestaurantId = null
       if (unsubscribeCartItems) {
         unsubscribeCartItems()
         unsubscribeCartItems = null
@@ -5392,7 +5524,7 @@ onMounted(() => {
         }
       } 
       // 3. Jeśli nie ma pracownika i nie jesteśmy na ekranie logowania PIN, wyrzucamy na login
-      else if (currentPath !== '/logowanie') {
+      else if (!['/logowanie', '/login', '/rejestracja'].includes(currentPath)) {
         router.push('/login') 
       }
       // === KONIEC POPRAWKI ===
@@ -5403,30 +5535,17 @@ onMounted(() => {
     }
 
     isLoggedIn.value = true
+    await accountSessionStore.initializeForUser(user)
 
-    const email = String(user.email || '').trim().toLowerCase()
-    const name = email ? email.split('@')[0] : 'użytkownik'
-
-    currentCompany.value = {
-      uid: user.uid,
-      username: email,
-      companyName: name
+    if (accountSessionStore.hasActiveContext) {
+      await activateAccountRestaurant()
+    } else {
+      isDataLoaded.value = true
+      if (router.currentRoute.value.path !== '/konto') {
+        await router.replace('/konto')
+      }
     }
 
-    authStore.isLoggedIn = true
-    authStore.currentCompany = currentCompany.value
-
-
-
-    await loadCompanyDataWithFallback()
-    subscribeCartItems(user.uid)
-    subscribeUserState(user.uid)
-    
-   // Uruchomienie nasłuchiwania na żywo po zalogowaniu
-    subscribeTowary(user.uid)
-    subscribeOrders(user.uid)
-    subscribeMenuItems(user.uid)
-    
     isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
   })
 })

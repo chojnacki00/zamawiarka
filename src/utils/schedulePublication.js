@@ -64,7 +64,8 @@ export const canPublishSchedule = ({
   hasAdminSession = false
 } = {}) => (
   hasEmployeeSession
-    ? employeePermissions?.can_manage_schedule === true
+    ? hasAdminSession &&
+      employeePermissions?.can_manage_schedule === true
     : hasAdminSession
 )
 

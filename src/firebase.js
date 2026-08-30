@@ -1,6 +1,10 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  getAuth,
+  setPersistence
+} from "firebase/auth";
 // Zmieniony import pod nowy standard offline
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
@@ -18,10 +22,17 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+auth.languageCode = 'pl';
+const authPersistenceReady = setPersistence(
+  auth,
+  browserLocalPersistence
+).catch((error) => {
+  console.error('Nie udało się ustawić trwałej sesji logowania:', error)
+})
 
 // NOWY SPOSÓB: Inicjalizacja bazy od razu z nowym trybem offline
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 
-export { auth, db };
+export { auth, authPersistenceReady, db };
