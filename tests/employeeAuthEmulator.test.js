@@ -9,10 +9,13 @@ import {
   applyActionCode,
   connectAuthEmulator,
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   getAuth,
+  reauthenticateWithCredential,
   sendEmailVerification,
   signInWithEmailAndPassword,
-  signOut
+  signOut,
+  verifyBeforeUpdateEmail
 } from 'firebase/auth'
 import {
   connectFirestoreEmulator,
@@ -72,6 +75,21 @@ const getVerificationCode = async email => {
   const payload = await response.json()
   const record = payload.oobCodes.find(code => (
     code.email === email && code.requestType === 'VERIFY_EMAIL'
+  ))
+  assert.ok(record?.oobCode)
+  return record.oobCode
+}
+
+const getEmailChangeCode = async newEmail => {
+  const response = await fetch(
+    `http://${emulatorConfig.host}:${emulatorConfig.authPort}` +
+      `/emulator/v1/projects/${emulatorConfig.projectId}/oobCodes`
+  )
+  assert.equal(response.ok, true)
+  const payload = await response.json()
+  const record = payload.oobCodes.find(code => (
+    code.requestType === 'VERIFY_AND_CHANGE_EMAIL' &&
+    [code.email, code.newEmail].includes(newEmail)
   ))
   assert.ok(record?.oobCode)
   return record.oobCode
@@ -147,6 +165,119 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
 
   assert.equal(credential.user.emailVerified, true)
   assert.equal(token.claims.email_verified, true)
+})
+
+test('ponowne uwierzytelnienie wysyła zmianę e-maila, ale stosuje ją dopiero po kodzie', async () => {
+  const oldEmail = 'owner-old@example.test'
+  const newEmail = 'owner-new@example.test'
+  const password = 'Testowe-haslo-123'
+  const { auth, db } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    oldEmail,
+    password
+  )
+  const unchangedUid = credential.user.uid
+
+  await reauthenticateWithCredential(
+    credential.user,
+    EmailAuthProvider.credential(oldEmail, password)
+  )
+  auth.languageCode = 'pl'
+  await verifyBeforeUpdateEmail(credential.user, newEmail, {
+    url: 'http://localhost:5173/konto'
+  })
+
+  assert.equal(credential.user.email, oldEmail)
+  assert.equal(credential.user.emailVerified, false)
+  const code = await getEmailChangeCode(newEmail)
+  await applyActionCode(auth, code)
+  await credential.user.reload()
+  await credential.user.getIdToken(true)
+
+  assert.equal(credential.user.email, newEmail)
+  assert.equal(credential.user.emailVerified, true)
+  assert.equal(credential.user.uid, unchangedUid)
+
+  await seed([[`users/${unchangedUid}/app/state`, { initialized: true }]])
+  await setDoc(doc(db, `accounts/${unchangedUid}`), {
+    authUid: unchangedUid,
+    email: newEmail,
+    displayName: '',
+    status: 'active',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+  await setDoc(doc(db, `restaurants/${unchangedUid}`), {
+    id: unchangedUid,
+    name: 'Restauracja testowa',
+    ownerAuthUid: unchangedUid,
+    status: 'active',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+  await setDoc(doc(db, `restaurants/${unchangedUid}/members/${unchangedUid}`), {
+    authUid: unchangedUid,
+    restaurantId: unchangedUid,
+    employeeId: null,
+    permissionProfileId: null,
+    invitationId: null,
+    role: 'owner',
+    status: 'active',
+    createdAt: serverTimestamp(),
+    acceptedAt: serverTimestamp()
+  })
+
+  assert.equal((await getDoc(doc(db, `accounts/${unchangedUid}`))).data().email, newEmail)
+  assert.equal((await getDoc(doc(db, `restaurants/${unchangedUid}`))).exists(), true)
+})
+
+test('złe obecne hasło nie wysyła kodu zmiany e-maila', async () => {
+  const oldEmail = 'wrong-password@example.test'
+  const newEmail = 'unused-new@example.test'
+  const { auth } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    oldEmail,
+    'Testowe-haslo-123'
+  )
+
+  await assert.rejects(reauthenticateWithCredential(
+    credential.user,
+    EmailAuthProvider.credential(oldEmail, 'Bledne-haslo-123')
+  ), error => [
+    'auth/invalid-credential',
+    'auth/wrong-password'
+  ].includes(error?.code))
+  await assert.rejects(getEmailChangeCode(newEmail))
+  assert.equal(credential.user.email, oldEmail)
+})
+
+test('nie można zmienić e-maila na adres zajęty przez inne konto', async () => {
+  const occupiedEmail = 'occupied@example.test'
+  const password = 'Testowe-haslo-123'
+  const firstClient = createEmulatedClient()
+  const secondClient = createEmulatedClient()
+  await createUserWithEmailAndPassword(
+    secondClient.auth,
+    occupiedEmail,
+    password
+  )
+  const credential = await createUserWithEmailAndPassword(
+    firstClient.auth,
+    'owner-source@example.test',
+    password
+  )
+
+  await reauthenticateWithCredential(
+    credential.user,
+    EmailAuthProvider.credential(credential.user.email, password)
+  )
+  await assert.rejects(
+    verifyBeforeUpdateEmail(credential.user, occupiedEmail),
+    error => error?.code === 'auth/email-already-in-use'
+  )
+  assert.equal(credential.user.email, 'owner-source@example.test')
 })
 
 test('zweryfikowane konto przyjmuje zaproszenie atomowo w Auth i Firestore Emulatorze', async () => {

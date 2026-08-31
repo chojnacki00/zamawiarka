@@ -118,6 +118,20 @@ test('ostateczna akceptacja wymaga zweryfikowanego zgodnego konta', async () => 
   }), /innego adresu/)
 })
 
+test('zmiana e-maila konta nie pozwala przyjąć zaproszenia przypisanego do starego adresu', async () => {
+  const bundle = await createBundle(INVITATION_PURPOSES.ACCOUNT_ACTIVATION)
+  assert.throws(() => assertPrivateInvitationForAccount({
+    invitation: bundle.privateInvitation,
+    authUser: {
+      uid: 'auth-1',
+      email: 'zmieniony@example.com',
+      emailVerified: true
+    },
+    purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
+    now: new Date('2026-09-01T10:00:00Z')
+  }), /innego adresu/)
+})
+
 test('zaproszenie urządzenia jest związane z właściwym authUid', async () => {
   const bundle = await createBundle(INVITATION_PURPOSES.DEVICE_ENROLLMENT)
   assert.throws(() => assertPrivateInvitationForAccount({

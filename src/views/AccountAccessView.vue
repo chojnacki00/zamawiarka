@@ -10,6 +10,7 @@
         <p>Potwierdź adres <strong>{{ sessionStore.authUser?.email }}</strong>, a następnie wróć tutaj.</p>
         <button class="primary-button" type="button" :disabled="isBusy" @click="checkVerification">Sprawdź potwierdzenie</button>
         <button class="secondary-button" type="button" :disabled="isBusy" @click="sendVerification">Wyślij wiadomość ponownie</button>
+        <button class="secondary-button" type="button" :disabled="isBusy" @click="openEmailChangeModal">Zmień adres e-mail</button>
       </template>
 
       <template v-else-if="sessionStore.accessRevoked">
@@ -63,6 +64,29 @@
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       <button class="logout-button" type="button" :disabled="isBusy" @click="logoutDevice">Wyloguj to urządzenie</button>
     </section>
+
+    <div v-if="isEmailChangeModalOpen" class="dialog-overlay" role="presentation" @click.self="closeEmailChangeModal">
+      <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="email-change-title">
+        <h2 id="email-change-title">Zmień adres e-mail</h2>
+        <label>
+          <span>Aktualny adres</span>
+          <input :value="sessionStore.authUser?.email || ''" type="email" readonly>
+        </label>
+        <label>
+          <span>Nowy adres e-mail</span>
+          <input v-model="emailChangeForm.newEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none">
+        </label>
+        <label>
+          <span>Obecne hasło</span>
+          <input v-model="emailChangeForm.currentPassword" type="password" autocomplete="current-password">
+        </label>
+        <p v-if="emailChangeError" class="error-message">{{ emailChangeError }}</p>
+        <div class="dialog-actions">
+          <button class="secondary-button" type="button" :disabled="isEmailChangePending" @click="closeEmailChangeModal">Anuluj</button>
+          <button class="primary-button" type="button" :disabled="isEmailChangePending || !emailChangeForm.newEmail.trim() || !emailChangeForm.currentPassword" @click="submitEmailChange">Wyślij potwierdzenie</button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>
 
@@ -73,6 +97,11 @@ import { sendEmailVerification } from 'firebase/auth'
 import { auth } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { buildAccountReturnUrl } from '../config/publicAppUrl.js'
+import {
+  buildEmailChangeActionCodeSettings,
+  getAccountEmailChangeErrorMessage,
+  requestVerifiedAccountEmailChange
+} from '../utils/accountEmailChange.js'
 
 const router = useRouter()
 const sessionStore = useAccountSessionStore()
@@ -81,6 +110,13 @@ const pinConfirmation = ref('')
 const isBusy = ref(false)
 const message = ref('')
 const errorMessage = ref('')
+const isEmailChangeModalOpen = ref(false)
+const isEmailChangePending = ref(false)
+const emailChangeError = ref('')
+const emailChangeForm = ref({
+  newEmail: '',
+  currentPassword: ''
+})
 
 const heading = computed(() => {
   if (sessionStore.needsEmailVerification) return 'Potwierdź e-mail'
@@ -125,6 +161,51 @@ const checkVerification = () => runAction(async () => {
   if (!verified) errorMessage.value = 'Adres e-mail nie jest jeszcze potwierdzony.'
 })
 
+const clearEmailChangeForm = () => {
+  emailChangeForm.value.newEmail = ''
+  emailChangeForm.value.currentPassword = ''
+  emailChangeError.value = ''
+}
+
+const openEmailChangeModal = () => {
+  clearEmailChangeForm()
+  isEmailChangeModalOpen.value = true
+}
+
+const closeEmailChangeModal = () => {
+  if (isEmailChangePending.value) return
+  clearEmailChangeForm()
+  isEmailChangeModalOpen.value = false
+}
+
+const submitEmailChange = async () => {
+  isEmailChangePending.value = true
+  emailChangeError.value = ''
+  message.value = ''
+  errorMessage.value = ''
+  try {
+    await requestVerifiedAccountEmailChange({
+      user: auth.currentUser,
+      currentPassword: emailChangeForm.value.currentPassword,
+      newEmail: emailChangeForm.value.newEmail,
+      authInstance: auth,
+      actionCodeSettings: buildEmailChangeActionCodeSettings()
+    })
+    isEmailChangeModalOpen.value = false
+    emailChangeForm.value.newEmail = ''
+    message.value = 'Wysłaliśmy link potwierdzający na nowy adres. E-mail konta zmieni się dopiero po kliknięciu linku.'
+  } catch (error) {
+    console.error(
+      'Błąd żądania zmiany e-maila:',
+      error?.code || 'account/email-change-failed'
+    )
+    emailChangeError.value = getAccountEmailChangeErrorMessage(error)
+  } finally {
+    emailChangeForm.value.currentPassword = ''
+    isEmailChangePending.value = false
+  }
+}
+
 const chooseRestaurant = restaurantId => runAction(async () => {
   await sessionStore.selectRestaurant(restaurantId)
   if (!sessionStore.needsLocalPinSetup) await router.replace('/')
@@ -157,7 +238,20 @@ const logoutDevice = () => runAction(async () => {
 })
 
 onMounted(async () => {
-  if (auth.currentUser && !sessionStore.isInitialized) {
+  if (!auth.currentUser) return
+
+  if (
+    auth.currentUser.emailVerified === false ||
+    sessionStore.needsEmailVerification
+  ) {
+    const verified = await sessionStore.refreshAfterEmailVerification()
+    if (verified) {
+      message.value = 'Adres e-mail został potwierdzony.'
+      return
+    }
+  }
+
+  if (!sessionStore.isInitialized) {
     await sessionStore.initializeForUser(auth.currentUser)
   }
 })
@@ -182,4 +276,9 @@ button:disabled { opacity: .48; }
 .success-message { color: #166534 !important; }
 .error-message { color: #b91c1c !important; }
 .status-copy { padding: 20px; color: #64748b; text-align: center; }
+.dialog-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; box-sizing: border-box; padding: 18px; background: rgba(15, 23, 42, .42); }
+.dialog-card { display: grid; width: min(420px, 100%); max-height: calc(100dvh - 36px); box-sizing: border-box; gap: 14px; overflow: auto; padding: 22px; border-radius: 20px; background: #fff; box-shadow: 0 22px 55px rgba(15, 23, 42, .22); }
+.dialog-card h2 { margin: 0; color: #111827; font-size: 21px; }.dialog-card label { display: grid; gap: 7px; color: #64748b; font-size: 12px; font-weight: 800; text-transform: uppercase; }.dialog-card input { width: 100%; min-height: 48px; box-sizing: border-box; padding: 12px 13px; border: 1px solid #cbd5e1; border-radius: 12px; color: #111827; background: #fff; font-size: 16px; text-transform: none; }.dialog-card input[readonly] { color: #64748b; background: #f8fafc; }.dialog-card input:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; caret-color: #007aff; }
+.dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+@media (max-width: 380px) { .dialog-actions { grid-template-columns: 1fr; }.dialog-actions .primary-button { order: -1; } }
 </style>
