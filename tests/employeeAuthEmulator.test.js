@@ -161,25 +161,53 @@ test('zweryfikowane konto przyjmuje zaproszenie atomowo w Auth i Firestore Emula
   await applyActionCode(auth, await getVerificationCode(email))
   await credential.user.reload()
   await credential.user.getIdToken(true)
+  const authTime = Number(
+    (await credential.user.getIdTokenResult()).claims.auth_time
+  )
+  const tokenHash = 'a'.repeat(64)
+  const slotId = 'restaurant-a__employee-1__ACCOUNT_ACTIVATION'
+  const expiresAt = Timestamp.fromMillis(Date.now() + 60 * 60 * 1000)
 
   await seed([
     ['users/restaurant-a/employees/employee-1', {
       aktywny: true,
       permissionProfileId: 'profile-1'
     }],
-    ['restaurants/restaurant-a/invitations/invite-1', {
-      id: 'invite-1',
+    [`identityInvitations/${tokenHash}`, {
+      id: tokenHash,
+      tokenHash,
+      slotId,
+      purpose: 'ACCOUNT_ACTIVATION',
       restaurantId: 'restaurant-a',
       employeeId: 'employee-1',
       permissionProfileId: 'profile-1',
-      email,
       emailNormalized: email,
+      emailHash: 'e'.repeat(64),
+      targetAuthUid: null,
       status: 'pending',
-      invitedByAuthUid: 'owner-auth',
+      createdByAuthUid: 'owner-auth',
       createdAt: Timestamp.now(),
-      expiresAt: Timestamp.fromMillis(Date.now() + 60 * 60 * 1000),
-      acceptedAt: null,
-      acceptedByAuthUid: null
+      expiresAt
+    }],
+    [`activationInvitations/${tokenHash}`, {
+      id: tokenHash,
+      tokenHash,
+      purpose: 'ACCOUNT_ACTIVATION',
+      restaurantNameSnapshot: 'Restauracja testowa',
+      maskedEmail: 'i***@example.test',
+      emailHash: 'e'.repeat(64),
+      status: 'pending',
+      createdAt: Timestamp.now(),
+      expiresAt
+    }],
+    [`restaurants/restaurant-a/identityInvitationSlots/${slotId}`, {
+      id: slotId,
+      tokenHash,
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-1',
+      purpose: 'ACCOUNT_ACTIVATION',
+      createdAt: Timestamp.now(),
+      expiresAt
     }]
   ])
 
@@ -187,32 +215,63 @@ test('zweryfikowane konto przyjmuje zaproszenie atomowo w Auth i Firestore Emula
     db,
     `restaurants/restaurant-a/members/${credential.user.uid}`
   )
-  const invitationRef = doc(
+  const invitationRef = doc(db, `identityInvitations/${tokenHash}`)
+  const publicRef = doc(db, `activationInvitations/${tokenHash}`)
+  const slotRef = doc(
     db,
-    'restaurants/restaurant-a/invitations/invite-1'
+    `restaurants/restaurant-a/identityInvitationSlots/${slotId}`
+  )
+  const deviceRef = doc(
+    db,
+    `restaurants/restaurant-a/members/${credential.user.uid}/deviceSessions/${authTime}`
   )
   await runTransaction(db, async transaction => {
-    const invitation = await transaction.get(invitationRef)
+    const [invitation] = await Promise.all([
+      transaction.get(invitationRef),
+      transaction.get(publicRef),
+      transaction.get(slotRef),
+      transaction.get(memberRef),
+      transaction.get(deviceRef)
+    ])
     assert.equal(invitation.exists(), true)
     transaction.set(memberRef, {
       authUid: credential.user.uid,
       restaurantId: 'restaurant-a',
       employeeId: 'employee-1',
       permissionProfileId: 'profile-1',
-      invitationId: 'invite-1',
+      invitationId: tokenHash,
       role: 'employee',
       status: 'active',
       createdAt: serverTimestamp(),
       acceptedAt: serverTimestamp()
     })
+    transaction.set(deviceRef, {
+      deviceId: 'device-auth-emulator-0001',
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-1',
+      authUid: credential.user.uid,
+      deviceName: 'Telefon testowy',
+      platform: 'Auth Emulator',
+      authTime,
+      status: 'active',
+      addedAt: serverTimestamp(),
+      lastActiveAt: serverTimestamp(),
+      approvedAt: serverTimestamp(),
+      approvedByAuthUid: 'owner-auth',
+      invitationId: tokenHash,
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    })
     transaction.delete(invitationRef)
+    transaction.delete(publicRef)
+    transaction.delete(slotRef)
   })
 
   assert.equal((await getDoc(memberRef)).exists(), true)
   await rulesEnv.withSecurityRulesDisabled(async adminContext => {
     assert.equal((await getDoc(doc(
       adminContext.firestore(),
-      'restaurants/restaurant-a/invitations/invite-1'
+      `identityInvitations/${tokenHash}`
     ))).exists(), false)
   })
   assert.notEqual(credential.user.uid, 'restaurant-a')

@@ -32,6 +32,18 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId));
     }
 
+    function hasApprovedEmployeeSession(restaurantId, member) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      let session = get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime));
+      return authTime is int &&
+        authTime > 0 &&
+        session.data.authUid == request.auth.uid &&
+        session.data.restaurantId == restaurantId &&
+        session.data.employeeId == member.data.employeeId &&
+        session.data.authTime == authTime &&
+        session.data.status == 'active';
+    }
+
     function hasActiveMembership(restaurantId) {
       let member = memberDocument(restaurantId);
       return hasVerifiedEmail() &&
@@ -43,6 +55,7 @@ service cloud.firestore {
           (
             member.data.role == 'employee' &&
             member.data.employeeId is string &&
+            hasApprovedEmployeeSession(restaurantId, member) &&
             employeeDocument(restaurantId, member.data.employeeId).data.aktywny != false &&
             employeeDocument(
               restaurantId,
@@ -99,42 +112,53 @@ service cloud.firestore {
         invitation.emailNormalized == request.auth.token.get('email', null);
     }
 
-    function invitationWasConsumedAtomically(restaurantId, invitationId) {
-      let invitationPath = /databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(invitationId);
-      let invitationBefore = get(invitationPath);
-      return invitationBefore.data.status == 'pending' &&
-        invitationBefore.data.acceptedAt == null &&
-        invitationBefore.data.acceptedByAuthUid == null &&
-        invitationBefore.data.expiresAt > request.time &&
-        invitationMatchesAuthenticatedEmail(invitationBefore.data) &&
-        !existsAfter(invitationPath);
+    function pendingInvitationIsValid(invitation, invitationId) {
+      return invitation.id == invitationId &&
+        invitation.tokenHash == invitationId &&
+        invitation.status == 'pending' &&
+        invitation.expiresAt > request.time &&
+        invitationMatchesAuthenticatedEmail(invitation);
     }
 
-    function invitationIsConsumedByAuthenticatedAccount(
-      restaurantId,
-      invitationId
-    ) {
-      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid);
-      let memberAfter = getAfter(memberPath);
-      return invitationMatchesAuthenticatedEmail(resource.data) &&
-        resource.data.status == 'pending' &&
-        resource.data.acceptedAt == null &&
-        resource.data.acceptedByAuthUid == null &&
-        resource.data.expiresAt > request.time &&
-        existsAfter(memberPath) &&
-        memberAfter.data.authUid == request.auth.uid &&
-        memberAfter.data.restaurantId == restaurantId &&
-        memberAfter.data.employeeId == resource.data.employeeId &&
-        memberAfter.data.permissionProfileId ==
-          resource.data.permissionProfileId &&
-        memberAfter.data.invitationId == invitationId &&
-        memberAfter.data.role == 'employee' &&
-        memberAfter.data.status == 'active';
+    function invitationWasConsumedAtomically(invitationId) {
+      let invitationPath = /databases/$(database)/documents/identityInvitations/$(invitationId);
+      let invitation = get(invitationPath);
+      let publicPath = /databases/$(database)/documents/activationInvitations/$(invitationId);
+      let slotPath = /databases/$(database)/documents/restaurants/$(invitation.data.restaurantId)/identityInvitationSlots/$(invitation.data.slotId);
+      return pendingInvitationIsValid(invitation.data, invitationId) &&
+        !existsAfter(invitationPath) &&
+        !existsAfter(publicPath) &&
+        !existsAfter(slotPath);
+    }
+
+    function invitationArtifactsWereRemoved(invitation, invitationId) {
+      let publicPath = /databases/$(database)/documents/activationInvitations/$(invitationId);
+      let slotPath = /databases/$(database)/documents/restaurants/$(invitation.restaurantId)/identityInvitationSlots/$(invitation.slotId);
+      return !existsAfter(publicPath) &&
+        (
+          !existsAfter(slotPath) ||
+          getAfter(slotPath).data.tokenHash != invitationId
+        );
+    }
+
+    function approvedSessionExistsAfter(restaurantId, employeeId, invitationId) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      let sessionPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime);
+      let session = getAfter(sessionPath);
+      return authTime is int &&
+        existsAfter(sessionPath) &&
+        session.data.authUid == request.auth.uid &&
+        session.data.restaurantId == restaurantId &&
+        session.data.employeeId == employeeId &&
+        session.data.authTime == authTime &&
+        session.data.invitationId == invitationId &&
+        session.data.status == 'active';
     }
 
     function isValidInvitedMembership(restaurantId, memberId) {
       let incoming = request.resource.data;
       let employee = employeeDocument(restaurantId, incoming.employeeId);
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
       return memberId == request.auth.uid &&
         incoming.keys().hasOnly([
           'authUid',
@@ -157,12 +181,16 @@ service cloud.firestore {
         incoming.createdAt is timestamp &&
         incoming.acceptedAt is timestamp &&
         employee.data.aktywny != false &&
-        invitationWasConsumedAtomically(
+        invitation.data.purpose == 'ACCOUNT_ACTIVATION' &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.employeeId == incoming.employeeId &&
+        invitation.data.permissionProfileId == incoming.permissionProfileId &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        approvedSessionExistsAfter(
           restaurantId,
+          incoming.employeeId,
           incoming.invitationId
-        ) &&
-        get(/databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(incoming.invitationId)).data.employeeId == incoming.employeeId &&
-        get(/databases/$(database)/documents/restaurants/$(restaurantId)/invitations/$(incoming.invitationId)).data.permissionProfileId == incoming.permissionProfileId;
+        );
     }
 
     function isValidOwnerBootstrap(restaurantId, memberId) {
@@ -188,6 +216,78 @@ service cloud.firestore {
         request.resource.data.role == resource.data.role &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.acceptedAt == resource.data.acceptedAt;
+    }
+
+    function isValidDeviceSessionCreate(restaurantId, memberId) {
+      let incoming = request.resource.data;
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
+      let memberAfter = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(memberId));
+      return hasVerifiedEmail() &&
+        memberId == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'deviceId',
+          'restaurantId',
+          'employeeId',
+          'authUid',
+          'deviceName',
+          'platform',
+          'authTime',
+          'status',
+          'addedAt',
+          'lastActiveAt',
+          'approvedAt',
+          'approvedByAuthUid',
+          'invitationId',
+          'disconnectedAt',
+          'disconnectedByAuthUid'
+        ]) &&
+        incoming.deviceId is string &&
+        incoming.deviceId.size() >= 16 &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == invitation.data.employeeId &&
+        incoming.authUid == request.auth.uid &&
+        incoming.deviceName is string &&
+        incoming.deviceName.size() > 0 &&
+        incoming.deviceName.size() <= 80 &&
+        incoming.platform is string &&
+        incoming.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.status == 'active' &&
+        incoming.addedAt is timestamp &&
+        incoming.lastActiveAt is timestamp &&
+        incoming.approvedAt is timestamp &&
+        incoming.approvedByAuthUid == invitation.data.createdByAuthUid &&
+        incoming.disconnectedAt == null &&
+        incoming.disconnectedByAuthUid == null &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.targetAuthUid in [null, request.auth.uid] &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        memberAfter.data.authUid == request.auth.uid &&
+        memberAfter.data.restaurantId == restaurantId &&
+        memberAfter.data.employeeId == invitation.data.employeeId &&
+        memberAfter.data.status == 'active' &&
+        (
+          (
+            invitation.data.purpose == 'ACCOUNT_ACTIVATION' &&
+            invitation.data.targetAuthUid == null &&
+            memberAfter.data.invitationId == incoming.invitationId
+          ) ||
+          (
+            invitation.data.purpose == 'DEVICE_ENROLLMENT' &&
+            invitation.data.targetAuthUid == request.auth.uid
+          )
+        );
+    }
+
+    function deviceIdentityIsUnchanged() {
+      return request.resource.data.deviceId == resource.data.deviceId &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.authUid == resource.data.authUid &&
+        request.resource.data.authTime == resource.data.authTime &&
+        request.resource.data.addedAt == resource.data.addedAt &&
+        request.resource.data.approvedAt == resource.data.approvedAt &&
+        request.resource.data.approvedByAuthUid == resource.data.approvedByAuthUid &&
+        request.resource.data.invitationId == resource.data.invitationId;
     }
 
     match /accounts/{authUid} {
@@ -258,49 +358,224 @@ service cloud.firestore {
           canManageEmployees(restaurantId) &&
           memberId != request.auth.uid
         );
+
+        match /deviceSessions/{sessionId} {
+          allow get: if (
+            isSignedIn() && memberId == request.auth.uid
+          ) || canManageEmployees(restaurantId);
+          allow list: if canManageEmployees(restaurantId);
+          allow create: if isValidDeviceSessionCreate(restaurantId, memberId);
+          allow update: if deviceIdentityIsUnchanged() && (
+            (
+              canManageEmployees(restaurantId) &&
+              memberId != request.auth.uid &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status',
+                'disconnectedAt',
+                'disconnectedByAuthUid'
+              ]) &&
+              request.resource.data.status == 'disconnected' &&
+              request.resource.data.disconnectedAt is timestamp &&
+              request.resource.data.disconnectedByAuthUid == request.auth.uid
+            ) ||
+            (
+              memberId == request.auth.uid &&
+              resource.data.status == 'active' &&
+              resource.data.authTime == request.auth.token.get('auth_time', 0) &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'lastActiveAt'
+              ]) &&
+              request.resource.data.lastActiveAt is timestamp
+            )
+          );
+          allow delete: if canManageEmployees(restaurantId) &&
+            resource.data.status == 'disconnected';
+        }
       }
 
       match /invitations/{invitationId} {
-        allow read: if canManageEmployees(restaurantId) ||
-          invitationMatchesAuthenticatedEmail(resource.data);
+        allow read, write: if false;
+      }
+
+      match /identityInvitationSlots/{slotId} {
+        allow get: if canManageEmployees(restaurantId) ||
+          invitationMatchesAuthenticatedEmail(
+            get(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)).data
+          );
+        allow list: if canManageEmployees(restaurantId);
         allow create: if canManageEmployees(restaurantId) &&
           request.resource.data.keys().hasOnly([
             'id',
+            'tokenHash',
             'restaurantId',
             'employeeId',
-            'permissionProfileId',
-            'email',
-            'emailNormalized',
-            'status',
-            'invitedByAuthUid',
+            'purpose',
             'createdAt',
-            'expiresAt',
-            'acceptedAt',
-            'acceptedByAuthUid'
+            'expiresAt'
           ]) &&
-          request.resource.data.id == invitationId &&
+          request.resource.data.id == slotId &&
           request.resource.data.restaurantId == restaurantId &&
-          request.resource.data.employeeId is string &&
-          request.resource.data.permissionProfileId ==
-            employeeDocument(
-              restaurantId,
-              request.resource.data.employeeId
-            ).data.permissionProfileId &&
-          request.resource.data.email == request.resource.data.emailNormalized &&
-          request.resource.data.status == 'pending' &&
-          request.resource.data.invitedByAuthUid == request.auth.uid &&
-          request.resource.data.createdAt is timestamp &&
-          request.resource.data.expiresAt is timestamp &&
-          request.resource.data.expiresAt > request.time &&
-          request.resource.data.acceptedAt == null &&
-          request.resource.data.acceptedByAuthUid == null;
-        allow update: if false;
-        allow delete: if canManageEmployees(restaurantId) ||
-          invitationIsConsumedByAuthenticatedAccount(
-            restaurantId,
-            invitationId
-          );
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.purpose == request.resource.data.purpose &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.createdAt == request.resource.data.createdAt &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.expiresAt == request.resource.data.expiresAt;
+        allow update: if canManageEmployees(restaurantId) &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'tokenHash',
+            'restaurantId',
+            'employeeId',
+            'purpose',
+            'createdAt',
+            'expiresAt'
+          ]) &&
+          request.resource.data.id == slotId &&
+          request.resource.data.restaurantId == restaurantId &&
+          request.resource.data.employeeId == resource.data.employeeId &&
+          request.resource.data.purpose == resource.data.purpose &&
+          request.resource.data.tokenHash != resource.data.tokenHash &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.purpose == request.resource.data.purpose &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.createdAt == request.resource.data.createdAt &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.expiresAt == request.resource.data.expiresAt &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)) &&
+          !existsAfter(/databases/$(database)/documents/activationInvitations/$(resource.data.tokenHash));
+        allow delete: if (
+          canManageEmployees(restaurantId) &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)) &&
+          !existsAfter(/databases/$(database)/documents/activationInvitations/$(resource.data.tokenHash))
+        ) || (
+          invitationMatchesAuthenticatedEmail(
+            get(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)).data
+          ) &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash))
+        );
       }
+    }
+
+    match /identityInvitations/{invitationId} {
+      allow get: if invitationMatchesAuthenticatedEmail(resource.data) ||
+        canManageEmployees(resource.data.restaurantId);
+      allow list: if canManageEmployees(resource.data.restaurantId);
+      allow create: if canManageEmployees(request.resource.data.restaurantId) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'tokenHash',
+          'slotId',
+          'purpose',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'emailNormalized',
+          'emailHash',
+          'targetAuthUid',
+          'status',
+          'createdByAuthUid',
+          'createdAt',
+          'expiresAt'
+        ]) &&
+        request.resource.data.id == invitationId &&
+        request.resource.data.tokenHash == invitationId &&
+        request.resource.data.purpose in [
+          'ACCOUNT_ACTIVATION',
+          'DEVICE_ENROLLMENT'
+        ] &&
+        request.resource.data.restaurantId is string &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.permissionProfileId == employeeDocument(
+          request.resource.data.restaurantId,
+          request.resource.data.employeeId
+        ).data.permissionProfileId &&
+        request.resource.data.emailNormalized is string &&
+        request.resource.data.emailHash is string &&
+        request.resource.data.emailHash.size() == 64 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdByAuthUid == request.auth.uid &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.expiresAt is timestamp &&
+        request.resource.data.createdAt <= request.time &&
+        request.resource.data.expiresAt <=
+          request.time + duration.value(7, 'd') &&
+        request.resource.data.expiresAt > request.time &&
+        request.resource.data.expiresAt ==
+          request.resource.data.createdAt + duration.value(7, 'd') &&
+        (
+          (
+            request.resource.data.purpose == 'ACCOUNT_ACTIVATION' &&
+            request.resource.data.targetAuthUid == null
+          ) ||
+          (
+            request.resource.data.purpose == 'DEVICE_ENROLLMENT' &&
+            request.resource.data.targetAuthUid is string &&
+            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.authUid == request.resource.data.targetAuthUid &&
+            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.employeeId == request.resource.data.employeeId &&
+            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.status == 'active'
+          )
+        ) &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.tokenHash == invitationId &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.emailHash == request.resource.data.emailHash &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.purpose == request.resource.data.purpose &&
+        getAfter(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/identityInvitationSlots/$(request.resource.data.slotId)).data.tokenHash == invitationId;
+      allow update: if false;
+      allow delete: if (
+        canManageEmployees(resource.data.restaurantId) &&
+        invitationArtifactsWereRemoved(resource.data, invitationId)
+      ) || (
+        pendingInvitationIsValid(resource.data, invitationId) &&
+        invitationWasConsumedAtomically(invitationId) &&
+        approvedSessionExistsAfter(
+          resource.data.restaurantId,
+          resource.data.employeeId,
+          invitationId
+        )
+      );
+    }
+
+    match /activationInvitations/{invitationId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if canManageEmployees(
+        getAfter(/databases/$(database)/documents/identityInvitations/$(invitationId)).data.restaurantId
+      ) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'tokenHash',
+          'purpose',
+          'restaurantNameSnapshot',
+          'maskedEmail',
+          'emailHash',
+          'status',
+          'createdAt',
+          'expiresAt'
+        ]) &&
+        request.resource.data.id == invitationId &&
+        request.resource.data.tokenHash == invitationId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.emailHash is string &&
+        request.resource.data.emailHash.size() == 64 &&
+        request.resource.data.maskedEmail is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.expiresAt is timestamp &&
+        request.resource.data.createdAt == getAfter(
+          /databases/$(database)/documents/identityInvitations/$(invitationId)
+        ).data.createdAt &&
+        request.resource.data.expiresAt == getAfter(
+          /databases/$(database)/documents/identityInvitations/$(invitationId)
+        ).data.expiresAt;
+      allow update: if false;
+      allow delete: if (
+        canManageEmployees(
+          get(/databases/$(database)/documents/identityInvitations/$(invitationId)).data.restaurantId
+        ) &&
+        !existsAfter(/databases/$(database)/documents/identityInvitations/$(invitationId))
+      ) || (
+        invitationMatchesAuthenticatedEmail(
+          get(/databases/$(database)/documents/identityInvitations/$(invitationId)).data
+        ) &&
+        !existsAfter(/databases/$(database)/documents/identityInvitations/$(invitationId))
+      );
     }
 
     match /{path=**}/members/{memberId} {
@@ -308,8 +583,8 @@ service cloud.firestore {
         resource.data.authUid == request.auth.uid;
     }
 
-    match /{path=**}/invitations/{invitationId} {
-      allow read: if invitationMatchesAuthenticatedEmail(resource.data);
+    match /{path=**}/deviceSessions/{sessionId} {
+      allow list: if canManageEmployees(resource.data.restaurantId);
     }
 
     match /pairing_codes/{codeId} {

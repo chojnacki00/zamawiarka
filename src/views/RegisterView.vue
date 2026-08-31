@@ -25,6 +25,7 @@ import {
   updateProfile
 } from 'firebase/auth'
 import { auth, authPersistenceReady } from '../firebase.js'
+import { buildAccountReturnUrl } from '../config/publicAppUrl.js'
 import { isValidAccountEmail } from '../utils/employeeIdentity.js'
 
 const router = useRouter()
@@ -56,7 +57,7 @@ const registerAccount = async () => {
     const credential = await createUserWithEmailAndPassword(auth, email, password)
     const displayName = String(form.value.displayName || '').trim()
     if (displayName) await updateProfile(credential.user, { displayName })
-    await sendEmailVerification(credential.user, { url: `${window.location.origin}/konto` })
+    await sendEmailVerification(credential.user, { url: buildAccountReturnUrl() })
     await router.replace('/konto')
   } catch (error) {
     console.error(

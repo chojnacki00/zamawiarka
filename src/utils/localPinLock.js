@@ -1,11 +1,11 @@
-const PIN_VERSION = 1
+const PIN_VERSION = 2
 const DEFAULT_ITERATIONS = 210000
 const SALT_BYTES = 16
 const BASE_DELAY_MS = 5000
 const MAX_DELAY_MS = 5 * 60 * 1000
 
-const getStorageKey = authUid => (
-  `gm_local_pin_v${PIN_VERSION}:${String(authUid || '').trim()}`
+const getStorageKey = ({ authUid, deviceId }) => (
+  `gm_local_pin_v${PIN_VERSION}:${String(authUid || '').trim()}:${String(deviceId || '').trim()}`
 )
 
 const bytesToBase64 = bytes => {
@@ -19,17 +19,20 @@ const base64ToBytes = value => Uint8Array.from(
   character => character.charCodeAt(0)
 )
 
-const readRecord = ({ authUid, storage }) => {
+const readRecord = ({ authUid, deviceId, storage }) => {
   try {
-    const value = storage?.getItem(getStorageKey(authUid))
+    const value = storage?.getItem(getStorageKey({ authUid, deviceId }))
     return value ? JSON.parse(value) : null
   } catch {
     return null
   }
 }
 
-const writeRecord = ({ authUid, storage, record }) => {
-  storage?.setItem(getStorageKey(authUid), JSON.stringify(record))
+const writeRecord = ({ authUid, deviceId, storage, record }) => {
+  storage?.setItem(
+    getStorageKey({ authUid, deviceId }),
+    JSON.stringify(record)
+  )
 }
 
 export const isValidLocalPin = pin => /^\d{4}$/.test(String(pin || ''))
@@ -82,12 +85,17 @@ const constantTimeEqual = (left, right) => {
   return difference === 0
 }
 
-export const hasLocalPin = ({ authUid, storage = localStorage } = {}) => (
-  Boolean(readRecord({ authUid, storage })?.verifier)
+export const hasLocalPin = ({
+  authUid,
+  deviceId,
+  storage = localStorage
+} = {}) => (
+  Boolean(readRecord({ authUid, deviceId, storage })?.verifier)
 )
 
 export const setLocalPin = async ({
   authUid,
+  deviceId,
   pin,
   storage = localStorage,
   cryptoImpl = crypto,
@@ -95,6 +103,10 @@ export const setLocalPin = async ({
 } = {}) => {
   if (!String(authUid || '').trim()) {
     throw new Error('Brak konta dla lokalnego PIN-u.')
+  }
+
+  if (!String(deviceId || '').trim()) {
+    throw new Error('Brak zatwierdzonego urządzenia dla lokalnego PIN-u.')
   }
 
   if (!isValidLocalPin(pin)) {
@@ -117,18 +129,19 @@ export const setLocalPin = async ({
     blockedUntil: 0
   }
 
-  writeRecord({ authUid, storage, record })
+  writeRecord({ authUid, deviceId, storage, record })
   return record
 }
 
 export const verifyLocalPin = async ({
   authUid,
+  deviceId,
   pin,
   storage = localStorage,
   cryptoImpl = crypto,
   now = Date.now()
 } = {}) => {
-  const record = readRecord({ authUid, storage })
+  const record = readRecord({ authUid, deviceId, storage })
 
   if (!record?.salt || !record?.verifier) {
     return { ok: false, missing: true, retryAfterMs: 0 }
@@ -154,6 +167,7 @@ export const verifyLocalPin = async ({
   if (constantTimeEqual(verifier, record.verifier)) {
     writeRecord({
       authUid,
+      deviceId,
       storage,
       record: { ...record, failedAttempts: 0, blockedUntil: 0 }
     })
@@ -167,7 +181,7 @@ export const verifyLocalPin = async ({
     failedAttempts,
     blockedUntil: delayMs ? now + delayMs : 0
   }
-  writeRecord({ authUid, storage, record: nextRecord })
+  writeRecord({ authUid, deviceId, storage, record: nextRecord })
 
   return {
     ok: false,
@@ -179,7 +193,8 @@ export const verifyLocalPin = async ({
 
 export const clearLocalPin = ({
   authUid,
+  deviceId,
   storage = localStorage
 } = {}) => {
-  storage?.removeItem(getStorageKey(authUid))
+  storage?.removeItem(getStorageKey({ authUid, deviceId }))
 }

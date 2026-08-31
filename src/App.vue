@@ -5425,7 +5425,7 @@ watch(
       resetCompanyDataState()
       isDataLoaded.value = true
       isLoggedIn.value = true
-      if (router.currentRoute.value.path !== '/konto') {
+      if (!['/konto', '/aktywacja'].includes(router.currentRoute.value.path)) {
         await router.replace('/konto')
       }
       return
@@ -5495,7 +5495,7 @@ onMounted(() => {
         await activateLegacyPinRestaurant(employeeAuthStore.currentEmployee)
       } 
       // 3. Jeśli nie ma pracownika i nie jesteśmy na ekranie logowania PIN, wyrzucamy na login
-      else if (!['/logowanie', '/login', '/rejestracja'].includes(currentPath)) {
+      else if (!['/logowanie', '/login', '/rejestracja', '/aktywacja'].includes(currentPath)) {
         router.push('/login') 
       }
       // === KONIEC POPRAWKI ===
@@ -5512,7 +5512,7 @@ onMounted(() => {
       await activateAccountRestaurant()
     } else {
       isDataLoaded.value = true
-      if (router.currentRoute.value.path !== '/konto') {
+      if (!['/konto', '/aktywacja'].includes(router.currentRoute.value.path)) {
         await router.replace('/konto')
       }
     }

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import {
   collection,
   collectionGroup,
+  clearIndexedDbPersistence,
   doc,
   getDoc,
   getDocs,
@@ -12,24 +13,37 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  terminate,
   updateDoc,
+  writeBatch,
   where
 } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { auth, db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import {
-  assertInvitationCanBeAccepted,
-  assertInvitationMembershipMatch,
   buildAccountDocument,
-  buildInvitationDocument,
   buildMembershipDocument,
   buildRestaurantDocument,
-  isValidAccountEmail,
   normalizeAccountEmail,
   resolveLegacyOwnerBootstrapRestaurantId,
   resolveMembershipSelection
 } from '../utils/employeeIdentity.js'
+import {
+  assertPrivateInvitationForAccount,
+  createIdentityInvitationBundle,
+  hashIdentityValue,
+  INVITATION_PURPOSES,
+  normalizeIdentityEmail
+} from '../utils/identityInvitations.js'
+import {
+  buildDeviceSessionDocument,
+  clearLocalApprovedDevice,
+  getDeviceSessionId,
+  getFirebaseAuthTime,
+  getPlatformDescription,
+  saveLocalApprovedDevice
+} from '../utils/deviceAccess.js'
 import {
   clearLocalPin,
   hasLocalPin,
@@ -37,6 +51,7 @@ import {
   verifyLocalPin
 } from '../utils/localPinLock.js'
 import {
+  cleanupDisconnectedDeviceSessions,
   cleanupExpiredInvitations,
   cleanupExpiredPairingCodes
 } from '../services/temporaryDataCleanup.js'
@@ -67,6 +82,8 @@ export const useAccountSessionStore = defineStore(
     const isLoading = ref(false)
     const error = ref('')
     const accessRevoked = ref(false)
+    const deviceApprovalRequired = ref(false)
+    const currentDeviceSession = ref(null)
     const localPinConfigured = ref(false)
     const isPinLocked = ref(false)
     const requiresRestaurantSelection = ref(false)
@@ -74,6 +91,8 @@ export const useAccountSessionStore = defineStore(
     let unsubscribeMembership = null
     let unsubscribeEmployee = null
     let unsubscribePermissionProfile = null
+    let unsubscribeDeviceSession = null
+    let isHandlingDeviceDisconnect = false
 
     const employeeAuthStore = useEmployeeAuthStore()
 
@@ -99,9 +118,13 @@ export const useAccountSessionStore = defineStore(
         currentMembership.value?.status === 'active' &&
         currentRestaurantId.value &&
         !accessRevoked.value &&
+        !deviceApprovalRequired.value &&
         !requiresRestaurantSelection.value &&
         !isPinLocked.value &&
-        (!isEmployeeMembership.value || localPinConfigured.value)
+        (!isEmployeeMembership.value || (
+          localPinConfigured.value &&
+          currentDeviceSession.value?.status === 'active'
+        ))
       )
     ))
     const requiresAccountAction = computed(() => (
@@ -110,6 +133,7 @@ export const useAccountSessionStore = defineStore(
         isPinLocked.value ||
         needsLocalPinSetup.value ||
         pendingInvitations.value.length > 0 ||
+        deviceApprovalRequired.value ||
         requiresRestaurantSelection.value ||
         accessRevoked.value ||
         !currentMembership.value
@@ -120,9 +144,11 @@ export const useAccountSessionStore = defineStore(
       if (unsubscribeMembership) unsubscribeMembership()
       if (unsubscribeEmployee) unsubscribeEmployee()
       if (unsubscribePermissionProfile) unsubscribePermissionProfile()
+      if (unsubscribeDeviceSession) unsubscribeDeviceSession()
       unsubscribeMembership = null
       unsubscribeEmployee = null
       unsubscribePermissionProfile = null
+      unsubscribeDeviceSession = null
     }
 
     const clearSensitiveContext = () => {
@@ -133,6 +159,8 @@ export const useAccountSessionStore = defineStore(
       currentEmployee.value = null
       permissionProfile.value = null
       permissions.value = {}
+      currentDeviceSession.value = null
+      deviceApprovalRequired.value = false
       requiresRestaurantSelection.value = false
       employeeAuthStore.clearAuthenticatedRestaurantContext()
     }
@@ -160,6 +188,46 @@ export const useAccountSessionStore = defineStore(
       permissions.value = {}
       employeeAuthStore.clearAuthenticatedRestaurantContext()
       error.value = message
+    }
+
+    const handleDeviceDisconnected = async () => {
+      if (isHandlingDeviceDisconnect) return
+      isHandlingDeviceDisconnect = true
+      const authUid = authUser.value?.uid
+      const restaurantId = currentRestaurantId.value
+      const deviceId = currentDeviceSession.value?.deviceId
+
+      if (authUid && deviceId) clearLocalPin({ authUid, deviceId })
+      if (authUid && restaurantId) {
+        clearLocalApprovedDevice({ authUid, restaurantId })
+      }
+
+      handleAccessRevoked(
+        'To urządzenie zostało odłączone. Poproś managera o nowe zaproszenie urządzenia.'
+      )
+      deviceApprovalRequired.value = true
+      localPinConfigured.value = false
+      isPinLocked.value = false
+      try {
+        await signOut(auth)
+      } catch (caughtError) {
+        console.warn(
+          'Nie udało się zakończyć sesji Firebase po odłączeniu urządzenia:',
+          caughtError?.code || caughtError?.message
+        )
+      }
+      try {
+        await terminate(db)
+        await clearIndexedDbPersistence(db)
+      } catch (caughtError) {
+        console.warn(
+          'Nie udało się wyczyścić lokalnego cache po odłączeniu urządzenia:',
+          caughtError?.code || caughtError?.message
+        )
+      }
+      if (globalThis.location?.replace) {
+        globalThis.location.replace('/login')
+      }
     }
 
     const startContextListeners = () => {
@@ -239,6 +307,28 @@ export const useAccountSessionStore = defineStore(
 
       if (!isEmployeeMembership.value) return
 
+      if (currentDeviceSession.value?.sessionId) {
+        const sessionRef = doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'members',
+          authUser.value.uid,
+          'deviceSessions',
+          currentDeviceSession.value.sessionId
+        )
+        unsubscribeDeviceSession = onSnapshot(sessionRef, snapshot => {
+          if (!snapshot.exists() || snapshot.data().status !== 'active') {
+            void handleDeviceDisconnected()
+            return
+          }
+          currentDeviceSession.value = {
+            sessionId: snapshot.id,
+            ...snapshot.data()
+          }
+        })
+      }
+
       const employeeRef = doc(
         db,
         'users',
@@ -300,6 +390,16 @@ export const useAccountSessionStore = defineStore(
             }
           }
 
+          // Pracownik nie może odczytać dokumentu restauracji przed
+          // zatwierdzeniem bieżącej sesji urządzenia. Nazwa zostanie pobrana
+          // dopiero po pozytywnej kontroli w loadMembershipContext.
+          if (membership.role === 'employee') {
+            return {
+              ...membership,
+              restaurantName: membership.restaurantId
+            }
+          }
+
           let restaurantSnapshot
           try {
             restaurantSnapshot = await getDoc(doc(
@@ -329,36 +429,6 @@ export const useAccountSessionStore = defineStore(
 
       memberships.value = enriched
       return enriched
-    }
-
-    const fetchPendingInvitations = async user => {
-      if (!user.emailVerified || !user.email) {
-        pendingInvitations.value = []
-        return []
-      }
-
-      const email = normalizeAccountEmail(user.email)
-      const snapshot = await getDocs(query(
-        collectionGroup(db, 'invitations'),
-        where('emailNormalized', '==', email)
-      ))
-      const invitations = snapshot.docs
-        .map(invitationSnapshot => ({
-          id: invitationSnapshot.id,
-          ...invitationSnapshot.data(),
-          restaurantId:
-            invitationSnapshot.data().restaurantId ||
-            invitationSnapshot.ref.parent.parent?.id ||
-            null,
-          ref: invitationSnapshot.ref
-        }))
-        .filter(invitation => (
-          invitation.status === 'pending' &&
-          invitation.expiresAt?.toMillis?.() > Date.now()
-        ))
-
-      pendingInvitations.value = invitations
-      return invitations
     }
 
     const bootstrapLegacyOwnerIfNeeded = async ({
@@ -426,12 +496,82 @@ export const useAccountSessionStore = defineStore(
       return true
     }
 
-    const loadMembershipContext = async membership => {
+    const prepareEmployeeDeviceSession = async ({
+      membership,
+      pinUnlocked = false
+    }) => {
+      const authTime = await getFirebaseAuthTime(authUser.value)
+      const sessionId = getDeviceSessionId(authTime)
+      const sessionSnapshot = await getDoc(doc(
+        db,
+        'restaurants',
+        membership.restaurantId,
+        'members',
+        authUser.value.uid,
+        'deviceSessions',
+        sessionId
+      ))
+
+      if (
+        !sessionSnapshot.exists() ||
+        sessionSnapshot.data().status !== 'active' ||
+        sessionSnapshot.data().employeeId !== membership.employeeId
+      ) {
+        currentDeviceSession.value = null
+        deviceApprovalRequired.value = true
+        localPinConfigured.value = false
+        isPinLocked.value = false
+        return false
+      }
+
+      currentDeviceSession.value = {
+        sessionId,
+        ...sessionSnapshot.data()
+      }
+      deviceApprovalRequired.value = false
+      saveLocalApprovedDevice({
+        authUid: authUser.value.uid,
+        restaurantId: membership.restaurantId,
+        deviceId: sessionSnapshot.data().deviceId,
+        sessionId
+      })
+      localPinConfigured.value = hasLocalPin({
+        authUid: authUser.value.uid,
+        deviceId: sessionSnapshot.data().deviceId
+      })
+
+      if (!localPinConfigured.value) {
+        isPinLocked.value = false
+        return false
+      }
+      if (!pinUnlocked) {
+        isPinLocked.value = true
+        return false
+      }
+
+      isPinLocked.value = false
+      return true
+    }
+
+    const loadMembershipContext = async (
+      membership,
+      { pinUnlocked = false } = {}
+    ) => {
       stopSensitiveListeners()
       accessRevoked.value = false
+      error.value = ''
       currentMembership.value = membership
       currentRestaurantId.value = membership.restaurantId
       localStorage.setItem(ACTIVE_RESTAURANT_KEY, membership.restaurantId)
+
+      if (
+        membership.role === 'employee' &&
+        !(await prepareEmployeeDeviceSession({ membership, pinUnlocked }))
+      ) {
+        requiresRestaurantSelection.value = false
+        applyCompatibilityContext()
+        return
+      }
 
       const restaurantSnapshot = await getDoc(doc(
         db,
@@ -487,17 +627,27 @@ export const useAccountSessionStore = defineStore(
 
       requiresRestaurantSelection.value = false
       startContextListeners()
+      if (isEmployeeMembership.value && currentDeviceSession.value?.sessionId) {
+        void updateDoc(doc(
+          db,
+          'restaurants',
+          membership.restaurantId,
+          'members',
+          authUser.value.uid,
+          'deviceSessions',
+          currentDeviceSession.value.sessionId
+        ), { lastActiveAt: serverTimestamp() }).catch(() => {})
+      }
       applyCompatibilityContext()
     }
 
     const loadAccountContext = async user => {
       await upsertOwnAccount(user)
       let availableMemberships = await fetchOwnMemberships(user)
-      const invitations = await fetchPendingInvitations(user)
+      pendingInvitations.value = []
       const bootstrapped = await bootstrapLegacyOwnerIfNeeded({
         user,
-        availableMemberships,
-        invitations
+        availableMemberships
       })
 
       if (bootstrapped) {
@@ -548,14 +698,6 @@ export const useAccountSessionStore = defineStore(
         return
       }
 
-      localPinConfigured.value = hasLocalPin({ authUid: user.uid })
-
-      if (localPinConfigured.value) {
-        isPinLocked.value = true
-        isInitialized.value = true
-        return
-      }
-
       isLoading.value = true
       try {
         await loadAccountContext(user)
@@ -595,79 +737,139 @@ export const useAccountSessionStore = defineStore(
       await loadMembershipContext(membership)
     }
 
-    const acceptInvitation = async invitation => {
+    const acceptIdentityInvitation = async ({ token, deviceName }) => {
       const user = auth.currentUser
-
-      if (!user || !invitation?.ref) {
-        throw new Error('Brak danych zaproszenia.')
-      }
+      if (!user) throw new Error('Najpierw zaloguj się do konta GastroManager.')
 
       await user.reload()
       if (user.emailVerified) await user.getIdToken(true)
-      assertInvitationCanBeAccepted({
-        invitation,
+      const tokenHash = await hashIdentityValue(token)
+      const invitationRef = doc(db, 'identityInvitations', tokenHash)
+      const publicInvitationRef = doc(db, 'activationInvitations', tokenHash)
+      const invitationSnapshot = await getDoc(invitationRef)
+      if (!invitationSnapshot.exists()) {
+        throw new Error('Link jest nieważny, anulowany albo został już wykorzystany.')
+      }
+
+      const initialInvitation = invitationSnapshot.data()
+      assertPrivateInvitationForAccount({
+        invitation: initialInvitation,
         authUser: user,
-        now: new Date()
+        purpose: initialInvitation.purpose
       })
 
-      const restaurantId = invitation.restaurantId
-      const employeeId = invitation.employeeId
-      assertInvitationMembershipMatch({
-        invitation,
-        restaurantId,
-        employeeId
-      })
+      const authTime = await getFirebaseAuthTime(user)
+      const sessionId = getDeviceSessionId(authTime)
       const memberRef = doc(
         db,
         'restaurants',
-        restaurantId,
+        initialInvitation.restaurantId,
         'members',
         user.uid
       )
+      const sessionRef = doc(memberRef, 'deviceSessions', sessionId)
+      const slotRef = doc(
+        db,
+        'restaurants',
+        initialInvitation.restaurantId,
+        'identityInvitationSlots',
+        initialInvitation.slotId
+      )
+      let createdDevice = null
 
       await runTransaction(db, async transaction => {
-        const [invitationSnapshot, memberSnapshot] =
-          await Promise.all([
-            transaction.get(invitation.ref),
-            transaction.get(memberRef)
-          ])
+        const [
+          privateSnapshot,
+          publicSnapshot,
+          slotSnapshot,
+          memberSnapshot,
+          sessionSnapshot
+        ] = await Promise.all([
+          transaction.get(invitationRef),
+          transaction.get(publicInvitationRef),
+          transaction.get(slotRef),
+          transaction.get(memberRef),
+          transaction.get(sessionRef)
+        ])
 
-        if (!invitationSnapshot.exists()) {
-          throw new Error('Zaproszenie nie istnieje.')
+        if (!privateSnapshot.exists() || !publicSnapshot.exists()) {
+          throw new Error('Zaproszenie jest nieważne lub zostało już wykorzystane.')
         }
-
-        assertInvitationCanBeAccepted({
-          invitation: invitationSnapshot.data(),
+        const invitation = privateSnapshot.data()
+        assertPrivateInvitationForAccount({
+          invitation,
           authUser: user,
-          now: new Date()
+          purpose: invitation.purpose
         })
-        assertInvitationMembershipMatch({
-          invitation: invitationSnapshot.data(),
-          restaurantId,
-          employeeId
-        })
-
-        if (memberSnapshot.exists()) {
-          throw new Error('To konto ma już członkostwo w restauracji.')
+        if (!slotSnapshot.exists() || slotSnapshot.data().tokenHash !== tokenHash) {
+          throw new Error('To zaproszenie zostało zastąpione nowszym.')
+        }
+        if (sessionSnapshot.exists()) {
+          throw new Error('Ta sesja urządzenia została już zatwierdzona.')
         }
 
-        const now = serverTimestamp()
-        transaction.set(memberRef, buildMembershipDocument({
+        if (invitation.purpose === INVITATION_PURPOSES.ACCOUNT_ACTIVATION) {
+          if (memberSnapshot.exists()) {
+            throw new Error('To konto ma już członkostwo w restauracji.')
+          }
+          transaction.set(memberRef, buildMembershipDocument({
+            authUid: user.uid,
+            restaurantId: invitation.restaurantId,
+            employeeId: invitation.employeeId,
+            permissionProfileId: invitation.permissionProfileId,
+            invitationId: tokenHash,
+            createdAt: serverTimestamp()
+          }))
+        } else if (
+          !memberSnapshot.exists() ||
+          memberSnapshot.data().status !== 'active' ||
+          memberSnapshot.data().employeeId !== invitation.employeeId ||
+          invitation.targetAuthUid !== user.uid
+        ) {
+          throw new Error('Zaproszenie urządzenia nie pasuje do tego konta.')
+        }
+
+        createdDevice = buildDeviceSessionDocument({
           authUid: user.uid,
-          restaurantId,
-          employeeId,
-          permissionProfileId:
-            invitationSnapshot.data().permissionProfileId || null,
-          invitationId: invitationSnapshot.id,
-          createdAt: now
-        }))
-        transaction.delete(invitation.ref)
+          restaurantId: invitation.restaurantId,
+          employeeId: invitation.employeeId,
+          deviceName,
+          platform: getPlatformDescription(),
+          authTime,
+          approvedByAuthUid: invitation.createdByAuthUid,
+          invitationId: tokenHash,
+          createdAt: serverTimestamp()
+        })
+        transaction.set(sessionRef, createdDevice)
+        transaction.delete(invitationRef)
+        transaction.delete(publicInvitationRef)
+        transaction.delete(slotRef)
       })
 
+      saveLocalApprovedDevice({
+        authUid: user.uid,
+        restaurantId: initialInvitation.restaurantId,
+        deviceId: createdDevice.deviceId,
+        sessionId
+      })
+      localStorage.setItem(
+        ACTIVE_RESTAURANT_KEY,
+        initialInvitation.restaurantId
+      )
       await initializeForUser(user, { force: true })
+      return {
+        restaurantId: initialInvitation.restaurantId,
+        purpose: initialInvitation.purpose,
+        deviceId: createdDevice.deviceId,
+        sessionId
+      }
     }
 
-    const createInvitation = async ({ employee, email }) => {
+    const createInvitation = async ({
+      employee,
+      purpose = INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
+      targetAuthUid = null
+    }) => {
       const restaurantId = currentRestaurantId.value
       const user = auth.currentUser
 
@@ -691,12 +893,6 @@ export const useAccountSessionStore = defineStore(
         }
       })
 
-      const invitationRef = doc(collection(
-        db,
-        'restaurants',
-        restaurantId,
-        'invitations'
-      ))
       const employeeSnapshot = await getDoc(doc(
         db,
         'users',
@@ -717,53 +913,81 @@ export const useAccountSessionStore = defineStore(
         createdAt.toMillis() +
         (INVITATION_LIFETIME_DAYS * 24 * 60 * 60 * 1000)
       ))
-      const invitation = buildInvitationDocument({
-        invitationId: invitationRef.id,
+      const employeeEmail = normalizeIdentityEmail(
+        employeeSnapshot.data().email
+      )
+      if (!employeeEmail) {
+        throw new Error('Najpierw zapisz adres e-mail w danych pracownika.')
+      }
+      if (
+        purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT &&
+        !String(targetAuthUid || '').trim()
+      ) {
+        throw new Error('Brak konta pracownika dla nowego urządzenia.')
+      }
+
+      const bundle = await createIdentityInvitationBundle({
         restaurantId,
+        restaurantName: currentRestaurant.value?.name,
         employeeId: employee.id,
         permissionProfileId:
           employeeSnapshot.data().permissionProfileId || null,
-        email,
-        invitedByAuthUid: user.uid,
+        email: employeeEmail,
+        purpose,
+        targetAuthUid,
+        createdByAuthUid: user.uid,
         createdAt,
         expiresAt
       })
 
-      if (!isValidAccountEmail(invitation.email)) {
-        throw new Error('Wpisz prawidłowy adres e-mail.')
-      }
-
-      const [memberSnapshot, invitationSnapshot] = await Promise.all([
-        getDocs(query(
-          collection(db, 'restaurants', restaurantId, 'members'),
-          where('employeeId', '==', employee.id)
-        )),
-        getDocs(query(
-          collection(db, 'restaurants', restaurantId, 'invitations'),
-          where('employeeId', '==', employee.id)
-        ))
-      ])
-
-      if (!memberSnapshot.empty) {
+      const memberSnapshot = await getDocs(query(
+        collection(db, 'restaurants', restaurantId, 'members'),
+        where('employeeId', '==', employee.id)
+      ))
+      if (
+        purpose === INVITATION_PURPOSES.ACCOUNT_ACTIVATION &&
+        !memberSnapshot.empty
+      ) {
         throw new Error(
           'Ten pracownik ma już członkostwo w tej restauracji.'
         )
       }
 
-      const hasActiveInvitation = invitationSnapshot.docs.some(snapshot => {
-        const data = snapshot.data()
-        return data.status === 'pending' &&
-          data.expiresAt?.toMillis?.() > createdAt.toMillis()
+      const privateRef = doc(db, 'identityInvitations', bundle.tokenHash)
+      const publicRef = doc(db, 'activationInvitations', bundle.tokenHash)
+      const slotRef = doc(
+        db,
+        'restaurants',
+        restaurantId,
+        'identityInvitationSlots',
+        bundle.slotId
+      )
+
+      await runTransaction(db, async transaction => {
+        const slotSnapshot = await transaction.get(slotRef)
+        if (slotSnapshot.exists()) {
+          const oldTokenHash = slotSnapshot.data().tokenHash
+          const oldPrivateRef = doc(db, 'identityInvitations', oldTokenHash)
+          const oldPublicRef = doc(db, 'activationInvitations', oldTokenHash)
+          const [oldPrivate, oldPublic] = await Promise.all([
+            transaction.get(oldPrivateRef),
+            transaction.get(oldPublicRef)
+          ])
+          if (oldPrivate.exists()) transaction.delete(oldPrivateRef)
+          if (oldPublic.exists()) transaction.delete(oldPublicRef)
+        }
+        transaction.set(privateRef, bundle.privateInvitation)
+        transaction.set(publicRef, bundle.publicInvitation)
+        transaction.set(slotRef, bundle.slot)
       })
 
-      if (hasActiveInvitation) {
-        throw new Error(
-          'Ten pracownik ma już aktywne zaproszenie.'
-        )
+      return {
+        id: bundle.tokenHash,
+        token: bundle.rawToken,
+        purpose,
+        expiresAt,
+        maskedEmail: bundle.publicInvitation.maskedEmail
       }
-
-      await setDoc(invitationRef, invitation)
-      return invitation
     }
 
     const getEmployeeAccountAccess = async employeeId => {
@@ -780,12 +1004,8 @@ export const useAccountSessionStore = defineStore(
         where('employeeId', '==', employeeId)
         )),
         getDocs(query(
-          collection(
-            db,
-            'restaurants',
-            currentRestaurantId.value,
-            'invitations'
-          ),
+          collection(db, 'identityInvitations'),
+          where('restaurantId', '==', currentRestaurantId.value),
           where('employeeId', '==', employeeId)
         ))
       ])
@@ -801,6 +1021,7 @@ export const useAccountSessionStore = defineStore(
 
       const now = Date.now()
       const pendingInvitation = invitationSnapshot.docs.find(snapshot => (
+        snapshot.data().purpose === INVITATION_PURPOSES.ACCOUNT_ACTIVATION &&
         snapshot.data().status === 'pending' &&
         snapshot.data().expiresAt?.toMillis?.() > now
       ))
@@ -826,13 +1047,8 @@ export const useAccountSessionStore = defineStore(
         throw new Error('Nie masz uprawnienia do anulowania zaproszeń.')
       }
 
-      const invitationRef = doc(
-        db,
-        'restaurants',
-        restaurantId,
-        'invitations',
-        invitationId
-      )
+      const invitationRef = doc(db, 'identityInvitations', invitationId)
+      const publicInvitationRef = doc(db, 'activationInvitations', invitationId)
 
       await runTransaction(db, async transaction => {
         const snapshot = await transaction.get(invitationRef)
@@ -846,8 +1062,97 @@ export const useAccountSessionStore = defineStore(
           throw new Error('Zaproszenie nie należy do tego pracownika.')
         }
 
+        const slotRef = doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'identityInvitationSlots',
+          invitation.slotId
+        )
+        const [publicSnapshot, slotSnapshot] = await Promise.all([
+          transaction.get(publicInvitationRef),
+          transaction.get(slotRef)
+        ])
         transaction.delete(invitationRef)
+        if (publicSnapshot.exists()) transaction.delete(publicInvitationRef)
+        if (
+          slotSnapshot.exists() &&
+          slotSnapshot.data().tokenHash === invitationId
+        ) transaction.delete(slotRef)
       })
+    }
+
+    const getEmployeeDevices = async authUid => {
+      if (!currentRestaurantId.value || !authUid) return []
+      if (!isOwner.value && permissions.value.can_manage_employees !== true) {
+        throw new Error('Nie masz uprawnienia do przeglądania urządzeń.')
+      }
+
+      const snapshot = await getDocs(collection(
+        db,
+        'restaurants',
+        currentRestaurantId.value,
+        'members',
+        authUid,
+        'deviceSessions'
+      ))
+      return snapshot.docs
+        .map(deviceSnapshot => ({
+          sessionId: deviceSnapshot.id,
+          ...deviceSnapshot.data()
+        }))
+        .sort((left, right) => (
+          (right.createdAt?.toMillis?.() || 0) -
+          (left.createdAt?.toMillis?.() || 0)
+        ))
+    }
+
+    const disconnectDevice = async ({ authUid, sessionId }) => {
+      if (!currentRestaurantId.value || !authUid || !sessionId) {
+        throw new Error('Brak danych urządzenia do odłączenia.')
+      }
+      if (!isOwner.value && permissions.value.can_manage_employees !== true) {
+        throw new Error('Nie masz uprawnienia do odłączania urządzeń.')
+      }
+
+      await updateDoc(doc(
+        db,
+        'restaurants',
+        currentRestaurantId.value,
+        'members',
+        authUid,
+        'deviceSessions',
+        sessionId
+      ), {
+        status: 'disconnected',
+        disconnectedAt: serverTimestamp(),
+        disconnectedByAuthUid: auth.currentUser.uid
+      })
+    }
+
+    const disconnectAllDevices = async authUid => {
+      const devices = await getEmployeeDevices(authUid)
+      const activeDevices = devices.filter(device => device.status === 'active')
+      for (let offset = 0; offset < activeDevices.length; offset += 450) {
+        const batch = writeBatch(db)
+        activeDevices.slice(offset, offset + 450).forEach(device => {
+          batch.update(doc(
+            db,
+            'restaurants',
+            currentRestaurantId.value,
+            'members',
+            authUid,
+            'deviceSessions',
+            device.sessionId
+          ), {
+            status: 'disconnected',
+            disconnectedAt: serverTimestamp(),
+            disconnectedByAuthUid: auth.currentUser.uid
+          })
+        })
+        await batch.commit()
+      }
+      return activeDevices.length
     }
 
     const cleanupCurrentRestaurantTemporaryData = async () => {
@@ -858,12 +1163,13 @@ export const useAccountSessionStore = defineStore(
           permissions.value.can_manage_employees !== true)
       ) return null
 
-      const [invitations, pairingCodes] = await Promise.all([
+      const [invitations, pairingCodes, deviceSessions] = await Promise.all([
         cleanupExpiredInvitations({ db, restaurantId }),
-        cleanupExpiredPairingCodes({ db, restaurantId })
+        cleanupExpiredPairingCodes({ db, restaurantId }),
+        cleanupDisconnectedDeviceSessions({ db, restaurantId })
       ])
 
-      return { invitations, pairingCodes }
+      return { invitations, pairingCodes, deviceSessions }
     }
 
     const syncEmployeeMembershipProfile = async ({
@@ -903,21 +1209,29 @@ export const useAccountSessionStore = defineStore(
     }
 
     const configureLocalPin = async pin => {
-      if (!authUser.value?.uid || !isEmployeeMembership.value) {
+      const deviceId = currentDeviceSession.value?.deviceId
+      if (!authUser.value?.uid || !isEmployeeMembership.value || !deviceId) {
         throw new Error('PIN lokalny jest dostępny po wybraniu restauracji.')
       }
 
-      await setLocalPin({ authUid: authUser.value.uid, pin })
+      await setLocalPin({ authUid: authUser.value.uid, deviceId, pin })
       localPinConfigured.value = true
       isPinLocked.value = false
+      await loadMembershipContext(currentMembership.value, {
+        pinUnlocked: true
+      })
       applyCompatibilityContext()
     }
 
     const unlockWithLocalPin = async pin => {
-      if (!authUser.value?.uid) return { ok: false, missing: true }
+      const deviceId = currentDeviceSession.value?.deviceId
+      if (!authUser.value?.uid || !deviceId || !currentMembership.value) {
+        return { ok: false, missing: true }
+      }
 
       const result = await verifyLocalPin({
         authUid: authUser.value.uid,
+        deviceId,
         pin
       })
 
@@ -926,7 +1240,9 @@ export const useAccountSessionStore = defineStore(
       isPinLocked.value = false
       isLoading.value = true
       try {
-        await loadAccountContext(authUser.value)
+        await loadMembershipContext(currentMembership.value, {
+          pinUnlocked: true
+        })
       } finally {
         isLoading.value = false
       }
@@ -937,18 +1253,25 @@ export const useAccountSessionStore = defineStore(
     const lockApplication = () => {
       if (!authUser.value?.uid || !localPinConfigured.value) return
 
-      clearSensitiveContext()
-      account.value = null
-      memberships.value = []
-      pendingInvitations.value = []
+      stopSensitiveListeners()
+      currentRestaurant.value = null
+      currentEmployee.value = null
+      permissionProfile.value = null
+      permissions.value = {}
+      employeeAuthStore.clearAuthenticatedRestaurantContext()
       accessRevoked.value = false
       isPinLocked.value = true
     }
 
     const logoutCurrentDevice = async () => {
       const authUid = auth.currentUser?.uid || authUser.value?.uid
+      const restaurantId = currentRestaurantId.value
+      const deviceId = currentDeviceSession.value?.deviceId
 
-      if (authUid) clearLocalPin({ authUid })
+      if (authUid && deviceId) clearLocalPin({ authUid, deviceId })
+      if (authUid && restaurantId) {
+        clearLocalApprovedDevice({ authUid, restaurantId })
+      }
 
       clearSensitiveContext()
       localStorage.removeItem(ACTIVE_RESTAURANT_KEY)
@@ -983,6 +1306,8 @@ export const useAccountSessionStore = defineStore(
       isLoading,
       error,
       accessRevoked,
+      deviceApprovalRequired,
+      currentDeviceSession,
       localPinConfigured,
       isPinLocked,
       requiresRestaurantSelection,
@@ -995,9 +1320,12 @@ export const useAccountSessionStore = defineStore(
       initializeForUser,
       refreshAfterEmailVerification,
       selectRestaurant,
-      acceptInvitation,
+      acceptIdentityInvitation,
       createInvitation,
       cancelInvitation,
+      getEmployeeDevices,
+      disconnectDevice,
+      disconnectAllDevices,
       cleanupCurrentRestaurantTemporaryData,
       getEmployeeAccountAccess,
       syncEmployeeMembershipProfile,

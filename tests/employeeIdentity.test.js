@@ -300,12 +300,13 @@ test('reguły wiążą akceptację zaproszenia z kontem i atomowym członkostwem
     firestoreRules,
     /invitation\.emailNormalized == request\.auth\.token\.get\('email', null\)/
   )
-  assert.match(firestoreRules, /invitationBefore\.data\.expiresAt > request\.time/)
-  assert.match(firestoreRules, /invitationBefore\.data\.status == 'pending'/)
+  assert.match(firestoreRules, /invitation\.data\.purpose == 'ACCOUNT_ACTIVATION'/)
+  assert.match(firestoreRules, /invitation\.expiresAt > request\.time/)
+  assert.match(firestoreRules, /invitation\.status == 'pending'/)
   assert.match(firestoreRules, /incoming\.restaurantId == restaurantId/)
   assert.match(firestoreRules, /data\.employeeId == incoming\.employeeId/)
   assert.match(firestoreRules, /!existsAfter\(invitationPath\)/)
-  assert.match(firestoreRules, /let memberAfter = getAfter\(memberPath\)/)
+  assert.match(firestoreRules, /approvedSessionExistsAfter/)
 })
 
 test('reguły ograniczają bootstrap właściciela do istniejących starych danych', () => {
@@ -324,16 +325,18 @@ test('lokalny PIN zapisuje tylko sól i weryfikator oraz blokuje po błędach', 
   const storage = createStorage()
   await setLocalPin({
     authUid: 'account-1',
+    deviceId: 'device-1',
     pin: '1234',
     storage,
     cryptoImpl: webcrypto,
     iterations: 1000
   })
 
-  assert.equal(hasLocalPin({ authUid: 'account-1', storage }), true)
+  assert.equal(hasLocalPin({ authUid: 'account-1', deviceId: 'device-1', storage }), true)
   assert.equal(JSON.stringify([...storage.values.values()]).includes('1234'), false)
   assert.equal((await verifyLocalPin({
     authUid: 'account-1',
+    deviceId: 'device-1',
     pin: '1234',
     storage,
     cryptoImpl: webcrypto
@@ -342,6 +345,7 @@ test('lokalny PIN zapisuje tylko sól i weryfikator oraz blokuje po błędach', 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await verifyLocalPin({
       authUid: 'account-1',
+      deviceId: 'device-1',
       pin: '0000',
       storage,
       cryptoImpl: webcrypto,
@@ -351,6 +355,7 @@ test('lokalny PIN zapisuje tylko sól i weryfikator oraz blokuje po błędach', 
 
   const blocked = await verifyLocalPin({
     authUid: 'account-1',
+    deviceId: 'device-1',
     pin: '1234',
     storage,
     cryptoImpl: webcrypto,

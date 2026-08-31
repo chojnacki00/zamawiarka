@@ -112,22 +112,31 @@
             <label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label>
             <p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p>
             <div v-if="editingEmployeeId" class="account-access-card">
-              <strong>Dostęp przez konto GastroManager</strong>
+              <strong>Dostęp i urządzenia</strong>
               <p v-if="!canUseFirebaseAccountAccess" class="field-note">Zarządzanie nowym dostępem wymaga zalogowania kontem Firebase z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
               <template v-else>
                 <p v-if="accountAccess" class="account-access-status" :class="accountAccess.status">{{ accountAccess.status === 'active' ? 'Aktywne członkostwo' : accountAccess.status === 'pending' ? 'Oczekujące zaproszenie' : 'Dostęp zablokowany' }}</p>
                 <template v-if="!accountAccess">
-                  <label class="form-field"><span>E-mail zaproszenia</span><input v-model="invitationEmail" type="email" autocomplete="off" placeholder="pracownik@example.com"></label>
-                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Zaproś' }}</button>
-                  <small>Zaproszenie zostanie zapisane na 7 dni. Aplikacja nie wysyła go automatycznie — przekaż pracownikowi link po zapisaniu.</small>
-                  <div v-if="activationLink" class="activation-link-box">
-                    <label class="form-field"><span>Link aktywacyjny</span><input :value="activationLink" type="text" readonly></label>
-                    <button class="invite-button" type="button" @click="copyActivationLink">Kopiuj link aktywacyjny</button>
-                    <small>Pracownik sam zakłada konto, potwierdza e-mail wysłany przez Firebase, a następnie przyjmuje oczekujące zaproszenie.</small>
-                  </div>
+                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Utwórz zaproszenie' }}</button>
+                  <small>Zaproszenie użyje adresu e-mail zapisanego w danych pracownika. Aplikacja nie wysyła go automatycznie.</small>
                 </template>
-                <button v-else-if="accountAccess.status === 'active'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
-                <button v-else-if="accountAccess.status === 'pending'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="cancelEmployeeInvitation">Anuluj zaproszenie</button>
+                <template v-else-if="accountAccess.status === 'active'">
+                  <div class="device-actions">
+                    <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteDevice">Dodaj urządzenie</button>
+                    <button class="block-access-button" type="button" :disabled="isAccountActionPending || !activeDevices.length" @click="disconnectEveryDevice">Odłącz wszystkie urządzenia</button>
+                  </div>
+                  <div v-if="!activeDevices.length" class="inline-empty">Brak aktywnych urządzeń.</div>
+                  <article v-for="device in activeDevices" :key="device.sessionId" class="device-card">
+                    <span><strong>{{ device.deviceName || 'Urządzenie bez nazwy' }}</strong><small>{{ device.platform || 'Brak opisu platformy' }}</small><small>Dodano: {{ formatDeviceDate(device.addedAt) }} · Ostatnia aktywność: {{ formatDeviceDate(device.lastActiveAt) }}</small></span>
+                    <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="disconnectOneDevice(device)">Odłącz</button>
+                  </article>
+                  <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
+                </template>
+                <template v-else-if="accountAccess.status === 'pending'">
+                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">Wygeneruj nowe zaproszenie</button>
+                  <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="cancelEmployeeInvitation">Anuluj zaproszenie</button>
+                  <small>Nowy link unieważni poprzednie zaproszenie.</small>
+                </template>
                 <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
               </template>
             </div>
@@ -154,6 +163,20 @@
       </div>
     </div>
     <div v-if="pairingCode" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Kod parowania</div><p>Wpisz kod na urządzeniu pracownika. Jest ważny przez 3 minuty.</p><div class="pairing-code">{{ pairingCode }}</div><button class="save-button full" type="button" @click="pairingCode = ''">Gotowe</button></div></div>
+    <div v-if="identityInvitation" class="app-dialog-overlay">
+      <div class="app-dialog-card invitation-dialog">
+        <button class="dialog-close" type="button" aria-label="Zamknij" @click="closeIdentityInvitation">×</button>
+        <div class="app-dialog-title">{{ identityInvitation.purpose === invitationPurposes.DEVICE_ENROLLMENT ? 'Dodaj urządzenie' : 'Aktywuj konto pracownika' }}</div>
+        <p>Zeskanuj kod na urządzeniu pracownika albo przekaż dokładnie ten sam link.</p>
+        <img v-if="identityInvitation.qrDataUrl" class="invitation-qr" :src="identityInvitation.qrDataUrl" alt="Kod QR zaproszenia">
+        <label class="form-field"><span>Link aktywacyjny</span><input :value="identityInvitation.link" type="text" readonly></label>
+        <small>Ważne do: {{ formatDeviceDate(identityInvitation.expiresAt) }}</small>
+        <button class="invite-button full" type="button" @click="copyActivationLink">Kopiuj link</button>
+        <button class="block-access-button full" type="button" :disabled="isAccountActionPending" @click="cancelVisibleInvitation">Anuluj zaproszenie</button>
+        <button class="invite-button full" type="button" :disabled="isAccountActionPending" @click="replaceVisibleInvitation">Wygeneruj nowe zaproszenie</button>
+        <small>Aplikacja nie wysłała wiadomości e-mail. Link lub QR trzeba przekazać pracownikowi.</small>
+      </div>
+    </div>
   </main>
 </template>
 
@@ -161,6 +184,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import QRCode from 'qrcode'
 import { db } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
@@ -170,6 +194,8 @@ import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js
 import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
+import { buildActivationUrl } from '../config/publicAppUrl.js'
+import { INVITATION_PURPOSES } from '../utils/identityInvitations.js'
 import {
   COMPENSATION_TYPES,
   getEffectiveHourlyRate,
@@ -203,11 +229,15 @@ const closedSections = () => ({ basic: false, employment: false, groups: false, 
 const openSections = ref(closedSections())
 const sectionElements = ref({})
 const assignmentRateInputs = ref({})
-const invitationEmail = ref('')
-const activationLink = ref('')
 const accountAccess = ref(null)
+const employeeDevices = ref([])
+const identityInvitation = ref(null)
+const invitationPurposes = INVITATION_PURPOSES
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
+const activeDevices = computed(() => employeeDevices.value.filter(
+  device => device.status === 'active'
+))
 
 const createEmptyForm = () => ({
   imie: '',
@@ -391,9 +421,9 @@ const openForm = (employee = null) => {
   if (!employee) generateRandomPin()
   openSections.value = closedSections()
   formError.value = ''
-  invitationEmail.value = employee?.email || ''
-  activationLink.value = ''
   accountAccess.value = null
+  employeeDevices.value = []
+  identityInvitation.value = null
   accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
   positionPickerSelection.value = []
@@ -407,9 +437,9 @@ const cancelForm = () => {
   isFormOpen.value = false
   editingEmployeeId.value = null
   formError.value = ''
-  invitationEmail.value = ''
-  activationLink.value = ''
   accountAccess.value = null
+  employeeDevices.value = []
+  identityInvitation.value = null
   accountAccessMessage.value = ''
   nextTick(() => {
     if (scrollAreaRef.value) scrollAreaRef.value.scrollTop = 0
@@ -564,6 +594,9 @@ const loadEmployeeAccountAccess = async employeeId => {
   try {
     accountAccess.value = await accountSessionStore
       .getEmployeeAccountAccess(employeeId)
+    employeeDevices.value = accountAccess.value?.accessType === 'membership'
+      ? await accountSessionStore.getEmployeeDevices(accountAccess.value.authUid)
+      : []
   } catch (error) {
     console.error('Błąd odczytu dostępu pracownika:', error)
     accountAccessMessage.value =
@@ -571,40 +604,158 @@ const loadEmployeeAccountAccess = async employeeId => {
   }
 }
 
+const getAccountActionError = (error, fallback) => (
+  error?.code ? fallback : (error?.message || fallback)
+)
+
 const inviteEmployee = async () => {
   if (!editingEmployeeId.value || isAccountActionPending.value) return
 
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
-  activationLink.value = ''
   try {
-    await accountSessionStore.createInvitation({
-      employee: {
-        id: editingEmployeeId.value
-      },
-      email: invitationEmail.value
-    })
-    activationLink.value = `${window.location.origin}/rejestracja`
+    await showIdentityInvitation(await accountSessionStore.createInvitation({
+      employee: { id: editingEmployeeId.value },
+      purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION
+    }))
+    await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
       'Zaproszenie zapisano. Przekaż pracownikowi link aktywacyjny — aplikacja nie wysłała wiadomości z zaproszeniem.'
   } catch (error) {
-    accountAccessMessage.value = error?.message ||
+    accountAccessMessage.value = getAccountActionError(
+      error,
       'Nie udało się zapisać zaproszenia.'
+    )
   } finally {
     isAccountActionPending.value = false
   }
 }
 
 const copyActivationLink = async () => {
-  if (!activationLink.value) return
+  if (!identityInvitation.value?.link) return
 
   try {
-    await navigator.clipboard.writeText(activationLink.value)
+    await navigator.clipboard.writeText(identityInvitation.value.link)
     accountAccessMessage.value = 'Link aktywacyjny skopiowano.'
   } catch (error) {
     console.error('Nie udało się skopiować linku aktywacyjnego:', error)
     accountAccessMessage.value =
       'Nie udało się skopiować linku. Zaznacz go i skopiuj ręcznie.'
+  }
+}
+
+const showIdentityInvitation = async invitation => {
+  const link = buildActivationUrl({ token: invitation.token })
+  identityInvitation.value = {
+    ...invitation,
+    link,
+    qrDataUrl: await QRCode.toDataURL(link, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 256
+    })
+  }
+}
+
+const closeIdentityInvitation = () => {
+  identityInvitation.value = null
+}
+
+const inviteDevice = async () => {
+  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+  isAccountActionPending.value = true
+  accountAccessMessage.value = ''
+  try {
+    await showIdentityInvitation(await accountSessionStore.createInvitation({
+      employee: { id: editingEmployeeId.value },
+      purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
+      targetAuthUid: accountAccess.value.authUid
+    }))
+  } catch (error) {
+    accountAccessMessage.value = getAccountActionError(
+      error,
+      'Nie udało się utworzyć zaproszenia urządzenia.'
+    )
+  } finally {
+    isAccountActionPending.value = false
+  }
+}
+
+const replaceVisibleInvitation = async () => {
+  const purpose = identityInvitation.value?.purpose
+  if (!purpose) return
+  if (purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
+    await inviteDevice()
+  } else {
+    await inviteEmployee()
+  }
+}
+
+const cancelVisibleInvitation = async () => {
+  const invitationId = identityInvitation.value?.id
+  if (!invitationId || isAccountActionPending.value) return
+  isAccountActionPending.value = true
+  try {
+    await accountSessionStore.cancelInvitation({
+      invitationId,
+      employeeId: editingEmployeeId.value
+    })
+    closeIdentityInvitation()
+    await loadEmployeeAccountAccess(editingEmployeeId.value)
+    accountAccessMessage.value = 'Zaproszenie zostało anulowane i usunięte.'
+  } catch (error) {
+    accountAccessMessage.value = getAccountActionError(
+      error,
+      'Nie udało się anulować zaproszenia.'
+    )
+  } finally {
+    isAccountActionPending.value = false
+  }
+}
+
+const formatDeviceDate = value => {
+  const date = value?.toDate?.() || (value instanceof Date ? value : new Date(value))
+  return Number.isNaN(date.getTime()) ? 'brak danych' : date.toLocaleString('pl-PL')
+}
+
+const disconnectOneDevice = async device => {
+  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+  isAccountActionPending.value = true
+  try {
+    await accountSessionStore.disconnectDevice({
+      authUid: accountAccess.value.authUid,
+      sessionId: device.sessionId
+    })
+    employeeDevices.value = await accountSessionStore
+      .getEmployeeDevices(accountAccess.value.authUid)
+    accountAccessMessage.value = 'Urządzenie zostało odłączone.'
+  } catch (error) {
+    accountAccessMessage.value = getAccountActionError(
+      error,
+      'Nie udało się odłączyć urządzenia.'
+    )
+  } finally {
+    isAccountActionPending.value = false
+  }
+}
+
+const disconnectEveryDevice = async () => {
+  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+  isAccountActionPending.value = true
+  try {
+    const count = await accountSessionStore.disconnectAllDevices(
+      accountAccess.value.authUid
+    )
+    employeeDevices.value = await accountSessionStore
+      .getEmployeeDevices(accountAccess.value.authUid)
+    accountAccessMessage.value = `Odłączono urządzenia: ${count}.`
+  } catch (error) {
+    accountAccessMessage.value = getAccountActionError(
+      error,
+      'Nie udało się odłączyć urządzeń.'
+    )
+  } finally {
+    isAccountActionPending.value = false
   }
 }
 
@@ -648,8 +799,10 @@ const cancelEmployeeInvitation = async () => {
     accountAccess.value = null
     accountAccessMessage.value = 'Zaproszenie zostało anulowane i usunięte.'
   } catch (error) {
-    accountAccessMessage.value = error?.message ||
+    accountAccessMessage.value = getAccountActionError(
+      error,
       'Nie udało się anulować zaproszenia.'
+    )
   } finally {
     isAccountActionPending.value = false
   }
@@ -715,12 +868,17 @@ const generatePairingCode = async () => {
 .block-access-button { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
 .invite-button:disabled, .block-access-button:disabled { opacity: .55; }
 .account-access-message { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
+.device-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.device-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px; border: 1px solid #dbeafe; border-radius: 11px; background: #fff; }
+.device-card.disconnected { opacity: .58; }.device-card span { display: grid; min-width: 0; gap: 3px; }.device-card small { color: #64748b; font-size: 11px; line-height: 1.35; }.device-card button { flex: 0 0 auto; }
+.invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
+.invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
 .search-field input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
 .search-field input::placeholder { color: #94a3b8; opacity: 1; -webkit-text-fill-color: #94a3b8; }
 .accordion-card { overflow: hidden; scroll-margin-top: 14px; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
 .accordion-card.open { border-color: #7dd3fc; background: #f0f9ff; box-shadow: 0 5px 18px rgba(14, 165, 233, .13); }
 .accordion-card.open .accordion-toggle { background: #e8f7ff; }
 .accordion-card.open .accordion-content { background: rgba(255, 255, 255, .8); }
-@media (max-width: 380px) { .two-columns { grid-template-columns: 1fr; }.pin-row { grid-template-columns: 82px 44px minmax(0, 1fr); }.pin-row .pin-input { width: 82px; }.pin-row button { padding: 0 7px; font-size: 12px; } }
+@media (max-width: 380px) { .two-columns, .device-actions { grid-template-columns: 1fr; }.pin-row { grid-template-columns: 82px 44px minmax(0, 1fr); }.pin-row .pin-input { width: 82px; }.pin-row button { padding: 0 7px; font-size: 12px; } }
 @media (min-width: 760px) { .employee-form, .employee-list, .team-toolbar { max-width: 720px; margin-right: auto; margin-left: auto; box-sizing: border-box; } }
 </style>

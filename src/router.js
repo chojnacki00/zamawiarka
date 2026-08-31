@@ -15,6 +15,7 @@ import RentownoscView from './views/RentownoscView.vue'
 const routes = [
   { path: '/login', name: 'Login', component: LoginView },
   { path: '/rejestracja', name: 'Rejestracja', component: () => import('./views/RegisterView.vue') },
+  { path: '/aktywacja', name: 'Aktywacja', component: () => import('./views/ActivationView.vue') },
   { path: '/konto', name: 'KontoDostep', component: () => import('./views/AccountAccessView.vue') },
   { path: '/', name: 'Home', component: HomeView },
   { path: '/zamawiarka', name: 'Zamawiarka', component: ZamawiarkaView },
@@ -101,7 +102,7 @@ router.beforeEach(async (to, from, next) => {
   if (
     firebaseUser &&
     accountSessionStore.requiresAccountAction &&
-    to.path !== '/konto'
+    !['/konto', '/aktywacja'].includes(to.path)
   ) {
     return next('/konto')
   }

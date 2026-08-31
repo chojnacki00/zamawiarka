@@ -17,6 +17,11 @@
         <p class="hint">Aktywna sesja Firebase nie daje dostępu do danych zablokowanej restauracji.</p>
       </template>
 
+      <template v-else-if="sessionStore.deviceApprovalRequired">
+        <p>To urządzenie nie zostało zatwierdzone dla wybranej restauracji.</p>
+        <p class="hint">Poproś managera o link lub kod QR „Dodaj urządzenie”, a następnie otwórz go na tym urządzeniu.</p>
+      </template>
+
       <template v-else-if="sessionStore.isPinLocked">
         <p>Sesja Firebase jest aktywna. Podaj lokalny PIN tego urządzenia, aby odblokować aplikację.</p>
         <input v-model="pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Lokalny PIN">
@@ -31,16 +36,8 @@
         </button>
       </template>
 
-      <template v-else-if="sessionStore.pendingInvitations.length">
-        <p>Wybierz zaproszenie, które chcesz przyjąć.</p>
-        <button v-for="invitation in sessionStore.pendingInvitations" :key="invitation.id" class="restaurant-button" type="button" :disabled="isBusy" @click="accept(invitation)">
-          <strong>Zaproszenie do restauracji</strong>
-          <small>{{ invitation.restaurantId }}</small>
-        </button>
-      </template>
-
       <template v-else-if="!sessionStore.currentMembership">
-        <p class="hint">Nie znaleziono aktywnego zaproszenia dla tego adresu. Poproś managera o przygotowanie zaproszenia.</p>
+        <p class="hint">To konto nie ma aktywnego dostępu. Otwórz link zaproszenia otrzymany od managera.</p>
       </template>
 
       <template v-else-if="sessionStore.needsLocalPinSetup">
@@ -75,6 +72,7 @@ import { useRouter } from 'vue-router'
 import { sendEmailVerification } from 'firebase/auth'
 import { auth } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
+import { buildAccountReturnUrl } from '../config/publicAppUrl.js'
 
 const router = useRouter()
 const sessionStore = useAccountSessionStore()
@@ -86,6 +84,7 @@ const errorMessage = ref('')
 
 const heading = computed(() => {
   if (sessionStore.needsEmailVerification) return 'Potwierdź e-mail'
+  if (sessionStore.deviceApprovalRequired) return 'Urządzenie niezatwierdzone'
   if (sessionStore.isPinLocked) return 'Aplikacja zablokowana'
   if (sessionStore.needsLocalPinSetup) return 'Ustaw lokalny PIN'
   if (sessionStore.requiresRestaurantSelection) return 'Wybierz restaurację'
@@ -117,7 +116,7 @@ const runAction = async action => {
 
 const sendVerification = () => runAction(async () => {
   if (!auth.currentUser) return
-  await sendEmailVerification(auth.currentUser, { url: `${window.location.origin}/konto` })
+  await sendEmailVerification(auth.currentUser, { url: buildAccountReturnUrl() })
   message.value = 'Wiadomość weryfikacyjna została wysłana.'
 })
 
@@ -126,7 +125,6 @@ const checkVerification = () => runAction(async () => {
   if (!verified) errorMessage.value = 'Adres e-mail nie jest jeszcze potwierdzony.'
 })
 
-const accept = invitation => runAction(() => sessionStore.acceptInvitation(invitation))
 const chooseRestaurant = restaurantId => runAction(async () => {
   await sessionStore.selectRestaurant(restaurantId)
   if (!sessionStore.needsLocalPinSetup) await router.replace('/')
