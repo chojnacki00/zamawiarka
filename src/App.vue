@@ -952,6 +952,10 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/authStore.js'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
+import {
+  hasStoredLegacyPinSession,
+  resolveAuthenticationRedirect
+} from './utils/routeAccess.js'
 
 export default {
   components: {
@@ -1767,16 +1771,15 @@ if (backupData.collections) {
       // NIE WYKONUJEMY ŻADNYCH RUCHÓW. Czekamy.
       if (!isAppReady.value) return
       
-      // 2. Sprawdzamy, czy ktokolwiek jest zalogowany
-      const isUserLogged = isLoggedIn.value || employeeAuthStore.currentEmployee
-      
-      // 3. Sprawdzamy, czy jesteśmy na stronie logowania
-      const isLoginPage = route.path === '/logowanie' || route.path === '/login'
+      const authenticationRedirect = resolveAuthenticationRedirect({
+        path: route.path,
+        hasFirebaseSession: Boolean(auth.currentUser),
+        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee)
+      })
 
-      // 4. Jeśli użytkownik NIE jest zalogowany, i NIE jest na stronie logowania:
-      if (!isUserLogged && !isLoginPage) {
-        console.log('Strażnik zablokował dostęp. Przekierowanie do logowania.')
-        router.replace('/logowanie')
+      if (authenticationRedirect) {
+        console.log('Strażnik zablokował dostęp. Przekierowanie do logowania konta.')
+        router.replace(authenticationRedirect)
       }
     }, { immediate: true })
 
@@ -5487,16 +5490,28 @@ onMounted(() => {
       // === NOWA WSPÓŁPRACA STRAŻNIKÓW (WOLNOŚĆ DLA PRACOWNIKA) ===
       const currentPath = window.location.pathname
       
-      // 1. Zawsze próbujemy odtworzyć sesję pracownika, niezależnie od tego, na jakiej jest ścieżce
-      await employeeAuthStore.initSession()
+      // Odtwarzamy stare logowanie PIN wyłącznie wtedy, gdy istnieje kompletna
+      // zapisana sesja pracownika. Świeża przeglądarka pozostaje w Firebase Auth.
+      if (
+        hasStoredLegacyPinSession(localStorage) &&
+        !employeeAuthStore.isInitialized
+      ) {
+        await employeeAuthStore.initSession()
+      }
 
       // 2. Sprawdzamy czy mamy zalogowanego PRACOWNIKA
       if (employeeAuthStore.currentEmployee) {
         await activateLegacyPinRestaurant(employeeAuthStore.currentEmployee)
       } 
-      // 3. Jeśli nie ma pracownika i nie jesteśmy na ekranie logowania PIN, wyrzucamy na login
-      else if (!['/logowanie', '/login', '/rejestracja', '/aktywacja'].includes(currentPath)) {
-        router.push('/login') 
+      else {
+        const authenticationRedirect = resolveAuthenticationRedirect({
+          path: currentPath,
+          hasFirebaseSession: false,
+          hasLegacyPinSession: false
+        })
+        if (authenticationRedirect) {
+          await router.replace(authenticationRedirect)
+        }
       }
       // === KONIEC POPRAWKI ===
 

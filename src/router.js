@@ -6,6 +6,10 @@ import {
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js' // <-- NOWOŚĆ: Importujemy nasz sklep z uprawnieniami
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
 import { canUsePrivilegedEmployeeActions } from './utils/employeeIdentity.js'
+import {
+  hasStoredLegacyPinSession,
+  resolveAuthenticationRedirect
+} from './utils/routeAccess.js'
 
 import LoginView from './views/LoginView.vue'
 import HomeView from './views/HomeView.vue'
@@ -87,10 +91,6 @@ router.beforeEach(async (to, from, next) => {
     await accountSessionStore.initializeForUser(firebaseUser)
   }
 
-  if (!firebaseUser && to.path === '/konto') {
-    return next('/login')
-  }
-
   if (
     firebaseUser &&
     ['/login', '/rejestracja'].includes(to.path) &&
@@ -107,11 +107,7 @@ router.beforeEach(async (to, from, next) => {
     return next('/konto')
   }
 
-  const hasSavedEmployeeSession =
-    Boolean(
-      localStorage.getItem('gm_emp_id') &&
-      localStorage.getItem('gm_rest_id')
-    )
+  const hasSavedEmployeeSession = hasStoredLegacyPinSession(localStorage)
 
   if (
     hasSavedEmployeeSession &&
@@ -122,6 +118,16 @@ router.beforeEach(async (to, from, next) => {
 
   const hasEmployeeSession =
     Boolean(employeeStore.currentEmployee)
+  const authenticationRedirect = resolveAuthenticationRedirect({
+    path: to.path,
+    hasFirebaseSession: Boolean(firebaseUser),
+    hasLegacyPinSession: hasEmployeeSession
+  })
+
+  if (authenticationRedirect) {
+    return next(authenticationRedirect)
+  }
+
   const hasAuthenticatedEmployeeContext = canUsePrivilegedEmployeeActions({
     sessionMode: employeeStore.sessionMode,
     firebaseUser,

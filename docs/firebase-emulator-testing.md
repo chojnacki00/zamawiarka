@@ -20,45 +20,57 @@ Porty są zapisane centralnie w `firebase-emulators.json`:
 2. W drugim terminalu uruchom `npm.cmd run dev:emulators`.
    Oczekiwany wynik: Vite pokazuje lokalny adres aplikacji, a konsola informuje
    o jawnym połączeniu z Emulatorami.
-3. Otwórz aplikację i utwórz konto administratora/właściciela. Jeżeli testujesz
-   bootstrap starego właściciela, najpierw dodaj w Emulator UI dokument
-   `users/{uid}/app/state`; nowe przypadkowe konto nie może ominąć tego warunku.
-   Oczekiwany wynik: konto ma członkostwo właściciela tylko we własnej
-   restauracji.
-4. W ustawieniach zespołu utwórz pracownika z e-mailem i wymaganym profilem,
+3. Aby sprawdzić bootstrap istniejącego właściciela, w Emulator UI przejdź do
+   Authentication i utwórz użytkownika z całkowicie fikcyjnym e-mailem oraz
+   fikcyjnym hasłem. Zaznacz `emailVerified`, zapisz konto i skopiuj jego UID.
+   Nie używaj danych prawdziwego konta ani projektu innego niż
+   `demo-gastromanager`.
+4. W Firestore Emulator UI utwórz dokument `users/{uid}/app/state`, podstawiając
+   skopiowany UID. Dodaj w nim pole `initialized` typu boolean o wartości `true`.
+   Opcjonalny dokument `users/{uid}` może zawierać wyłącznie testowe oznaczenie,
+   np. `emulatorSeed: true`; o możliwości bootstrapu decyduje poddokument
+   `app/state`.
+5. Otwórz `http://localhost:5173/login` i zaloguj się fikcyjnym e-mailem oraz
+   hasłem utworzonym w Auth Emulatorze. Samo utworzenie konta w Emulator UI nie
+   tworzy sesji przeglądarki i nie powinno przekierowywać do `/logowanie`.
+6. Potwierdź automatyczny bootstrap. Oczekiwany wynik: aplikacja tworzy
+   restaurację i członkostwo właściciela dla tego samego UID, po czym pokazuje
+   testową restaurację. Nowe przypadkowe konto bez `users/{uid}/app/state` nie
+   może ominąć tego warunku.
+7. W ustawieniach zespołu utwórz pracownika z e-mailem i wymaganym profilem,
    a następnie wybierz „Utwórz zaproszenie”. Oczekiwany wynik: jeden modal
    pokazuje QR i identyczny link; Firestore zawiera prywatny skrót tokenu,
    bezpieczny publiczny podgląd i slot, ale nie surowy token, hasło ani PIN.
-5. Skopiuj pokazany link aktywacyjny i otwórz go w osobnym profilu/oknie
+8. Skopiuj pokazany link aktywacyjny i otwórz go w osobnym profilu/oknie
    przeglądarki. Oczekiwany wynik: aplikacja nie twierdzi, że wysłała samo
    zaproszenie e-mailem; link przekazuje manager.
-6. Zarejestruj konto dokładnie adresem zapisanym w zaproszeniu. Oczekiwany
+9. Zarejestruj konto dokładnie adresem zapisanym w zaproszeniu. Oczekiwany
    wynik: Firebase Auth tworzy użytkownika, ale nieweryfikowany e-mail nie może
    jeszcze przyjąć zaproszenia.
-7. Otwórz `http://127.0.0.1:4000`, przejdź do Authentication i otwórz lokalną
+10. Otwórz `http://127.0.0.1:4000`, przejdź do Authentication i otwórz lokalną
    wiadomość/link weryfikacyjny. Oczekiwany wynik: po kliknięciu konto ma
    `emailVerified: true`.
-8. Wróć do pierwotnego `/aktywacja?t=…`, nazwij urządzenie i zatwierdź.
+11. Wróć do pierwotnego `/aktywacja?t=…`, nazwij urządzenie i zatwierdź.
    Oczekiwany wynik: jedna transakcja tworzy `members/{authUid}`, zapisuje
    `deviceSessions/{authTime}` i usuwa prywatny dokument, publiczny podgląd
    oraz slot; przerwanie operacji nie zostawia połowy wyniku.
-9. Ustaw czterocyfrowy PIN lokalny. Oczekiwany wynik: Firestore nie otrzymuje
+12. Ustaw czterocyfrowy PIN lokalny. Oczekiwany wynik: Firestore nie otrzymuje
    PIN-u; w pamięci przeglądarki zapisane są tylko sól i weryfikator PBKDF2.
-10. Zamknij i ponownie otwórz aplikację. Oczekiwany wynik: Firebase Auth
+13. Zamknij i ponownie otwórz aplikację. Oczekiwany wynik: Firebase Auth
     odtwarza konto i członkostwo, a lokalny PIN odblokowuje tylko to urządzenie.
-11. Porównaj konto managera i zwykłego pracownika. Oczekiwany wynik: pracownik
+14. Porównaj konto managera i zwykłego pracownika. Oczekiwany wynik: pracownik
     z `can_view_schedule` widzi wyłącznie dozwoloną projekcję grafiku i własną
     dyspozycję; operacje managerskie wymagają właściwych uprawnień.
-12. Jako manager wybierz „Dodaj urządzenie”, otwórz nowy QR w drugim profilu
+15. Jako manager wybierz „Dodaj urządzenie”, otwórz nowy QR w drugim profilu
     przeglądarki i zaloguj istniejące konto. Bez tego zaproszenia samo hasło nie
     daje dostępu. Następnie odłącz pierwsze urządzenie: tylko jego `auth_time`
     traci dostęp, a drugie nadal działa.
-13. W Emulator UI sprawdź użyte zaproszenie. Oczekiwany wynik: dokument nie
+16. W Emulator UI sprawdź użyte zaproszenie. Oczekiwany wynik: dokument nie
     istnieje, a członkostwo istnieje dokładnie w zaproszonej restauracji.
-14. Utwórz testowe wygasłe zaproszenie/kod z `expiresAt` w przeszłości, po czym
+17. Utwórz testowe wygasłe zaproszenie/kod z `expiresAt` w przeszłości, po czym
     wejdź uprawnionym kontem do zespołu. Oczekiwany wynik: dane własnej
     restauracji są usunięte, a dane innych restauracji pozostają bez zmian.
-15. Zakończ oba procesy klawiszami `Ctrl+C` i sprawdź Firebase Console projektu
+18. Zakończ oba procesy klawiszami `Ctrl+C` i sprawdź Firebase Console projektu
     produkcyjnego. Oczekiwany wynik: nie ma nowych kont ani dokumentów;
     konfiguracja używała wyłącznie identyfikatora zaczynającego się od `demo-`.
 
