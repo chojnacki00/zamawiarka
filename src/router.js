@@ -8,7 +8,8 @@ import { useAccountSessionStore } from './stores/accountSessionStore.js'
 import { canUsePrivilegedEmployeeActions } from './utils/employeeIdentity.js'
 import {
   hasStoredLegacyPinSession,
-  resolveAuthenticationRedirect
+  isPublicActivationRoute,
+  resolveRouteAuthenticationRedirect
 } from './utils/routeAccess.js'
 
 import LoginView from './views/LoginView.vue'
@@ -79,6 +80,10 @@ const getResolvedFirebaseUser = () => {
 }
 
 router.beforeEach(async (to, from, next) => {
+  // Publiczna aktywacja sama bezpiecznie sprawdza token. Nie uruchamiamy przed
+  // nią bootstrapu konta ani strażników wymagających istniejącej sesji.
+  if (isPublicActivationRoute(to)) return next()
+
     const employeeStore = useEmployeeAuthStore()
     const accountSessionStore = useAccountSessionStore()
     const firebaseUser = await getResolvedFirebaseUser()
@@ -118,8 +123,8 @@ router.beforeEach(async (to, from, next) => {
 
   const hasEmployeeSession =
     Boolean(employeeStore.currentEmployee)
-  const authenticationRedirect = resolveAuthenticationRedirect({
-    path: to.path,
+  const authenticationRedirect = resolveRouteAuthenticationRedirect({
+    route: to,
     hasFirebaseSession: Boolean(firebaseUser),
     hasLegacyPinSession: hasEmployeeSession
   })

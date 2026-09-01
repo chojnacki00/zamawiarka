@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import {
+  createMemoryHistory,
+  createRouter
+} from 'vue-router'
+import {
   hasStoredLegacyPinSession,
-  resolveAuthenticationRedirect
+  resolveAppAuthenticationRedirect,
+  resolveAuthenticationRedirect,
+  resolveRouteAuthenticationRedirect
 } from '../src/utils/routeAccess.js'
 import { shouldUseFirebaseEmulators } from '../src/utils/firebaseEmulatorMode.js'
 
@@ -24,6 +31,80 @@ test('konto bez sesji wraca do logowania Firebase, a nie do PIN-u', () => {
 test('aktywacja z tokenem pozostaje publiczna', () => {
   assert.equal(redirectFor('/aktywacja?t=testowy-token'), null)
   assert.equal(redirectFor('/aktywacja'), null)
+})
+
+test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', async () => {
+  const testRouter = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/login', name: 'Login', component: { template: '<div />' } },
+      { path: '/konto', name: 'Konto', component: { template: '<div />' } },
+      { path: '/aktywacja', name: 'Aktywacja', component: { template: '<div />' } },
+      { path: '/ustawienia', name: 'Ustawienia', component: { template: '<div />' } }
+    ]
+  })
+  testRouter.beforeEach(to => (
+    resolveRouteAuthenticationRedirect({ route: to }) || true
+  ))
+
+  await testRouter.push('/aktywacja?t=abc')
+  await testRouter.isReady()
+
+  assert.equal(testRouter.currentRoute.value.path, '/aktywacja')
+  assert.equal(testRouter.currentRoute.value.query.t, 'abc')
+  assert.equal(testRouter.currentRoute.value.fullPath, '/aktywacja?t=abc')
+})
+
+test('rzeczywisty strażnik routera nadal chroni konto i widok biznesowy', async () => {
+  const testRouter = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/login', name: 'Login', component: { template: '<div />' } },
+      { path: '/konto', name: 'Konto', component: { template: '<div />' } },
+      { path: '/ustawienia', name: 'Ustawienia', component: { template: '<div />' } }
+    ]
+  })
+  testRouter.beforeEach(to => (
+    resolveRouteAuthenticationRedirect({ route: to }) || true
+  ))
+
+  await testRouter.push('/konto')
+  assert.equal(testRouter.currentRoute.value.path, '/login')
+  await testRouter.push('/ustawienia')
+  assert.equal(testRouter.currentRoute.value.path, '/login')
+})
+
+test('strażnik App.vue czeka na rozpoznanie trasy i nie blokuje aktywacji', () => {
+  assert.equal(resolveAppAuthenticationRedirect({
+    route: { path: '/', name: undefined, matched: [] },
+    isAppReady: true
+  }), null)
+  assert.equal(resolveAppAuthenticationRedirect({
+    route: {
+      path: '/aktywacja',
+      name: 'Aktywacja',
+      matched: [{ path: '/aktywacja' }]
+    },
+    isAppReady: true
+  }), null)
+  assert.equal(resolveAppAuthenticationRedirect({
+    route: {
+      path: '/konto',
+      name: 'KontoDostep',
+      matched: [{ path: '/konto' }]
+    },
+    isAppReady: true
+  }), '/login')
+})
+
+test('ogólna aktywacja bez tokenu nie zawiera formularza tworzenia konta', async () => {
+  const source = await readFile(
+    new URL('../src/views/RegisterView.vue', import.meta.url),
+    'utf8'
+  )
+  assert.match(source, /unikatowy link lub zeskanuj kod QR/)
+  assert.doesNotMatch(source, /createUserWithEmailAndPassword/)
+  assert.doesNotMatch(source, /autocomplete="new-password"/)
 })
 
 test('stare logowanie PIN pozostaje dostępną ścieżką przejściową', () => {

@@ -12,6 +12,17 @@ Porty są zapisane centralnie w `firebase-emulators.json`:
 - Firestore: `127.0.0.1:8080`;
 - Emulator UI: `127.0.0.1:4000`.
 
+Fikcyjnego, zweryfikowanego właściciela wraz z markerem legacy można przygotować
+po uruchomieniu Emulatorów poleceniem:
+
+```text
+npm.cmd run seed:emulator-owner
+```
+
+Skrypt działa wyłącznie dla `demo-gastromanager` i hosta `127.0.0.1`. Twardo
+odmawia pracy z produkcyjnym identyfikatorem projektu. Po wykonaniu wypisuje
+fikcyjny e-mail, hasło i UID przeznaczone wyłącznie do lokalnych testów.
+
 ## Test krok po kroku
 
 1. W pierwszym terminalu uruchom `npm.cmd run emulators`.

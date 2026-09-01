@@ -5,6 +5,12 @@ const FIREBASE_PUBLIC_PATHS = new Set([
 ])
 
 export const LEGACY_PIN_LOGIN_PATH = '/logowanie'
+export const ACTIVATION_ROUTE_NAME = 'Aktywacja'
+
+export const isPublicActivationRoute = route => (
+  route?.name === ACTIVATION_ROUTE_NAME ||
+  String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
+)
 
 export const isPublicAuthenticationPath = path => (
   FIREBASE_PUBLIC_PATHS.has(String(path || '')) ||
@@ -31,4 +37,38 @@ export const resolveAuthenticationRedirect = ({
   if (hasFirebaseSession || hasLegacyPinSession) return null
 
   return '/login'
+}
+
+export const resolveRouteAuthenticationRedirect = ({
+  route,
+  hasFirebaseSession = false,
+  hasLegacyPinSession = false
+} = {}) => {
+  if (isPublicActivationRoute(route)) return null
+
+  return resolveAuthenticationRedirect({
+    path: route?.path,
+    hasFirebaseSession,
+    hasLegacyPinSession
+  })
+}
+
+export const resolveAppAuthenticationRedirect = ({
+  route,
+  isAppReady = false,
+  hasFirebaseSession = false,
+  hasLegacyPinSession = false
+} = {}) => {
+  if (!isAppReady) return null
+
+  // START_LOCATION Vue Routera ma pustą tablicę `matched`. App.vue nie może
+  // wtedy oceniać roboczej ścieżki "/", bo właściwy URL nie został jeszcze
+  // rozpoznany i publiczna aktywacja mogłaby zostać zastąpiona przez /login.
+  if (!route?.matched?.length) return null
+
+  return resolveRouteAuthenticationRedirect({
+    route,
+    hasFirebaseSession,
+    hasLegacyPinSession
+  })
 }

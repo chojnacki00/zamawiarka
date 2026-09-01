@@ -6,6 +6,7 @@ import {
   assertEmailMatchesPublicInvitation,
   assertPrivateInvitationForAccount,
   assertPublicInvitationIsActive,
+  buildSafePublicInvitationPreview,
   createIdentityInvitationBundle,
   hashIdentityValue,
   INVITATION_PURPOSES
@@ -62,6 +63,29 @@ test('surowy token i pełny e-mail nie trafiają do publicznego dokumentu', asyn
   assert.equal(serializedPublic.includes(bundle.rawToken), false)
   assert.equal(serializedPublic.includes('jan@example.com'), false)
   assert.equal(bundle.publicInvitation.maskedEmail, 'j***@example.com')
+})
+
+test('publiczny podgląd aktywacji zawiera wyłącznie bezpieczne dane', async () => {
+  const bundle = await createBundle(INVITATION_PURPOSES.ACCOUNT_ACTIVATION)
+  const preview = buildSafePublicInvitationPreview({
+    invitation: {
+      ...bundle.publicInvitation,
+      restaurantId: 'restaurant-secret',
+      employeeId: 'employee-secret',
+      emailNormalized: 'jan@example.com'
+    },
+    now: new Date('2026-09-01T10:00:00Z')
+  })
+
+  assert.deepEqual(Object.keys(preview).sort(), [
+    'expiresAt',
+    'maskedEmail',
+    'purpose',
+    'restaurantNameSnapshot'
+  ])
+  assert.equal(JSON.stringify(preview).includes('restaurant-secret'), false)
+  assert.equal(JSON.stringify(preview).includes('employee-secret'), false)
+  assert.equal(JSON.stringify(preview).includes('jan@example.com'), false)
 })
 
 test('QR i kopiowany link mogą użyć dokładnie tego samego adresu aktywacji', async () => {

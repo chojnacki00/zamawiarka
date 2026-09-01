@@ -177,11 +177,12 @@
         <small>Aplikacja nie wysłała wiadomości e-mail. Link lub QR trzeba przekazać pracownikowi.</small>
       </div>
     </div>
+    <div v-if="actionFeedback" class="action-feedback" role="status" aria-live="polite">{{ actionFeedback }}</div>
   </main>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import QRCode from 'qrcode'
@@ -235,6 +236,8 @@ const identityInvitation = ref(null)
 const invitationPurposes = INVITATION_PURPOSES
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
+const actionFeedback = ref('')
+let actionFeedbackTimer = null
 const activeDevices = computed(() => employeeDevices.value.filter(
   device => device.status === 'active'
 ))
@@ -356,6 +359,16 @@ onMounted(async () => {
       }
     })
 })
+
+onUnmounted(() => clearTimeout(actionFeedbackTimer))
+
+const showActionFeedback = message => {
+  clearTimeout(actionFeedbackTimer)
+  actionFeedback.value = message
+  actionFeedbackTimer = setTimeout(() => {
+    actionFeedback.value = ''
+  }, 2200)
+}
 
 const toggleSection = section => {
   const shouldOpen = !openSections.value[section]
@@ -621,6 +634,7 @@ const inviteEmployee = async () => {
     await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
       'Zaproszenie zapisano. Przekaż pracownikowi link aktywacyjny — aplikacja nie wysłała wiadomości z zaproszeniem.'
+    showActionFeedback('Utworzono zaproszenie.')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,
@@ -637,10 +651,12 @@ const copyActivationLink = async () => {
   try {
     await navigator.clipboard.writeText(identityInvitation.value.link)
     accountAccessMessage.value = 'Link aktywacyjny skopiowano.'
+    showActionFeedback('Skopiowano link.')
   } catch (error) {
     console.error('Nie udało się skopiować linku aktywacyjnego:', error)
     accountAccessMessage.value =
       'Nie udało się skopiować linku. Zaznacz go i skopiuj ręcznie.'
+    showActionFeedback('Nie udało się skopiować linku.')
   }
 }
 
@@ -703,6 +719,7 @@ const cancelVisibleInvitation = async () => {
     closeIdentityInvitation()
     await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value = 'Zaproszenie zostało anulowane i usunięte.'
+    showActionFeedback('Anulowano zaproszenie.')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,
@@ -863,9 +880,10 @@ const generatePairingCode = async () => {
 .account-access-status.active { color: #047857; background: #d1fae5; }
 .account-access-status.pending { color: #92400e; background: #fef3c7; }
 .account-access-status.blocked { color: #b91c1c; background: #fee2e2; }
-.invite-button, .block-access-button { min-height: 44px; padding: 10px 13px; border-radius: 10px; font-weight: 750; }
+.invite-button, .block-access-button { min-height: 44px; padding: 10px 13px; border-radius: 10px; font-weight: 750; cursor: pointer; touch-action: manipulation; transition: transform .08s ease, filter .08s ease, box-shadow .08s ease; }
 .invite-button { border: 1px solid #bae6fd; background: #e0f2fe; color: #0369a1; }
 .block-access-button { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
+.invite-button:active:not(:disabled), .block-access-button:active:not(:disabled) { transform: scale(.97); filter: brightness(.94); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .12); }
 .invite-button:disabled, .block-access-button:disabled { opacity: .55; }
 .account-access-message { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
 .device-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -873,6 +891,7 @@ const generatePairingCode = async () => {
 .device-card.disconnected { opacity: .58; }.device-card span { display: grid; min-width: 0; gap: 3px; }.device-card small { color: #64748b; font-size: 11px; line-height: 1.35; }.device-card button { flex: 0 0 auto; }
 .invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
 .invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
+.action-feedback { position: fixed; z-index: 10050; top: calc(18px + env(safe-area-inset-top)); left: 50%; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(15, 23, 42, .94); box-shadow: 0 8px 24px rgba(15, 23, 42, .24); font-size: 14px; font-weight: 750; text-align: center; }
 .search-field input { color: #111827; caret-color: #0ea5e9; -webkit-text-fill-color: #111827; }
 .search-field input::placeholder { color: #94a3b8; opacity: 1; -webkit-text-fill-color: #94a3b8; }
 .accordion-card { overflow: hidden; scroll-margin-top: 14px; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }

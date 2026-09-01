@@ -192,6 +192,22 @@ export const assertPublicInvitationIsActive = ({
   return true
 }
 
+export const buildSafePublicInvitationPreview = ({
+  invitation,
+  now = Date.now()
+} = {}) => {
+  assertPublicInvitationIsActive({ invitation, now })
+
+  return {
+    restaurantNameSnapshot: normalizeText(
+      invitation.restaurantNameSnapshot
+    ) || 'GastroManager',
+    maskedEmail: normalizeText(invitation.maskedEmail),
+    expiresAt: invitation.expiresAt,
+    purpose: invitation.purpose
+  }
+}
+
 export const assertEmailMatchesPublicInvitation = async ({
   email,
   invitation,

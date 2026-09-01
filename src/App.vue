@@ -954,7 +954,8 @@ import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
 import {
   hasStoredLegacyPinSession,
-  resolveAuthenticationRedirect
+  resolveAppAuthenticationRedirect,
+  resolveRouteAuthenticationRedirect
 } from './utils/routeAccess.js'
 
 export default {
@@ -1766,13 +1767,14 @@ if (backupData.collections) {
     // =========================
     // STRAŻNIK ŚCIEŻEK (ROUTE GUARD) - Blokada przycisku Wstecz
     // =========================
-    watch(() => [route.path, isLoggedIn.value, employeeAuthStore.currentEmployee, isAppReady.value], () => {
+    watch(() => [route.name, route.path, route.matched.length, isLoggedIn.value, employeeAuthStore.currentEmployee, isAppReady.value], () => {
       // 1. KLUCZOWE: Jeśli Firebase jeszcze sprawdza sesję (aplikacja ładuje dane), 
       // NIE WYKONUJEMY ŻADNYCH RUCHÓW. Czekamy.
       if (!isAppReady.value) return
       
-      const authenticationRedirect = resolveAuthenticationRedirect({
-        path: route.path,
+      const authenticationRedirect = resolveAppAuthenticationRedirect({
+        route,
+        isAppReady: isAppReady.value,
         hasFirebaseSession: Boolean(auth.currentUser),
         hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee)
       })
@@ -5504,8 +5506,11 @@ onMounted(() => {
         await activateLegacyPinRestaurant(employeeAuthStore.currentEmployee)
       } 
       else {
-        const authenticationRedirect = resolveAuthenticationRedirect({
-          path: currentPath,
+        const authenticationRedirect = resolveRouteAuthenticationRedirect({
+          route: {
+            name: router.currentRoute.value.name,
+            path: currentPath
+          },
           hasFirebaseSession: false,
           hasLegacyPinSession: false
         })

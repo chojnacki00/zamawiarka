@@ -11,6 +11,7 @@
           <strong>{{ invitation.restaurantNameSnapshot }}</strong>
           <span>E-mail: {{ invitation.maskedEmail }}</span>
           <span>Ważne do: {{ formatDate(invitation.expiresAt) }}</span>
+          <span>{{ invitationPurposeLabel }}</span>
         </div>
 
         <template v-if="step === 'email'">
@@ -55,7 +56,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   createUserWithEmailAndPassword,
@@ -70,7 +71,7 @@ import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { buildAccountReturnUrl } from '../config/publicAppUrl.js'
 import {
   assertEmailMatchesPublicInvitation,
-  assertPublicInvitationIsActive,
+  buildSafePublicInvitationPreview,
   hashIdentityValue,
   INVITATION_PURPOSES
 } from '../utils/identityInvitations.js'
@@ -82,6 +83,7 @@ const sessionStore = useAccountSessionStore()
 const purposes = INVITATION_PURPOSES
 const token = String(route.query.t || '').trim()
 const invitation = ref(null)
+const invitationEmailHash = ref('')
 const isLoading = ref(true)
 const isBusy = ref(false)
 const errorMessage = ref('')
@@ -91,6 +93,13 @@ const password = ref('')
 const passwordConfirmation = ref('')
 const deviceName = ref(suggestDeviceName())
 const step = ref('email')
+const INVALID_INVITATION_MESSAGE =
+  'Zaproszenie jest nieprawidłowe lub wygasło. Poproś managera o nowe zaproszenie.'
+const invitationPurposeLabel = computed(() => (
+  invitation.value?.purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT
+    ? 'Zaproszenie dotyczy dodania kolejnego urządzenia.'
+    : 'Zaproszenie dotyczy aktywacji konta pracownika.'
+))
 
 const formatDate = value => {
   const date = value?.toDate?.() || new Date(value)
@@ -135,21 +144,26 @@ const runAction = async action => {
 }
 
 const loadInvitation = async () => {
-  if (!token) throw new Error('Link aktywacyjny jest nieprawidłowy.')
+  if (!token) throw new Error('activation/missing-token')
   const tokenHash = await hashIdentityValue(token)
   const snapshot = await getDoc(doc(db, 'activationInvitations', tokenHash))
   if (!snapshot.exists()) {
-    throw new Error('Link jest nieważny, anulowany albo został już wykorzystany.')
+    throw new Error('activation/invitation-not-found')
   }
-  const data = snapshot.data()
-  assertPublicInvitationIsActive({ invitation: data })
-  invitation.value = data
+  const publicInvitation = snapshot.data()
+  invitationEmailHash.value = String(publicInvitation.emailHash || '')
+  invitation.value = buildSafePublicInvitationPreview({
+    invitation: publicInvitation
+  })
 }
 
 const checkEmail = () => runAction(async () => {
   await assertEmailMatchesPublicInvitation({
     email: email.value,
-    invitation: invitation.value
+    invitation: {
+      ...invitation.value,
+      emailHash: invitationEmailHash.value
+    }
   })
   email.value = email.value.trim().toLowerCase()
   if (invitation.value.purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
@@ -233,7 +247,13 @@ onMounted(async () => {
       await afterAuthentication(auth.currentUser)
     }
   } catch (error) {
-    errorMessage.value = error?.message || 'Nie udało się odczytać zaproszenia.'
+    console.warn(
+      'Nie udało się zweryfikować publicznego zaproszenia:',
+      error?.code || 'activation/invalid-invitation'
+    )
+    invitation.value = null
+    invitationEmailHash.value = ''
+    errorMessage.value = INVALID_INVITATION_MESSAGE
   } finally {
     isLoading.value = false
   }
