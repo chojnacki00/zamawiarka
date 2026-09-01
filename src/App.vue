@@ -16,7 +16,7 @@
     <!-- =========================
          ROUTER: WIDOK LOGOWANIA (Tylko gdy nikt nie jest zalogowany)
     ========================== -->
-    <router-view v-if="!isLoggedIn && !employeeAuthStore?.currentEmployee" />
+    <router-view v-if="isActivationRoute || (!isLoggedIn && !employeeAuthStore?.currentEmployee)" />
 
     <!-- =========================
          APP / KONTENER GŁÓWNY (Dla Managera LUB Pracownika)
@@ -954,8 +954,10 @@ import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
 import {
   hasStoredLegacyPinSession,
+  isPublicActivationRoute,
   resolveAppAuthenticationRedirect,
-  resolveRouteAuthenticationRedirect
+  resolveRouteAuthenticationRedirect,
+  shouldDeferAccountBootstrapForActivation
 } from './utils/routeAccess.js'
 
 export default {
@@ -995,6 +997,9 @@ export default {
     // LOGOWANIE - STAN SESJI
     // =========================
     const isLoggedIn = ref(false)
+    const isActivationRoute = computed(() => (
+      isPublicActivationRoute(route)
+    ))
     const authError = ref('')
     const isLoggingIn = ref(false)
     const currentCompany = ref(null)
@@ -5526,6 +5531,17 @@ onMounted(() => {
     }
 
     isLoggedIn.value = true
+
+    if (shouldDeferAccountBootstrapForActivation({
+      route: router.currentRoute.value,
+      user
+    })) {
+      await accountSessionStore.initializeForUser(null, { force: true })
+      isDataLoaded.value = true
+      isAppReady.value = true
+      return
+    }
+
     await accountSessionStore.initializeForUser(user)
 
     if (accountSessionStore.hasActiveContext) {
@@ -5757,6 +5773,7 @@ const openZamawiarkaMenuFromHome = () => {
       wczytajBackup,
       recepturyView,
       isLoggedIn,
+      isActivationRoute,
       isLoggingIn,
       authForm,
       authError,

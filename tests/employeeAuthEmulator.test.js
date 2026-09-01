@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { webcrypto } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { after, before, beforeEach, test } from 'node:test'
 import {
@@ -29,6 +30,10 @@ import {
 } from 'firebase/firestore'
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' }
 import { completeLegacyOwnerBootstrap } from '../src/services/legacyOwnerBootstrap.js'
+import {
+  assertEmailMatchesPublicInvitation,
+  hashIdentityValue
+} from '../src/utils/identityInvitations.js'
 
 let rulesEnv
 let appCounter = 0
@@ -195,6 +200,181 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
 
   assert.equal(credential.user.emailVerified, true)
   assert.equal(token.claims.email_verified, true)
+})
+
+test('aktywacja zachowuje zaproszenie po utworzeniu niezweryfikowanego konta i kończy się atomowo', async () => {
+  const rawToken = 'testowy-token-aktywacji-pracownika'
+  const email = 'activation-resume@example.test'
+  const password = 'Testowe-haslo-123'
+  const [tokenHash, emailHash] = await Promise.all([
+    hashIdentityValue(rawToken, { cryptoImpl: webcrypto }),
+    hashIdentityValue(email, { cryptoImpl: webcrypto })
+  ])
+  const slotId = 'restaurant-a__employee-resume__ACCOUNT_ACTIVATION'
+  const expiresAt = Timestamp.fromMillis(Date.now() + 60 * 60 * 1000)
+
+  await seed([
+    ['users/restaurant-a/employees/employee-resume', {
+      aktywny: true,
+      permissionProfileId: 'profile-1'
+    }],
+    [`identityInvitations/${tokenHash}`, {
+      id: tokenHash,
+      tokenHash,
+      slotId,
+      purpose: 'ACCOUNT_ACTIVATION',
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-resume',
+      permissionProfileId: 'profile-1',
+      emailNormalized: email,
+      emailHash,
+      targetAuthUid: null,
+      status: 'pending',
+      createdByAuthUid: 'owner-auth',
+      createdAt: Timestamp.now(),
+      expiresAt
+    }],
+    [`activationInvitations/${tokenHash}`, {
+      id: tokenHash,
+      tokenHash,
+      purpose: 'ACCOUNT_ACTIVATION',
+      restaurantNameSnapshot: 'Restauracja testowa',
+      maskedEmail: 'a***@example.test',
+      emailHash,
+      status: 'pending',
+      createdAt: Timestamp.now(),
+      expiresAt
+    }],
+    [`restaurants/restaurant-a/identityInvitationSlots/${slotId}`, {
+      id: slotId,
+      tokenHash,
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-resume',
+      purpose: 'ACCOUNT_ACTIVATION',
+      createdAt: Timestamp.now(),
+      expiresAt
+    }]
+  ])
+
+  const { auth, db } = createEmulatedClient()
+  const publicRef = doc(db, `activationInvitations/${tokenHash}`)
+  const privateRef = doc(db, `identityInvitations/${tokenHash}`)
+  const anonymousPreview = await getDoc(publicRef)
+  assert.equal(anonymousPreview.exists(), true)
+  await assertEmailMatchesPublicInvitation({
+    email,
+    invitation: anonymousPreview.data(),
+    cryptoImpl: webcrypto
+  })
+
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    email,
+    password
+  )
+  assert.equal(credential.user.emailVerified, false)
+  assert.equal((await getDoc(publicRef)).exists(), true)
+  await assert.rejects(getDoc(privateRef), error => (
+    error?.code === 'permission-denied'
+  ))
+
+  const memberRef = doc(
+    db,
+    `restaurants/restaurant-a/members/${credential.user.uid}`
+  )
+  const [memberBefore, privateBefore, publicBefore, slotBefore] = await readAsAdmin([
+    `restaurants/restaurant-a/members/${credential.user.uid}`,
+    `identityInvitations/${tokenHash}`,
+    `activationInvitations/${tokenHash}`,
+    `restaurants/restaurant-a/identityInvitationSlots/${slotId}`
+  ])
+  assert.equal(memberBefore.exists(), false)
+  assert.equal(privateBefore.exists(), true)
+  assert.equal(publicBefore.exists(), true)
+  assert.equal(slotBefore.exists(), true)
+
+  await signOut(auth)
+  const resumed = await signInWithEmailAndPassword(auth, email, password)
+  assert.equal(resumed.user.emailVerified, false)
+  assert.equal((await getDoc(publicRef)).exists(), true)
+
+  await sendEmailVerification(resumed.user)
+  await applyActionCode(auth, await getVerificationCode(email))
+  await resumed.user.reload()
+  await resumed.user.getIdToken(true)
+  assert.equal(resumed.user.emailVerified, true)
+
+  const authTime = Number(
+    (await resumed.user.getIdTokenResult()).claims.auth_time
+  )
+  const sessionRef = doc(
+    memberRef,
+    'deviceSessions',
+    String(authTime)
+  )
+  const slotRef = doc(
+    db,
+    `restaurants/restaurant-a/identityInvitationSlots/${slotId}`
+  )
+
+  await runTransaction(db, async transaction => {
+    const [privateInvitation, publicInvitation, slot, member, session] = await Promise.all([
+      transaction.get(privateRef),
+      transaction.get(publicRef),
+      transaction.get(slotRef),
+      transaction.get(memberRef),
+      transaction.get(sessionRef)
+    ])
+    assert.equal(privateInvitation.exists(), true)
+    assert.equal(publicInvitation.exists(), true)
+    assert.equal(slot.exists(), true)
+    assert.equal(member.exists(), false)
+    assert.equal(session.exists(), false)
+
+    transaction.set(memberRef, {
+      authUid: resumed.user.uid,
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-resume',
+      permissionProfileId: 'profile-1',
+      invitationId: tokenHash,
+      role: 'employee',
+      status: 'active',
+      createdAt: serverTimestamp(),
+      acceptedAt: serverTimestamp()
+    })
+    transaction.set(sessionRef, {
+      deviceId: 'device-auth-emulator-resume',
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-resume',
+      authUid: resumed.user.uid,
+      deviceName: 'Telefon testowy',
+      platform: 'Auth Emulator',
+      authTime,
+      status: 'active',
+      addedAt: serverTimestamp(),
+      lastActiveAt: serverTimestamp(),
+      approvedAt: serverTimestamp(),
+      approvedByAuthUid: 'owner-auth',
+      invitationId: tokenHash,
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    })
+    transaction.delete(privateRef)
+    transaction.delete(publicRef)
+    transaction.delete(slotRef)
+  })
+
+  const [memberAfter, privateAfter, publicAfter, slotAfter] = await readAsAdmin([
+    `restaurants/restaurant-a/members/${resumed.user.uid}`,
+    `identityInvitations/${tokenHash}`,
+    `activationInvitations/${tokenHash}`,
+    `restaurants/restaurant-a/identityInvitationSlots/${slotId}`
+  ])
+  assert.equal(memberAfter.exists(), true)
+  assert.equal(privateAfter.exists(), false)
+  assert.equal(publicAfter.exists(), false)
+  assert.equal(slotAfter.exists(), false)
+  assert.equal((await getDoc(sessionRef)).exists(), true)
 })
 
 test('zweryfikowany stary właściciel atomowo tworzy konto, restaurację i członkostwo', async () => {

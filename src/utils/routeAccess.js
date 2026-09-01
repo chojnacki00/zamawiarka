@@ -12,6 +12,15 @@ export const isPublicActivationRoute = route => (
   String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
 )
 
+export const shouldDeferAccountBootstrapForActivation = ({
+  route,
+  user
+} = {}) => (
+  isPublicActivationRoute(route) &&
+  Boolean(user) &&
+  user.emailVerified !== true
+)
+
 export const isPublicAuthenticationPath = path => (
   FIREBASE_PUBLIC_PATHS.has(String(path || '')) ||
   String(path || '') === LEGACY_PIN_LOGIN_PATH

@@ -9,7 +9,8 @@ import {
   hasStoredLegacyPinSession,
   resolveAppAuthenticationRedirect,
   resolveAuthenticationRedirect,
-  resolveRouteAuthenticationRedirect
+  resolveRouteAuthenticationRedirect,
+  shouldDeferAccountBootstrapForActivation
 } from '../src/utils/routeAccess.js'
 import { shouldUseFirebaseEmulators } from '../src/utils/firebaseEmulatorMode.js'
 
@@ -153,4 +154,19 @@ test('tryb emulatorowy nie zmienia zasad ochrony tras', () => {
   assert.equal(redirectFor('/konto', {
     hasFirebaseSession: true
   }), null)
+})
+
+test('bootstrap konta jest odroczony tylko dla niezweryfikowanej aktywacji', () => {
+  assert.equal(shouldDeferAccountBootstrapForActivation({
+    route: { path: '/aktywacja', name: 'Aktywacja' },
+    user: { uid: 'auth-1', emailVerified: false }
+  }), true)
+  assert.equal(shouldDeferAccountBootstrapForActivation({
+    route: { path: '/aktywacja', name: 'Aktywacja' },
+    user: { uid: 'auth-1', emailVerified: true }
+  }), false)
+  assert.equal(shouldDeferAccountBootstrapForActivation({
+    route: { path: '/konto', name: 'KontoDostep' },
+    user: { uid: 'auth-1', emailVerified: false }
+  }), false)
 })
