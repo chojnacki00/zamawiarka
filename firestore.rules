@@ -24,6 +24,11 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
     }
 
+    function memberDocumentExists(restaurantId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
     function employeeDocument(restaurantId, employeeId) {
       return get(/databases/$(database)/documents/users/$(restaurantId)/employees/$(employeeId));
     }
@@ -32,11 +37,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId));
     }
 
-    function hasApprovedEmployeeSession(restaurantId, member) {
-      let authTime = request.auth.token.get('auth_time', 0);
-      let session = get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime));
-      return authTime is int &&
-        authTime > 0 &&
+    function approvedEmployeeSessionMatches(restaurantId, member, authTime) {
+      let sessionPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime);
+      let session = get(sessionPath);
+      return exists(sessionPath) &&
         session.data.authUid == request.auth.uid &&
         session.data.restaurantId == restaurantId &&
         session.data.employeeId == member.data.employeeId &&
@@ -44,10 +48,26 @@ service cloud.firestore {
         session.data.status == 'active';
     }
 
-    function hasActiveMembership(restaurantId) {
+    function hasApprovedEmployeeSession(restaurantId, member) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      return authTime is int &&
+        authTime > 0 &&
+        approvedEmployeeSessionMatches(restaurantId, member, authTime);
+    }
+
+    function activeEmployeeMembershipMatches(restaurantId, member) {
+      let employeePath = /databases/$(database)/documents/users/$(restaurantId)/employees/$(member.data.employeeId);
+      let employee = get(employeePath);
+      return member.data.employeeId is string &&
+        exists(employeePath) &&
+        hasApprovedEmployeeSession(restaurantId, member) &&
+        employee.data.aktywny != false &&
+        employee.data.permissionProfileId == member.data.permissionProfileId;
+    }
+
+    function activeMembershipMatches(restaurantId) {
       let member = memberDocument(restaurantId);
-      return hasVerifiedEmail() &&
-        member.data.authUid == request.auth.uid &&
+      return member.data.authUid == request.auth.uid &&
         member.data.restaurantId == restaurantId &&
         member.data.status == 'active' &&
         (
@@ -55,14 +75,15 @@ service cloud.firestore {
           (
             member.data.role == 'employee' &&
             member.data.employeeId is string &&
-            hasApprovedEmployeeSession(restaurantId, member) &&
-            employeeDocument(restaurantId, member.data.employeeId).data.aktywny != false &&
-            employeeDocument(
-              restaurantId,
-              member.data.employeeId
-            ).data.permissionProfileId == member.data.permissionProfileId
+            activeEmployeeMembershipMatches(restaurantId, member)
           )
         );
+    }
+
+    function hasActiveMembership(restaurantId) {
+      return hasVerifiedEmail() &&
+        memberDocumentExists(restaurantId) &&
+        activeMembershipMatches(restaurantId);
     }
 
     function isRestaurantOwner(restaurantId) {
@@ -70,19 +91,29 @@ service cloud.firestore {
         memberDocument(restaurantId).data.role == 'owner';
     }
 
-    function hasPermission(restaurantId, permissionKey) {
+    function permissionProfileGrants(restaurantId, profileId, permissionKey) {
+      let profilePath = /databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId);
+      return exists(profilePath) &&
+        get(profilePath).data.uprawnienia[permissionKey] == true;
+    }
+
+    function activeMembershipGrantsPermission(restaurantId, permissionKey) {
       let member = memberDocument(restaurantId);
-      return hasActiveMembership(restaurantId) &&
+      return member.data.role == 'owner' ||
         (
-          member.data.role == 'owner' ||
-          (
-            member.data.permissionProfileId is string &&
-            permissionProfileDocument(
-              restaurantId,
-              member.data.permissionProfileId
-            ).data.uprawnienia[permissionKey] == true
+          member.data.role == 'employee' &&
+          member.data.permissionProfileId is string &&
+          permissionProfileGrants(
+            restaurantId,
+            member.data.permissionProfileId,
+            permissionKey
           )
         );
+    }
+
+    function hasPermission(restaurantId, permissionKey) {
+      return hasActiveMembership(restaurantId) &&
+        activeMembershipGrantsPermission(restaurantId, permissionKey);
     }
 
     function canViewSchedule(restaurantId) {
@@ -193,19 +224,55 @@ service cloud.firestore {
         );
     }
 
+    function ownerBootstrapCompanionsAreValidAfter(restaurantId) {
+      let accountPath = /databases/$(database)/documents/accounts/$(request.auth.uid);
+      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid);
+      let account = getAfter(accountPath);
+      let member = getAfter(memberPath);
+      return existsAfter(accountPath) &&
+        existsAfter(memberPath) &&
+        account.data.authUid == request.auth.uid &&
+        account.data.email == request.auth.token.get('email', null) &&
+        account.data.status == 'active' &&
+        member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.employeeId == null &&
+        member.data.permissionProfileId == null &&
+        member.data.invitationId == null &&
+        member.data.role == 'owner' &&
+        member.data.status == 'active';
+    }
+
     function isValidOwnerBootstrap(restaurantId, memberId) {
       let restaurant = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId));
+      let account = getAfter(/databases/$(database)/documents/accounts/$(request.auth.uid));
       let incoming = request.resource.data;
       return isLegacyOwnerBootstrapRestaurant(restaurantId) &&
         memberId == request.auth.uid &&
+        account.data.authUid == request.auth.uid &&
+        account.data.email == request.auth.token.get('email', null) &&
+        account.data.status == 'active' &&
         restaurant.data.ownerAuthUid == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'authUid',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'invitationId',
+          'role',
+          'status',
+          'createdAt',
+          'acceptedAt'
+        ]) &&
         incoming.authUid == request.auth.uid &&
         incoming.restaurantId == restaurantId &&
         incoming.employeeId == null &&
         incoming.permissionProfileId == null &&
         incoming.invitationId == null &&
         incoming.role == 'owner' &&
-        incoming.status == 'active';
+        incoming.status == 'active' &&
+        incoming.createdAt is timestamp &&
+        incoming.acceptedAt is timestamp;
     }
 
     function membershipIdentityIsUnchanged() {
@@ -326,7 +393,8 @@ service cloud.firestore {
         ]) &&
         request.resource.data.id == restaurantId &&
         request.resource.data.ownerAuthUid == request.auth.uid &&
-        request.resource.data.status == 'active';
+        request.resource.data.status == 'active' &&
+        ownerBootstrapCompanionsAreValidAfter(restaurantId);
       allow update: if (
         isRestaurantOwner(restaurantId) ||
           (
@@ -847,7 +915,7 @@ service cloud.firestore {
 
       match /app/state {
         allow read: if hasActiveMembership(restaurantId) || (
-          isLegacyOwnerBootstrapRestaurant(restaurantId)
+          hasVerifiedEmail() && restaurantId == request.auth.uid
         );
         allow create, update: if isRestaurantOwner(restaurantId) ||
           hasPermission(restaurantId, 'can_edit_products') ||

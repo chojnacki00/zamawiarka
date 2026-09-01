@@ -371,7 +371,20 @@ test('stary właściciel wykonuje bootstrap tylko z dokumentem app/state', async
     uid,
     email: 'owner@example.com'
   }).firestore()
+  const marker = await assertSucceeds(getDoc(doc(
+    db,
+    `users/${uid}/app/state`
+  )))
+  assert.equal(marker.data().initialized, true)
   const batch = writeBatch(db)
+  batch.set(doc(db, `accounts/${uid}`), {
+    authUid: uid,
+    email: 'owner@example.com',
+    displayName: '',
+    status: 'active',
+    createdAt: now(),
+    updatedAt: now()
+  })
   batch.set(doc(db, `restaurants/${uid}`), {
     id: uid,
     name: 'Stara restauracja',
@@ -385,6 +398,24 @@ test('stary właściciel wykonuje bootstrap tylko z dokumentem app/state', async
     memberData({ uid, restaurantId: uid, role: 'owner' })
   )
   await assertSucceeds(batch.commit())
+})
+
+test('marker właściciela nie pozwala utworzyć samej restauracji bez konta i członkostwa', async () => {
+  const uid = 'incomplete-owner'
+  await seed([[`users/${uid}/app/state`, { initialized: true }]])
+  const db = context({
+    uid,
+    email: 'incomplete@example.com'
+  }).firestore()
+
+  await assertFails(setDoc(doc(db, `restaurants/${uid}`), {
+    id: uid,
+    name: 'Niepełna restauracja',
+    ownerAuthUid: uid,
+    status: 'active',
+    createdAt: now(),
+    updatedAt: now()
+  }))
 })
 
 test('nowe konto bez app/state nie wykonuje bootstrapu właściciela', async () => {

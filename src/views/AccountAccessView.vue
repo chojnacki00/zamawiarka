@@ -38,7 +38,8 @@
       </template>
 
       <template v-else-if="!sessionStore.currentMembership">
-        <p class="hint">To konto nie ma aktywnego dostępu. Otwórz link zaproszenia otrzymany od managera.</p>
+        <p v-if="sessionStore.error" class="error-message">{{ sessionStore.error }}</p>
+        <p v-else class="hint">To konto nie ma aktywnego dostępu. Otwórz link zaproszenia otrzymany od managera.</p>
       </template>
 
       <template v-else-if="sessionStore.needsLocalPinSetup">

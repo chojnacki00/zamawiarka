@@ -37,6 +37,18 @@ Porty są zapisane centralnie w `firebase-emulators.json`:
    restaurację i członkostwo właściciela dla tego samego UID, po czym pokazuje
    testową restaurację. Nowe przypadkowe konto bez `users/{uid}/app/state` nie
    może ominąć tego warunku.
+
+   Po poprawnym bootstrapie Firestore zawiera dokładnie powiązany zestaw:
+
+   - `accounts/{uid}`;
+   - `restaurants/{uid}`;
+   - `restaurants/{uid}/members/{uid}` z `role: "owner"`, `status: "active"`,
+     `employeeId: null` i `permissionProfileId: null`.
+
+   Dokumenty są tworzone w jednej transakcji. Jeżeli po wcześniejszej próbie
+   istnieje tylko `accounts/{uid}`, ponowne logowanie bezpiecznie dokończy
+   bootstrap, o ile nadal istnieje `users/{uid}/app/state`. Konto bez tego
+   markera nie uzyska restauracji ani członkostwa.
 7. W ustawieniach zespołu utwórz pracownika z e-mailem i wymaganym profilem,
    a następnie wybierz „Utwórz zaproszenie”. Oczekiwany wynik: jeden modal
    pokazuje QR i identyczny link; Firestore zawiera prywatny skrót tokenu,
@@ -73,6 +85,20 @@ Porty są zapisane centralnie w `firebase-emulators.json`:
 18. Zakończ oba procesy klawiszami `Ctrl+C` i sprawdź Firebase Console projektu
     produkcyjnego. Oczekiwany wynik: nie ma nowych kont ani dokumentów;
     konfiguracja używała wyłącznie identyfikatora zaczynającego się od `demo-`.
+
+## Rozpoznanie błędu bootstrapu właściciela
+
+Jeżeli po logowaniu istnieje tylko `accounts/{uid}`, a ekran pokazuje techniczny
+błąd konfiguracji zamiast gotowej restauracji:
+
+1. sprawdź, czy Auth Emulator pokazuje dokładnie ten sam UID i zweryfikowany
+   e-mail;
+2. sprawdź istnienie `users/{uid}/app/state` oraz boolean `initialized: true`;
+3. uruchom Emulatory ponownie, aby wczytały aktualne lokalne `firestore.rules`;
+4. sprawdź konsolę pod kątem błędu inicjalizacji konta — komunikat o braku linku
+   zaproszenia jest prawidłowy wyłącznie dla konta bez markera legacy;
+5. nie twórz ręcznie `restaurants/{uid}` ani `members/{uid}`. Ponowne logowanie
+   powinno atomowo utworzyć lub dokończyć cały zestaw.
 
 ## Checklista przyszłej konfiguracji wiadomości Firebase
 

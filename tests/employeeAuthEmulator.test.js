@@ -28,6 +28,7 @@ import {
   Timestamp
 } from 'firebase/firestore'
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' }
+import { completeLegacyOwnerBootstrap } from '../src/services/legacyOwnerBootstrap.js'
 
 let rulesEnv
 let appCounter = 0
@@ -104,6 +105,35 @@ const seed = async documents => {
   })
 }
 
+const readAsAdmin = async paths => {
+  let snapshots = []
+  await rulesEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    snapshots = await Promise.all(
+      paths.map(path => getDoc(doc(adminDb, path)))
+    )
+  })
+  return snapshots
+}
+
+const createVerifiedClient = async ({
+  email,
+  password = 'Testowe-haslo-123'
+}) => {
+  const { auth, db } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    email,
+    password
+  )
+  await sendEmailVerification(credential.user)
+  await applyActionCode(auth, await getVerificationCode(email))
+  await credential.user.reload()
+  await credential.user.getIdToken(true)
+  assert.equal(credential.user.emailVerified, true)
+  return { auth, db, user: credential.user, password }
+}
+
 before(async () => {
   rulesEnv = await initializeTestEnvironment({
     projectId: emulatorConfig.projectId,
@@ -167,6 +197,191 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
   assert.equal(token.claims.email_verified, true)
 })
 
+test('zweryfikowany stary właściciel atomowo tworzy konto, restaurację i członkostwo', async () => {
+  const { db, user } = await createVerifiedClient({
+    email: 'legacy-owner@example.test'
+  })
+  await seed([[`users/${user.uid}/app/state`, { initialized: true }]])
+
+  const result = await completeLegacyOwnerBootstrap({
+    db,
+    user,
+    restaurantName: 'Restauracja emulatorowa'
+  })
+  assert.equal(result.bootstrapped, true)
+
+  const [account, restaurant, member] = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+  assert.equal(account.exists(), true)
+  assert.equal(restaurant.exists(), true)
+  assert.equal(member.exists(), true)
+  assert.equal(account.data().authUid, user.uid)
+  assert.equal(restaurant.data().ownerAuthUid, user.uid)
+  assert.equal(member.data().role, 'owner')
+  assert.equal(member.data().status, 'active')
+  assert.equal(member.data().employeeId, null)
+  assert.equal(member.data().permissionProfileId, null)
+  assert.equal(member.data().invitationId, null)
+
+  const marker = await getDoc(doc(db, `users/${user.uid}/app/state`))
+  assert.equal(marker.data().initialized, true)
+  const missingProduct = await getDoc(doc(
+    db,
+    `users/${user.uid}/towary/brak-testowego-produktu`
+  ))
+  assert.equal(missingProduct.exists(), false)
+})
+
+test('konto bez markera legacy nie uruchamia bootstrapu właściciela', async () => {
+  const { db, user } = await createVerifiedClient({
+    email: 'no-marker@example.test'
+  })
+  const result = await completeLegacyOwnerBootstrap({
+    db,
+    user,
+    restaurantName: 'Niedozwolona restauracja'
+  })
+  assert.deepEqual(result, {
+    bootstrapped: false,
+    reason: 'marker-missing'
+  })
+
+  const [account, restaurant, member] = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+  assert.equal(account.exists(), false)
+  assert.equal(restaurant.exists(), false)
+  assert.equal(member.exists(), false)
+})
+
+test('istniejące konto i marker są bezpiecznie uzupełniane o restaurację i właściciela', async () => {
+  const { db, user } = await createVerifiedClient({
+    email: 'partial-owner@example.test'
+  })
+  await setDoc(doc(db, `accounts/${user.uid}`), {
+    authUid: user.uid,
+    email: user.email,
+    displayName: '',
+    status: 'active',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+  await seed([[`users/${user.uid}/app/state`, { initialized: true }]])
+
+  const result = await completeLegacyOwnerBootstrap({
+    db,
+    user,
+    restaurantName: 'Dokończona restauracja'
+  })
+  assert.equal(result.bootstrapped, true)
+
+  const [account, restaurant, member] = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+  assert.equal(account.exists(), true)
+  assert.equal(restaurant.exists(), true)
+  assert.equal(member.exists(), true)
+})
+
+test('częściowe konto bez markera nie może uzyskać restauracji ani członkostwa', async () => {
+  const { db, user } = await createVerifiedClient({
+    email: 'partial-no-marker@example.test'
+  })
+  await setDoc(doc(db, `accounts/${user.uid}`), {
+    authUid: user.uid,
+    email: user.email,
+    displayName: '',
+    status: 'active',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+
+  const result = await completeLegacyOwnerBootstrap({
+    db,
+    user,
+    restaurantName: 'Niedozwolona restauracja'
+  })
+  assert.equal(result.bootstrapped, false)
+
+  const [, restaurant, member] = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+  assert.equal(restaurant.exists(), false)
+  assert.equal(member.exists(), false)
+})
+
+test('ponowny bootstrap właściciela jest idempotentny', async () => {
+  const { db, user } = await createVerifiedClient({
+    email: 'idempotent-owner@example.test'
+  })
+  await seed([[`users/${user.uid}/app/state`, { initialized: true }]])
+  const options = {
+    db,
+    user,
+    restaurantName: 'Stała restauracja'
+  }
+
+  await completeLegacyOwnerBootstrap(options)
+  const before = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+  await completeLegacyOwnerBootstrap(options)
+  const after = await readAsAdmin([
+    `accounts/${user.uid}`,
+    `restaurants/${user.uid}`,
+    `restaurants/${user.uid}/members/${user.uid}`
+  ])
+
+  assert.deepEqual(
+    after.map(snapshot => snapshot.data()),
+    before.map(snapshot => snapshot.data())
+  )
+})
+
+test('dwa równoległe bootstrapy kończą się jednym spójnym zestawem dokumentów', async () => {
+  const email = 'parallel-owner@example.test'
+  const first = await createVerifiedClient({ email })
+  const second = createEmulatedClient()
+  await signInWithEmailAndPassword(second.auth, email, first.password)
+  await seed([[`users/${first.user.uid}/app/state`, { initialized: true }]])
+
+  const results = await Promise.all([
+    completeLegacyOwnerBootstrap({
+      db: first.db,
+      user: first.user,
+      restaurantName: 'Równoległa restauracja'
+    }),
+    completeLegacyOwnerBootstrap({
+      db: second.db,
+      user: second.auth.currentUser,
+      restaurantName: 'Równoległa restauracja'
+    })
+  ])
+  assert.deepEqual(results.map(result => result.bootstrapped), [true, true])
+
+  const [account, restaurant, member] = await readAsAdmin([
+    `accounts/${first.user.uid}`,
+    `restaurants/${first.user.uid}`,
+    `restaurants/${first.user.uid}/members/${first.user.uid}`
+  ])
+  assert.equal(account.exists(), true)
+  assert.equal(restaurant.exists(), true)
+  assert.equal(member.exists(), true)
+  assert.equal(member.data().employeeId, null)
+  assert.equal(member.data().permissionProfileId, null)
+})
+
 test('ponowne uwierzytelnienie wysyła zmianę e-maila, ale stosuje ją dopiero po kodzie', async () => {
   const oldEmail = 'owner-old@example.test'
   const newEmail = 'owner-new@example.test'
@@ -200,32 +415,10 @@ test('ponowne uwierzytelnienie wysyła zmianę e-maila, ale stosuje ją dopiero 
   assert.equal(credential.user.uid, unchangedUid)
 
   await seed([[`users/${unchangedUid}/app/state`, { initialized: true }]])
-  await setDoc(doc(db, `accounts/${unchangedUid}`), {
-    authUid: unchangedUid,
-    email: newEmail,
-    displayName: '',
-    status: 'active',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  })
-  await setDoc(doc(db, `restaurants/${unchangedUid}`), {
-    id: unchangedUid,
-    name: 'Restauracja testowa',
-    ownerAuthUid: unchangedUid,
-    status: 'active',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  })
-  await setDoc(doc(db, `restaurants/${unchangedUid}/members/${unchangedUid}`), {
-    authUid: unchangedUid,
-    restaurantId: unchangedUid,
-    employeeId: null,
-    permissionProfileId: null,
-    invitationId: null,
-    role: 'owner',
-    status: 'active',
-    createdAt: serverTimestamp(),
-    acceptedAt: serverTimestamp()
+  await completeLegacyOwnerBootstrap({
+    db,
+    user: credential.user,
+    restaurantName: 'Restauracja testowa'
   })
 
   assert.equal((await getDoc(doc(db, `accounts/${unchangedUid}`))).data().email, newEmail)

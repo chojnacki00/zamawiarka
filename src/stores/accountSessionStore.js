@@ -24,11 +24,10 @@ import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import {
   buildAccountDocument,
   buildMembershipDocument,
-  buildRestaurantDocument,
   normalizeAccountEmail,
-  resolveLegacyOwnerBootstrapRestaurantId,
   resolveMembershipSelection
 } from '../utils/employeeIdentity.js'
+import { completeLegacyOwnerBootstrap } from '../services/legacyOwnerBootstrap.js'
 import {
   assertPrivateInvitationForAccount,
   createIdentityInvitationBundle,
@@ -431,71 +430,6 @@ export const useAccountSessionStore = defineStore(
       return enriched
     }
 
-    const bootstrapLegacyOwnerIfNeeded = async ({
-      user,
-      availableMemberships
-    }) => {
-      // Jedyny jawny wyjątek przejściowy UID -> restaurantId. Dotyczy wyłącznie
-      // istniejącego właściciela z dawnym dokumentem users/{uid}/app/state.
-      const legacyRestaurantId = resolveLegacyOwnerBootstrapRestaurantId({
-        authUid: user.uid,
-        emailVerified: user.emailVerified
-      })
-      if (!legacyRestaurantId) return false
-
-      if (availableMemberships.some(
-        membership => membership.restaurantId === legacyRestaurantId
-      )) return false
-
-      const legacyStateRef = doc(
-        db,
-        'users',
-        legacyRestaurantId,
-        'app',
-        'state'
-      )
-      const legacyStateSnapshot = await getDoc(legacyStateRef)
-
-      if (!legacyStateSnapshot.exists()) return false
-
-      const restaurantRef = doc(db, 'restaurants', legacyRestaurantId)
-      const memberRef = doc(
-        db,
-        'restaurants',
-        legacyRestaurantId,
-        'members',
-        user.uid
-      )
-
-      await runTransaction(db, async transaction => {
-        const [restaurantSnapshot, memberSnapshot] = await Promise.all([
-          transaction.get(restaurantRef),
-          transaction.get(memberRef)
-        ])
-        const now = serverTimestamp()
-
-        if (!restaurantSnapshot.exists()) {
-          transaction.set(restaurantRef, buildRestaurantDocument({
-            restaurantId: legacyRestaurantId,
-            name: getRestaurantNameFallback(user),
-            ownerAuthUid: user.uid,
-            createdAt: now
-          }))
-        }
-
-        if (!memberSnapshot.exists()) {
-          transaction.set(memberRef, buildMembershipDocument({
-            authUid: user.uid,
-            restaurantId: legacyRestaurantId,
-            role: 'owner',
-            createdAt: now
-          }))
-        }
-      })
-
-      return true
-    }
-
     const prepareEmployeeDeviceSession = async ({
       membership,
       pinUnlocked = false
@@ -642,17 +576,23 @@ export const useAccountSessionStore = defineStore(
     }
 
     const loadAccountContext = async user => {
-      await upsertOwnAccount(user)
-      let availableMemberships = await fetchOwnMemberships(user)
       pendingInvitations.value = []
-      const bootstrapped = await bootstrapLegacyOwnerIfNeeded({
+      const ownerBootstrap = await completeLegacyOwnerBootstrap({
+        db,
         user,
-        availableMemberships
+        restaurantName: getRestaurantNameFallback(user)
       })
 
-      if (bootstrapped) {
-        availableMemberships = await fetchOwnMemberships(user)
+      if (ownerBootstrap.bootstrapped) {
+        account.value = {
+          id: user.uid,
+          ...ownerBootstrap.accountDocument
+        }
+      } else {
+        await upsertOwnAccount(user)
       }
+
+      const availableMemberships = await fetchOwnMemberships(user)
 
       const selection = resolveMembershipSelection({
         memberships: availableMemberships,
@@ -704,7 +644,7 @@ export const useAccountSessionStore = defineStore(
       } catch (caughtError) {
         console.error('Błąd inicjalizacji konta pracownika:', caughtError)
         error.value =
-          'Nie udało się wczytać dostępu do restauracji.'
+          'Nie udało się zakończyć konfiguracji konta. Odśwież widok i spróbuj ponownie.'
       } finally {
         isLoading.value = false
         isInitialized.value = true
