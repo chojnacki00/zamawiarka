@@ -15,7 +15,7 @@ import {
   persistentMultipleTabManager
 } from "firebase/firestore";
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' };
-import { shouldUseFirebaseEmulators } from './utils/firebaseEmulatorMode.js';
+import { resolveFirebaseRuntimeConfig } from './utils/firebaseRuntimeConfig.js';
 
 // Your web app's Firebase configuration
 const productionFirebaseConfig = {
@@ -31,7 +31,6 @@ const productionFirebaseConfig = {
 const viteEnvironment = import.meta.env || {};
 const emulatorRequested =
   viteEnvironment.VITE_USE_FIREBASE_EMULATORS === 'true';
-const useFirebaseEmulators = shouldUseFirebaseEmulators(viteEnvironment);
 
 if (emulatorRequested && viteEnvironment.DEV !== true) {
   console.warn(
@@ -39,16 +38,19 @@ if (emulatorRequested && viteEnvironment.DEV !== true) {
   );
 }
 
-const firebaseConfig = useFirebaseEmulators
-  ? {
-      apiKey: 'demo-api-key',
-      authDomain: `${emulatorConfig.projectId}.firebaseapp.com`,
-      projectId: emulatorConfig.projectId,
-      storageBucket: `${emulatorConfig.projectId}.appspot.com`,
-      messagingSenderId: '000000000000',
-      appId: '1:000000000000:web:demo'
-    }
-  : productionFirebaseConfig;
+const {
+  firebaseConfig,
+  useFirebaseEmulators,
+  useFirebaseTestProject
+} = resolveFirebaseRuntimeConfig({
+  environment: viteEnvironment,
+  productionConfig: productionFirebaseConfig,
+  emulatorConfig
+});
+
+if (useFirebaseTestProject) {
+  console.info(`Lokalny tryb Firebase Test: ${firebaseConfig.projectId}`);
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -72,7 +74,7 @@ const authPersistenceReady = setPersistence(
 
 // NOWY SPOSÓB: Inicjalizacja bazy od razu z nowym trybem offline
 const db = initializeFirestore(app, {
-  localCache: useFirebaseEmulators
+  localCache: useFirebaseEmulators || useFirebaseTestProject
     ? memoryLocalCache()
     : persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
@@ -85,4 +87,10 @@ if (useFirebaseEmulators) {
   );
 }
 
-export { auth, authPersistenceReady, db, useFirebaseEmulators };
+export {
+  auth,
+  authPersistenceReady,
+  db,
+  useFirebaseEmulators,
+  useFirebaseTestProject
+};

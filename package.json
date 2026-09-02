@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:test": "node scripts/verifyFirebaseTestConfig.mjs && vite --mode test",
     "dev:emulators": "vite --mode emulator",
     "emulators": "node scripts/verifyFirebaseEmulatorConfig.mjs && firebase emulators:start --only auth,firestore --project demo-gastromanager",
     "seed:emulator-owner": "node scripts/seedEmulatorOwner.mjs",
@@ -27,6 +28,8 @@
     "test:firestore-rules": "node scripts/runFirebaseEmulatorTests.mjs rules",
     "test:employee-auth-emulator": "node scripts/runFirebaseEmulatorTests.mjs auth",
     "test:emulators": "node scripts/runFirebaseEmulatorTests.mjs all",
+    "check:test-config": "node scripts/verifyFirebaseTestConfig.mjs",
+    "deploy:test:rules": "node scripts/deployTestFirestoreRules.mjs --confirm-project=gasteomanager---test",
     "preview": "vite preview"
   },
   "dependencies": {
