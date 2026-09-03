@@ -35,6 +35,43 @@ const accountNeedsUpdate = ({ data, user }) => (
   data?.status !== 'active'
 )
 
+const readCompletedOwnerBootstrap = async ({
+  accountRef,
+  restaurantRef,
+  memberRef,
+  user,
+  restaurantId
+}) => {
+  const [accountSnapshot, restaurantSnapshot, memberSnapshot] = await Promise.all([
+    getDoc(accountRef),
+    getDoc(restaurantRef),
+    getDoc(memberRef)
+  ])
+  if (
+    !accountSnapshot.exists() ||
+    !restaurantSnapshot.exists() ||
+    !memberSnapshot.exists() ||
+    accountSnapshot.data().authUid !== user.uid ||
+    accountSnapshot.data().status !== 'active' ||
+    restaurantSnapshot.data().id !== restaurantId ||
+    restaurantSnapshot.data().ownerAuthUid !== user.uid ||
+    restaurantSnapshot.data().status !== 'active' ||
+    !isOwnerMembership({
+      data: memberSnapshot.data(),
+      authUid: user.uid,
+      restaurantId
+    })
+  ) {
+    return null
+  }
+
+  return {
+    bootstrapped: true,
+    restaurantId,
+    accountDocument: accountSnapshot.data()
+  }
+}
+
 export const completeLegacyOwnerBootstrap = async ({
   db,
   user,
@@ -57,92 +94,113 @@ export const completeLegacyOwnerBootstrap = async ({
     user.uid
   )
 
-  const result = await runTransaction(db, async transaction => {
-    const markerSnapshot = await transaction.get(markerRef)
-    if (!markerSnapshot.exists()) {
-      return { bootstrapped: false, reason: 'marker-missing' }
-    }
+  let result
+  try {
+    result = await runTransaction(db, async transaction => {
+      const markerSnapshot = await transaction.get(markerRef)
+      if (!markerSnapshot.exists()) {
+        return { bootstrapped: false, reason: 'marker-missing' }
+      }
 
-    const [accountSnapshot, restaurantSnapshot, memberSnapshot] =
-      await Promise.all([
-        transaction.get(accountRef),
-        transaction.get(restaurantRef),
-        transaction.get(memberRef)
-      ])
-    const now = serverTimestamp()
+      const [accountSnapshot, restaurantSnapshot, memberSnapshot] =
+        await Promise.all([
+          transaction.get(accountRef),
+          transaction.get(restaurantRef),
+          transaction.get(memberRef)
+        ])
+      const now = serverTimestamp()
 
-    if (
-      restaurantSnapshot.exists() &&
-      (
-        restaurantSnapshot.data().id !== restaurantId ||
-        restaurantSnapshot.data().ownerAuthUid !== user.uid ||
-        restaurantSnapshot.data().status !== 'active'
-      )
-    ) {
-      throw bootstrapError(
-        'Nie można dokończyć konfiguracji właściciela, ponieważ restauracja ma niespójne dane.'
-      )
-    }
+      if (
+        restaurantSnapshot.exists() &&
+        (
+          restaurantSnapshot.data().id !== restaurantId ||
+          restaurantSnapshot.data().ownerAuthUid !== user.uid ||
+          restaurantSnapshot.data().status !== 'active'
+        )
+      ) {
+        throw bootstrapError(
+          'Nie można dokończyć konfiguracji właściciela, ponieważ restauracja ma niespójne dane.'
+        )
+      }
 
-    if (
-      memberSnapshot.exists() &&
-      !isOwnerMembership({
-        data: memberSnapshot.data(),
-        authUid: user.uid,
-        restaurantId
-      })
-    ) {
-      throw bootstrapError(
-        'Nie można dokończyć konfiguracji właściciela, ponieważ członkostwo ma niespójne dane.'
-      )
-    }
+      if (
+        memberSnapshot.exists() &&
+        !isOwnerMembership({
+          data: memberSnapshot.data(),
+          authUid: user.uid,
+          restaurantId
+        })
+      ) {
+        throw bootstrapError(
+          'Nie można dokończyć konfiguracji właściciela, ponieważ członkostwo ma niespójne dane.'
+        )
+      }
 
-    let accountDocument = accountSnapshot.exists()
-      ? accountSnapshot.data()
-      : buildAccountDocument({
+      let accountDocument = accountSnapshot.exists()
+        ? accountSnapshot.data()
+        : buildAccountDocument({
+            authUid: user.uid,
+            email: user.email,
+            displayName: user.displayName || '',
+            createdAt: now
+          })
+
+      if (!accountSnapshot.exists()) {
+        transaction.set(accountRef, accountDocument)
+      } else if (accountNeedsUpdate({ data: accountDocument, user })) {
+        accountDocument = buildAccountDocument({
           authUid: user.uid,
           email: user.email,
           displayName: user.displayName || '',
-          createdAt: now
+          createdAt: accountDocument.createdAt || now,
+          updatedAt: now
         })
+        transaction.set(accountRef, accountDocument, { merge: true })
+      }
 
-    if (!accountSnapshot.exists()) {
-      transaction.set(accountRef, accountDocument)
-    } else if (accountNeedsUpdate({ data: accountDocument, user })) {
-      accountDocument = buildAccountDocument({
-        authUid: user.uid,
-        email: user.email,
-        displayName: user.displayName || '',
-        createdAt: accountDocument.createdAt || now,
-        updatedAt: now
+      if (!restaurantSnapshot.exists()) {
+        transaction.set(restaurantRef, buildRestaurantDocument({
+          restaurantId,
+          name: restaurantName,
+          ownerAuthUid: user.uid,
+          createdAt: now
+        }))
+      }
+
+      if (!memberSnapshot.exists()) {
+        transaction.set(memberRef, buildMembershipDocument({
+          authUid: user.uid,
+          restaurantId,
+          role: 'owner',
+          createdAt: now
+        }))
+      }
+
+      return {
+        bootstrapped: true,
+        restaurantId,
+        accountDocument
+      }
+    })
+  } catch (error) {
+    if (error?.code !== 'permission-denied') throw error
+
+    let completedBootstrap = null
+    try {
+      completedBootstrap = await readCompletedOwnerBootstrap({
+        accountRef,
+        restaurantRef,
+        memberRef,
+        user,
+        restaurantId
       })
-      transaction.set(accountRef, accountDocument, { merge: true })
+    } catch {
+      // Pierwotna odmowa pozostaje właściwym błędem, jeżeli kompletnego
+      // bootstrapu nie da się bezpiecznie odczytać i potwierdzić.
     }
-
-    if (!restaurantSnapshot.exists()) {
-      transaction.set(restaurantRef, buildRestaurantDocument({
-        restaurantId,
-        name: restaurantName,
-        ownerAuthUid: user.uid,
-        createdAt: now
-      }))
-    }
-
-    if (!memberSnapshot.exists()) {
-      transaction.set(memberRef, buildMembershipDocument({
-        authUid: user.uid,
-        restaurantId,
-        role: 'owner',
-        createdAt: now
-      }))
-    }
-
-    return {
-      bootstrapped: true,
-      restaurantId,
-      accountDocument
-    }
-  })
+    if (!completedBootstrap) throw error
+    result = completedBootstrap
+  }
 
   if (!result.bootstrapped) return result
 

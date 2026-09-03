@@ -165,8 +165,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAuth } from 'firebase/auth'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import {
   PUBLISHED_CALENDAR_ERROR_CODES,
@@ -185,6 +185,7 @@ import {
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const employeesStore = useEmployeesStore()
 const calendarStore = usePublishedScheduleCalendarStore()
 const displayedMonthKey = ref('')
@@ -204,11 +205,15 @@ const getTodayDateKey = () => {
 const todayDateKey = getTodayDateKey()
 const currentMonthKey = todayDateKey.slice(0, 7)
 const access = computed(() => getPublishedCalendarAccess({
-  hasEmployeeSession: Boolean(employeeAuthStore.currentEmployee),
-  employeeId: employeeAuthStore.currentEmployee?.id,
-  employeePermissions:
-    employeeAuthStore.currentEmployee?.uprawnienia || {},
-  hasAdminSession: Boolean(getAuth().currentUser)
+  hasEmployeeSession: authorizationStore.isEmployee,
+  employeeId: authorizationStore.employeeId,
+  employeePermissions: {
+    can_view_schedule:
+      authorizationStore.hasPermission('can_view_schedule'),
+    can_manage_schedule:
+      authorizationStore.hasPermission('can_manage_schedule')
+  },
+  hasOwnerAccess: authorizationStore.isOwner
 }))
 const sessionEmployeeError = computed(() => (
   Boolean(employeeAuthStore.currentEmployee) &&

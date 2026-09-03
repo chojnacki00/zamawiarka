@@ -1189,3 +1189,158 @@ test('legacy PIN, Pinia i localStorage nie zastępują request.auth', async () =
   ), { name: 'Niedozwolony' }))
   await assertFails(getDoc(doc(db, 'users/employee-auth/app/state')))
 })
+
+test('konto Firebase pracownika nie otrzymuje praw właściciela', async () => {
+  await seedEmployeeAccess({
+    permissions: {
+      can_view_zamawiarka: true,
+      can_view_schedule: true,
+      can_manage_schedule: true
+    }
+  })
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertFails(updateDoc(doc(db, 'restaurants/restaurant-a'), {
+    name: 'Nieuprawniona zmiana właścicielska'
+  }))
+})
+
+test('pracownik bez zarządzania ustawieniami nie zapisuje słowników Zamawiarki', async () => {
+  await seedEmployeeAccess({
+    permissions: {
+      can_view_zamawiarka: true,
+      can_view_schedule: true,
+      can_manage_schedule: true
+    }
+  })
+  await seed([['users/restaurant-a/app/state', {
+    suppliers: [],
+    warehouses: [],
+    units: [],
+    categories: [],
+    orderTimings: [],
+    whoOrders: [],
+    fcSettings: {},
+    dishCategories: []
+  }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const stateRef = doc(db, 'users/restaurant-a/app/state')
+
+  for (const forbiddenUpdate of [
+    { suppliers: [{ id: 'supplier-1', name: 'Hurtownia' }] },
+    { warehouses: [{ id: 'warehouse-1', name: 'Magazyn' }] },
+    { units: [{ id: 'unit-1', name: 'kg' }] },
+    { categories: [{ id: 'category-1', name: 'Nabiał' }] },
+    { orderTimings: [{ id: 'timing-1', name: 'Poniedziałek' }] },
+    { whoOrders: [{ id: 'person-1', name: 'Manager' }] }
+  ]) {
+    await assertFails(updateDoc(stateRef, forbiddenUpdate))
+  }
+
+  await assertFails(setDoc(doc(
+    db,
+    'users/restaurant-a/towary/product-1'
+  ), { id: 'product-1', name: 'Towar' }))
+})
+
+test('can_edit_menu nie pozwala zmieniać słowników Zamawiarki w app/state', async () => {
+  await seedEmployeeAccess({ permissions: { can_edit_menu: true } })
+  await seed([['users/restaurant-a/app/state', {
+    suppliers: [],
+    fcSettings: {},
+    dishCategories: []
+  }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const stateRef = doc(db, 'users/restaurant-a/app/state')
+
+  await assertFails(updateDoc(stateRef, {
+    suppliers: [{ id: 'supplier-1', name: 'Hurtownia' }]
+  }))
+  await assertSucceeds(updateDoc(stateRef, {
+    fcSettings: { target: 30 }
+  }))
+})
+
+test('właściwe uprawnienie oraz właściciel zapisują ustawienia', async () => {
+  await seedEmployeeAccess({ permissions: { can_edit_products: true } })
+  await seed([['users/restaurant-a/app/state', { suppliers: [] }]])
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertSucceeds(updateDoc(
+    doc(employeeDb, 'users/restaurant-a/app/state'),
+    { suppliers: [{ id: 'supplier-1', name: 'Hurtownia' }] }
+  ))
+
+  await testEnv.clearFirestore()
+  await seedOwner()
+  await seed([['users/restaurant-a/app/state', { suppliers: [] }]])
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  await assertSucceeds(updateDoc(
+    doc(ownerDb, 'users/restaurant-a/app/state'),
+    {
+      suppliers: [{ id: 'supplier-owner', name: 'Właściciel' }],
+      fcSettings: { target: 31 }
+    }
+  ))
+})
+
+test('zablokowane członkostwo traci zapis ustawień', async () => {
+  await seedEmployeeAccess({
+    status: 'blocked',
+    permissions: { can_edit_products: true }
+  })
+  await seed([['users/restaurant-a/app/state', { suppliers: [] }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertFails(updateDoc(
+    doc(db, 'users/restaurant-a/app/state'),
+    { suppliers: [{ id: 'supplier-1', name: 'Hurtownia' }] }
+  ))
+})
+
+test('zmiana profilu uprawnień działa w tej samej sesji Firebase', async () => {
+  await seedEmployeeAccess({
+    permissions: { can_view_zamawiarka: true }
+  })
+  await seed([['users/restaurant-a/app/state', { suppliers: [] }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const stateRef = doc(db, 'users/restaurant-a/app/state')
+
+  await assertFails(updateDoc(stateRef, {
+    suppliers: [{ id: 'supplier-1', name: 'Przed zmianą' }]
+  }))
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    await updateDoc(doc(
+      adminContext.firestore(),
+      'users/restaurant-a/permissionProfiles/profile-1'
+    ), {
+      'uprawnienia.can_edit_products': true
+    })
+  })
+
+  await assertSucceeds(updateDoc(stateRef, {
+    suppliers: [{ id: 'supplier-1', name: 'Po zmianie' }]
+  }))
+})

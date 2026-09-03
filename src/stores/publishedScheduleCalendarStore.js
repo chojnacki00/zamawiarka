@@ -6,12 +6,9 @@ import {
   query,
   where
 } from 'firebase/firestore'
-import {
-  getAuth,
-  onAuthStateChanged
-} from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import {
   buildPublishedCalendarIndex,
   getEmployeePublishedShifts,
@@ -52,32 +49,19 @@ export const usePublishedScheduleCalendarStore = defineStore(
     const error = ref(null)
     let activeRestaurantId = null
 
-    const getResolvedFirebaseUser = () => new Promise(resolve => {
-      const auth = getAuth()
-
-      if (auth.currentUser) {
-        resolve(auth.currentUser)
-        return
-      }
-
-      let unsubscribe = () => {}
-      unsubscribe = onAuthStateChanged(auth, user => {
-        unsubscribe()
-        resolve(user)
-      })
-    })
-
     const getReadContext = async () => {
       const employeeAuthStore = useEmployeeAuthStore()
-      const employee = employeeAuthStore.currentEmployee
-      const firebaseUser = employee
-        ? getAuth().currentUser
-        : await getResolvedFirebaseUser()
+      const authorizationStore = useAuthorizationStore()
       const access = getPublishedCalendarAccess({
-        hasEmployeeSession: Boolean(employee),
-        employeeId: employee?.id,
-        employeePermissions: employee?.uprawnienia || {},
-        hasAdminSession: Boolean(firebaseUser)
+        hasEmployeeSession: authorizationStore.isEmployee,
+        employeeId: authorizationStore.employeeId,
+        employeePermissions: {
+          can_view_schedule:
+            authorizationStore.hasPermission('can_view_schedule'),
+          can_manage_schedule:
+            authorizationStore.hasPermission('can_manage_schedule')
+        },
+        hasOwnerAccess: authorizationStore.isOwner
       })
 
       if (!access.canAccess) {
@@ -87,9 +71,7 @@ export const usePublishedScheduleCalendarStore = defineStore(
         )
       }
 
-      const restaurantId = employeeAuthStore.restaurantId ||
-        firebaseUser?.uid ||
-        null
+      const restaurantId = employeeAuthStore.requireRestaurantId()
 
       if (!restaurantId) {
         throw createCalendarError(
@@ -239,13 +221,17 @@ export const usePublishedScheduleCalendarStore = defineStore(
       dateKey,
       requestedEmployeeId
     } = {}) => {
-      const employeeAuthStore = useEmployeeAuthStore()
-      const employee = employeeAuthStore.currentEmployee
+      const authorizationStore = useAuthorizationStore()
       const access = getPublishedCalendarAccess({
-        hasEmployeeSession: Boolean(employee),
-        employeeId: employee?.id,
-        employeePermissions: employee?.uprawnienia || {},
-        hasAdminSession: Boolean(getAuth().currentUser)
+        hasEmployeeSession: authorizationStore.isEmployee,
+        employeeId: authorizationStore.employeeId,
+        employeePermissions: {
+          can_view_schedule:
+            authorizationStore.hasPermission('can_view_schedule'),
+          can_manage_schedule:
+            authorizationStore.hasPermission('can_manage_schedule')
+        },
+        hasOwnerAccess: authorizationStore.isOwner
       })
       const employeeId = resolvePublishedCalendarEmployeeId({
         access,

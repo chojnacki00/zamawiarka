@@ -3,6 +3,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 
 const SETTINGS_MODES = ['hard', 'suggestion', 'off']
 
@@ -142,6 +143,7 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
     },
 
     async saveSettings(nextSettings) {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       if (this.isSaving) return cloneSettings(this.settings)
 
       this.isSaving = true

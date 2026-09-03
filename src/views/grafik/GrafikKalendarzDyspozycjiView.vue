@@ -1413,6 +1413,7 @@ import {
 } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
@@ -1433,6 +1434,7 @@ import {
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
@@ -1474,13 +1476,7 @@ onUnmounted(() => {
 
 
 const canManageSchedule = computed(() => {
-  if (!employeeAuthStore.currentEmployee) {
-    return true
-  }
-
-  return employeeAuthStore.hasPermission(
-    'can_manage_schedule'
-  )
+  return authorizationStore.hasPermission('can_manage_schedule')
 })
 
 const loggedEmployeeId = computed(() => {

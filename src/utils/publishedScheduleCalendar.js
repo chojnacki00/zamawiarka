@@ -533,7 +533,7 @@ export const getPublishedCalendarAccess = ({
   hasEmployeeSession = false,
   employeeId = null,
   employeePermissions = {},
-  hasAdminSession = false
+  hasOwnerAccess = false
 } = {}) => {
   if (hasEmployeeSession) {
     const canView = employeePermissions?.can_view_schedule === true
@@ -545,16 +545,16 @@ export const getPublishedCalendarAccess = ({
       canSelectEmployee: canManage,
       ownEmployeeId: String(employeeId || '').trim() || null,
       defaultEmployeeId: String(employeeId || '').trim() || null,
-      isAdmin: false
+      isOwner: false
     }
   }
 
   return {
-    canAccess: hasAdminSession,
-    canSelectEmployee: hasAdminSession,
+    canAccess: hasOwnerAccess,
+    canSelectEmployee: hasOwnerAccess,
     ownEmployeeId: null,
     defaultEmployeeId: null,
-    isAdmin: hasAdminSession
+    isOwner: hasOwnerAccess
   }
 }
 

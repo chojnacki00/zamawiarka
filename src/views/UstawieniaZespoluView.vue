@@ -192,6 +192,7 @@ import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
 import { useEmployeeGroupsStore } from '../stores/employeeGroupsStore.js'
 import { useEmployeesStore } from '../stores/employeesStore.js'
 import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
+import { useAuthorizationStore } from '../stores/authorizationStore.js'
 import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
@@ -213,6 +214,7 @@ const employeeAuthStore = useEmployeeAuthStore()
 const groupsStore = useEmployeeGroupsStore()
 const employeesStore = useEmployeesStore()
 const permissionProfilesStore = usePermissionProfilesStore()
+const authorizationStore = useAuthorizationStore()
 const employmentProfilesStore = useScheduleEmploymentProfilesStore()
 const positionsStore = useSchedulePositionsStore()
 
@@ -276,8 +278,8 @@ const filteredEmployees = computed(() => {
   })
 })
 const availablePermissionProfiles = computed(() => {
-  if (!employeeAuthStore.currentEmployee) return permissionProfilesStore.profiles
-  return permissionProfilesStore.profiles.filter(profile => Object.entries(profile.uprawnienia || {}).every(([key, enabled]) => !enabled || employeeAuthStore.hasPermission(key)))
+  if (authorizationStore.isOwner) return permissionProfilesStore.profiles
+  return permissionProfilesStore.profiles.filter(profile => Object.entries(profile.uprawnienia || {}).every(([key, enabled]) => !enabled || authorizationStore.hasPermission(key)))
 })
 const selectableGroups = computed(() => groupsStore.groups.filter(group => group.active !== false || form.value.employeeGroupIds.includes(group.id)))
 const positionPickerPositions = computed(() => positionsStore.positions.filter(position => position.active !== false || form.value.positionAssignments.some(assignment => assignment.positionId === position.id)))

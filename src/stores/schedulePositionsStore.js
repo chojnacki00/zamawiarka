@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { collection, doc, getDoc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import {
   normalizeSchedulePositionColor
 } from '../utils/schedulePositionColors.js'
@@ -59,6 +60,7 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
   }
 
   const addPosition = async (positionData) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return null
     try {
@@ -84,6 +86,7 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
   }
 
   const updatePosition = async (positionId, updatedData) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return
     try {
@@ -111,6 +114,7 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
   }
 
   const deletePosition = async (positionId) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return
     try {

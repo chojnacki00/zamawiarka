@@ -627,9 +627,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getAuth } from 'firebase/auth'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
-import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import {
   getCompetencyStars,
   getEmployeeFullName,
@@ -656,7 +655,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const scheduleDraftsStore = useScheduleDraftsStore()
-const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 
 const isLoading = ref(false)
 const loadError = ref('')
@@ -728,10 +727,9 @@ const publicationButtonLabel = computed(() => (
     : 'Opublikuj grafik'
 ))
 const canCurrentUserPublish = computed(() => canPublishSchedule({
-  hasEmployeeSession: Boolean(employeeAuthStore.currentEmployee),
-  employeePermissions:
-    employeeAuthStore.currentEmployee?.uprawnienia || {},
-  hasAdminSession: Boolean(getAuth().currentUser)
+  employeePermissions: authorizationStore.permissions,
+  isOwner: authorizationStore.isOwner,
+  isFirebaseEmployee: authorizationStore.isFirebaseEmployee
 }))
 const canShowPublicationButton = computed(() => (
   canCurrentUserPublish.value &&

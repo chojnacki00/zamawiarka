@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import {
   getScheduleRangeConflicts,
   isPeriodEffectivelyOpen
@@ -353,6 +354,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     }
 
     const addPeriod = async (periodData) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const periodsRef = await getPeriodsCollectionRef()
 
       if (!periodsRef) {
@@ -447,7 +449,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         const updatePeriod = async (
       periodId,
       periodData
-    ) => {
+        ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId) {
@@ -555,6 +558,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       blockedDates,
       editorData
     ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId) {
@@ -645,6 +649,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     }
 
     const deletePeriod = async (periodId) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId) {
@@ -746,6 +751,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       clearManagerEntries = false,
       clearDemandModels = false
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId) {
@@ -986,6 +992,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       periodId,
       editorData
     ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId) {
@@ -1123,6 +1130,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       periodId,
       editorData
     ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId) {
@@ -1193,6 +1201,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       closesOn,
       editorData
     ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId || !closesOn) {
@@ -1277,6 +1286,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       closesOn,
       editorData
     ) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !periodId || !closesOn) {

@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 
 export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   const groups = ref([])
@@ -70,6 +71,7 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   }
 
   const saveGroup = async groupData => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
     const restaurantId = await getRestaurantId()
     if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
 
@@ -100,6 +102,7 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   }
 
   const deleteGroup = async groupId => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
     const restaurantId = await getRestaurantId()
     if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
     await deleteDoc(doc(db, 'users', restaurantId, 'employeeGroups', groupId))

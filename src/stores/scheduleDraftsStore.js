@@ -15,6 +15,7 @@ import {
 } from 'firebase/auth'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import {
   DEFAULT_GENERATOR_SETTINGS,
   normalizeGeneratorSettings
@@ -337,6 +338,7 @@ export const useScheduleDraftsStore = defineStore(
       daySummaries,
       continuityWarningAcknowledged = false
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       if (isCreating.value) {
         return null
       }
@@ -599,22 +601,18 @@ export const useScheduleDraftsStore = defineStore(
     }
 
     const deleteSchedule = async scheduleId => {
+      const authorizationStore = useAuthorizationStore()
+      authorizationStore.requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !scheduleId) {
         throw new Error('Brak danych grafiku do usunięcia.')
       }
 
-      const employeeAuthStore = useEmployeeAuthStore()
-      const auth = getAuth()
-
       if (!canPublishSchedule({
-        hasEmployeeSession: Boolean(
-          employeeAuthStore.currentEmployee
-        ),
-        employeePermissions:
-          employeeAuthStore.currentEmployee?.uprawnienia || {},
-        hasAdminSession: Boolean(auth.currentUser)
+        employeePermissions: authorizationStore.permissions,
+        isOwner: authorizationStore.isOwner,
+        isFirebaseEmployee: authorizationStore.isFirebaseEmployee
       })) {
         throw new Error('Nie masz uprawnienia do usuwania grafiku.')
       }
@@ -902,6 +900,8 @@ export const useScheduleDraftsStore = defineStore(
       expectedSchedule,
       expectedDayRevisions
     }) => {
+      const authorizationStore = useAuthorizationStore()
+      authorizationStore.requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !scheduleId) {
@@ -910,15 +910,12 @@ export const useScheduleDraftsStore = defineStore(
 
       const employeeAuthStore = useEmployeeAuthStore()
       const auth = getAuth()
-      const hasEmployeeSession = Boolean(
-        employeeAuthStore.currentEmployee
-      )
+      const hasEmployeeSession = authorizationStore.isEmployee
 
       if (!canPublishSchedule({
-        hasEmployeeSession,
-        employeePermissions:
-          employeeAuthStore.currentEmployee?.uprawnienia || {},
-        hasAdminSession: Boolean(auth.currentUser)
+        employeePermissions: authorizationStore.permissions,
+        isOwner: authorizationStore.isOwner,
+        isFirebaseEmployee: authorizationStore.isFirebaseEmployee
       })) {
         throw new Error(
           'Nie masz uprawnienia do publikowania grafiku.'
@@ -1147,6 +1144,8 @@ export const useScheduleDraftsStore = defineStore(
       scheduleId,
       expectedSchedule = null
     } = {}) => {
+      const authorizationStore = useAuthorizationStore()
+      authorizationStore.requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !scheduleId) {
@@ -1155,15 +1154,12 @@ export const useScheduleDraftsStore = defineStore(
 
       const employeeAuthStore = useEmployeeAuthStore()
       const auth = getAuth()
-      const hasEmployeeSession = Boolean(
-        employeeAuthStore.currentEmployee
-      )
+      const hasEmployeeSession = authorizationStore.isEmployee
 
       if (!canUnpublishSchedule({
-        hasEmployeeSession,
-        employeePermissions:
-          employeeAuthStore.currentEmployee?.uprawnienia || {},
-        hasAdminSession: Boolean(auth.currentUser)
+        employeePermissions: authorizationStore.permissions,
+        isOwner: authorizationStore.isOwner,
+        isFirebaseEmployee: authorizationStore.isFirebaseEmployee
       })) {
         throw new Error(
           'Nie masz uprawnienia do wycofania publikacji grafiku.'
@@ -1421,6 +1417,7 @@ export const useScheduleDraftsStore = defineStore(
       decision = null,
       warnings = []
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId) {
@@ -1612,6 +1609,7 @@ export const useScheduleDraftsStore = defineStore(
       decision = null,
       warnings = []
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId) {
@@ -1781,6 +1779,7 @@ export const useScheduleDraftsStore = defineStore(
       dayId,
       shiftId
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId) {
@@ -1922,6 +1921,7 @@ export const useScheduleDraftsStore = defineStore(
       scheduleId,
       assessments
     }) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId) {

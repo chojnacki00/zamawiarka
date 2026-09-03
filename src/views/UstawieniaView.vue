@@ -9,7 +9,7 @@
       
       <!-- Przycisk do zarządzania profilami uprawnień (Właściciel LUB Manager z uprawnieniem) -->
       <button 
-        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_roles')"
+        v-if="authorizationStore.hasPermission('can_manage_roles')"
         @click="router.push('/profile-uprawnien')" 
         class="item-card" 
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -19,7 +19,7 @@
 
       <!-- Przycisk do zarządzania stanowiskami na grafiku (Właściciel LUB Manager z uprawnieniem can_manage_roles) -->
       <button 
-        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_roles')"
+        v-if="authorizationStore.hasPermission('can_manage_roles')"
         @click="router.push('/stanowiska-grafik')" 
         class="item-card" 
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -29,7 +29,7 @@
 
       <!-- Przycisk Zespół (Właściciel LUB Manager z uprawnieniem) -->
       <button 
-        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_employees')"
+        v-if="authorizationStore.hasPermission('can_manage_employees')"
         @click="router.push('/zespol')" 
         class="item-card" 
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -39,7 +39,7 @@
 
       <!-- Profile warunków pracy przypisywane później pracownikom -->
       <button
-        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_employees')"
+        v-if="authorizationStore.hasPermission('can_manage_schedule')"
         @click="router.push('/ustawienia/profile-zatrudnienia')"
         class="item-card"
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -48,7 +48,7 @@
       </button>
 
       <button
-        v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_manage_employees')"
+        v-if="authorizationStore.hasPermission('can_manage_employees')"
         @click="router.push('/ustawienia/grupy-pracownicze')"
         class="item-card"
         style="width: 100%; text-align: center; margin-bottom: 8px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -57,7 +57,7 @@
       </button>
 
       <!-- SEKCJA KOPII ZAPASOWEJ (Tylko Główny Właściciel, brak dostępu dla jakiegokolwiek pracownika) -->
-      <div v-if="!employeeAuthStore.currentEmployee">
+      <div v-if="authorizationStore.isOwner">
         <button 
           @click="showBackupOptions = !showBackupOptions" 
           class="item-card" 
@@ -87,10 +87,10 @@
 <script setup>
 import { ref, inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../stores/authorizationStore.js'
 
 const router = useRouter()
-const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const { eksportujBackup, wczytajBackup } = inject('appContext')
 
 const showBackupOptions = ref(false)

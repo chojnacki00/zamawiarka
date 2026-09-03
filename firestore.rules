@@ -17,7 +17,15 @@ service cloud.firestore {
     function isLegacyOwnerBootstrapRestaurant(restaurantId) {
       return hasVerifiedEmail() &&
         restaurantId == request.auth.uid &&
-        exists(/databases/$(database)/documents/users/$(restaurantId)/app/state);
+        exists(/databases/$(database)/documents/users/$(restaurantId)/app/state) &&
+        !exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    // Odczyt markera musi być możliwy przed utworzeniem członkostwa i podczas
+    // równoległego, idempotentnego bootstrapu. Sam odczyt nie nadaje żadnych
+    // uprawnień właściciela ani prawa zapisu danych restauracji.
+    function canReadOwnLegacyBootstrapMarker(restaurantId) {
+      return hasVerifiedEmail() && restaurantId == request.auth.uid;
     }
 
     function memberDocument(restaurantId) {
@@ -131,6 +139,26 @@ service cloud.firestore {
 
     function canManageRoles(restaurantId) {
       return hasPermission(restaurantId, 'can_manage_roles');
+    }
+
+    function canUpdateZamawiarkaSettings(restaurantId) {
+      return hasPermission(restaurantId, 'can_edit_products') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'suppliers',
+          'warehouses',
+          'orderTimings',
+          'units',
+          'categories',
+          'whoOrders'
+        ]);
+    }
+
+    function canUpdateMenuSettings(restaurantId) {
+      return hasPermission(restaurantId, 'can_edit_menu') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fcSettings',
+          'dishCategories'
+        ]);
     }
 
     function isOwnEmployee(restaurantId, employeeId) {
@@ -915,11 +943,12 @@ service cloud.firestore {
 
       match /app/state {
         allow read: if hasActiveMembership(restaurantId) || (
-          hasVerifiedEmail() && restaurantId == request.auth.uid
+          canReadOwnLegacyBootstrapMarker(restaurantId)
         );
-        allow create, update: if isRestaurantOwner(restaurantId) ||
-          hasPermission(restaurantId, 'can_edit_products') ||
-          hasPermission(restaurantId, 'can_edit_menu');
+        allow create: if isRestaurantOwner(restaurantId);
+        allow update: if isRestaurantOwner(restaurantId) ||
+          canUpdateZamawiarkaSettings(restaurantId) ||
+          canUpdateMenuSettings(restaurantId);
         allow delete: if isRestaurantOwner(restaurantId);
       }
 

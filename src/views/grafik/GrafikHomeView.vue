@@ -131,22 +131,17 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
-import { getAuth } from 'firebase/auth'
-import { useEmployeeAuthStore } from '../../stores/employeeAuthStore'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 
 const router = useRouter()
-const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 
 // Sprawdzanie uprawnień
 const isManagerOrHasPermission = computed(() => {
-  if (!employeeAuthStore.currentEmployee) return true 
-  return employeeAuthStore.hasPermission('can_manage_schedule')
+  return authorizationStore.hasPermission('can_manage_schedule')
 })
 const canViewSchedule = computed(() => {
-  if (!employeeAuthStore.currentEmployee) {
-    return Boolean(getAuth().currentUser)
-  }
-  return employeeAuthStore.hasPermission('can_view_schedule')
+  return authorizationStore.hasPermission('can_view_schedule')
 })
 
 const goBack = () => {

@@ -414,10 +414,12 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import { useScheduleAvailabilityPeriodsStore } from '../../stores/scheduleAvailabilityPeriodsStore.js'
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const periodsStore = useScheduleAvailabilityPeriodsStore()
 
 const showCleanupModal = ref(false)
@@ -459,13 +461,7 @@ const calendarWeekDays = [
 ]
 
 const canManageSchedule = computed(() => {
-  if (!employeeAuthStore.currentEmployee) {
-    return true
-  }
-
-  return employeeAuthStore.hasPermission(
-    'can_manage_schedule'
-  )
+  return authorizationStore.hasPermission('can_manage_schedule')
 })
 
 const hasSelectedCleanupOption = computed(() => {
