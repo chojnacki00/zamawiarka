@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import { normalizePermissionDependencies } from '../utils/permissionDependencies.js'
 
 const normalizeProfileData = profileData => ({
@@ -62,6 +63,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   }
 
   const addProfile = async (profileData) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return null
     try {
@@ -75,6 +77,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   }
 
   const updateProfile = async (profileId, updatedData) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return
     try {
@@ -88,6 +91,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   }
 
   const deleteProfile = async (profileId) => {
+    useAuthorizationStore().requirePermission('can_manage_roles')
     const uid = await getUid()
     if (!uid) return
     try {

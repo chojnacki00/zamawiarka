@@ -43,7 +43,7 @@
         
         <!-- KAFELEK 1: ZAMAWIARKA -->
 <button
-  v-if="aktywneModuly.includes('zamawiarka') && (!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_view_zamawiarka'))"
+  v-if="aktywneModuly.includes('zamawiarka') && authorizationStore.hasAnyPermission(['can_view_zamawiarka', 'can_create_orders', 'can_edit_products'])"
   @click="navigateWithEffect('/zamawiarka')"
   class="ios-menu-tile efekt-kliku"
   style="margin: 0; min-height: 140px; box-sizing: border-box;"
@@ -60,7 +60,7 @@
 
         <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
         <button
-          v-if="aktywneModuly.includes('rentownosc') && (!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_view_foodcost'))"
+          v-if="aktywneModuly.includes('rentownosc') && authorizationStore.hasAnyPermission(['can_view_foodcost', 'can_edit_menu'])"
           @click="navigateWithEffect('/rentownosc')"
           class="ios-menu-tile efekt-kliku"
           style="margin: 0; min-height: 140px; box-sizing: border-box;"
@@ -78,7 +78,7 @@
 
         <!-- KAFELEK 3: GRAFIK PRACOWNICZY -->
         <button
-          v-if="aktywneModuly.includes('grafik') && (!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_view_schedule'))"
+          v-if="aktywneModuly.includes('grafik') && authorizationStore.hasPermission('can_view_schedule')"
           @click="navigateWithEffect('/grafik')"
           class="ios-menu-tile efekt-kliku"
           style="margin: 0; min-height: 140px; box-sizing: border-box;"
@@ -118,10 +118,12 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../stores/authorizationStore.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 
 const appVersion = ref('3.1.0')
 const aktywneModuly = ref(['zamawiarka', 'rentownosc', 'grafik'])
@@ -157,13 +159,14 @@ const displayUserName = computed(() => {
 // 3. ZMIENNA DECYDUJĄCA CZY POKAZAĆ USTAWIENIA
 const canSeeSettings = computed(() => {
   // Jeśli NIE MA pracownika (czyli zalogowany jest główny Szef), to pokazujemy zawsze
-  if (!employeeAuthStore.currentEmployee) return true
+  if (authorizationStore.isOwner) return true
 
   // Używamy prawdziwych kluczy z Twojej bazy Firebase
-  const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
-  const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
+  const mozeKonta = authorizationStore.hasPermission('can_manage_employees')
+  const mozeStanowiska = authorizationStore.hasPermission('can_manage_roles')
+  const mozeGrafik = authorizationStore.hasPermission('can_manage_schedule')
 
-  return mozeKonta || mozeStanowiska
+  return mozeKonta || mozeStanowiska || mozeGrafik
 })
 
 

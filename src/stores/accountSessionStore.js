@@ -817,10 +817,7 @@ export const useAccountSessionStore = defineStore(
         throw new Error('Brak danych pracownika lub restauracji.')
       }
 
-      if (
-        !isOwner.value &&
-        permissions.value.can_manage_employees !== true
-      ) {
+      if (!hasPermission('can_manage_employees')) {
         throw new Error('Nie masz uprawnienia do zapraszania pracowników.')
       }
 
@@ -932,6 +929,9 @@ export const useAccountSessionStore = defineStore(
 
     const getEmployeeAccountAccess = async employeeId => {
       if (!currentRestaurantId.value || !employeeId) return null
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do przeglądania dostępu pracownika.')
+      }
 
       const [memberSnapshot, invitationSnapshot] = await Promise.all([
         getDocs(query(
@@ -980,10 +980,7 @@ export const useAccountSessionStore = defineStore(
       if (!restaurantId || !invitationId || !employeeId) {
         throw new Error('Brak danych zaproszenia do anulowania.')
       }
-      if (
-        !isOwner.value &&
-        permissions.value.can_manage_employees !== true
-      ) {
+      if (!hasPermission('can_manage_employees')) {
         throw new Error('Nie masz uprawnienia do anulowania zaproszeń.')
       }
 
@@ -1024,7 +1021,7 @@ export const useAccountSessionStore = defineStore(
 
     const getEmployeeDevices = async authUid => {
       if (!currentRestaurantId.value || !authUid) return []
-      if (!isOwner.value && permissions.value.can_manage_employees !== true) {
+      if (!hasPermission('can_manage_employees')) {
         throw new Error('Nie masz uprawnienia do przeglądania urządzeń.')
       }
 
@@ -1051,7 +1048,7 @@ export const useAccountSessionStore = defineStore(
       if (!currentRestaurantId.value || !authUid || !sessionId) {
         throw new Error('Brak danych urządzenia do odłączenia.')
       }
-      if (!isOwner.value && permissions.value.can_manage_employees !== true) {
+      if (!hasPermission('can_manage_employees')) {
         throw new Error('Nie masz uprawnienia do odłączania urządzeń.')
       }
 
@@ -1099,8 +1096,7 @@ export const useAccountSessionStore = defineStore(
       const restaurantId = currentRestaurantId.value
       if (
         !restaurantId ||
-        (!isOwner.value &&
-          permissions.value.can_manage_employees !== true)
+        !hasPermission('can_manage_employees')
       ) return null
 
       const [invitations, pairingCodes, deviceSessions] = await Promise.all([
@@ -1117,6 +1113,9 @@ export const useAccountSessionStore = defineStore(
       permissionProfileId
     }) => {
       if (!currentRestaurantId.value || !employeeId) return
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do zmiany dostępu pracownika.')
+      }
 
       const snapshot = await getDocs(query(
         collection(
@@ -1136,6 +1135,9 @@ export const useAccountSessionStore = defineStore(
 
     const blockRestaurantAccess = async authUid => {
       if (!currentRestaurantId.value || !authUid) return
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do blokowania dostępu.')
+      }
 
       await updateDoc(doc(
         db,
@@ -1228,7 +1230,9 @@ export const useAccountSessionStore = defineStore(
     }
 
     const hasPermission = permissionKey => (
-      isOwner.value || permissions.value?.[permissionKey] === true
+      hasActiveContext.value && (
+        isOwner.value || permissions.value?.[permissionKey] === true
+      )
     )
 
     return {

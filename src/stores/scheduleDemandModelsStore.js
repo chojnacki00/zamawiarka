@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 
 export const useScheduleDemandModelsStore = defineStore(
   'scheduleDemandModels',
@@ -102,6 +103,7 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const addModel = async (modelData) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const modelsRef = await getModelsCollectionRef()
 
       if (!modelsRef) return null
@@ -136,6 +138,7 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const updateModel = async (modelId, modelData) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !modelId) return
@@ -180,6 +183,7 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const deleteModel = async (modelId) => {
+      useAuthorizationStore().requirePermission('can_manage_schedule')
       const restaurantId = await getRestaurantId()
 
       if (!restaurantId || !modelId) return

@@ -127,33 +127,14 @@
 <script>
 import { inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-// Dodane importy autoryzacji
-import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
-import { useAuthStore } from '../stores/authStore.js'
+import { usePermissions } from '../composables/usePermissions.js'
 
 export default {
   setup() {
     const appContext = inject('appContext')
     const router = useRouter()
     
-    // Inicjalizacja sklepów
-    const employeeStore = useEmployeeAuthStore()
-    const authStore = useAuthStore()
-
-    // Funkcja sprawdzająca uprawnienia
-    const hasPerm = (permissionKey) => {
-      if (authStore.isLoggedIn) {
-        return true
-      }
-      const pracownik = employeeStore.currentEmployee
-      if (pracownik && pracownik.uprawnienia) {
-        const uprawnienie = pracownik.uprawnienia[permissionKey]
-        if (uprawnienie === true || uprawnienie === 'true') {
-          return true
-        }
-      }
-      return false
-    }
+    const { can: hasPerm } = usePermissions()
 
     onMounted(() => {
       if (appContext.currentScreen) {
@@ -162,7 +143,7 @@ export default {
     })
 
     // Udostępniamy hasPerm do szablonu HTML
-    return { ...appContext, router, hasPerm, authStore }
+    return { ...appContext, router, hasPerm }
   }
 }
 </script>

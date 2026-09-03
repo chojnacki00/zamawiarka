@@ -202,20 +202,18 @@ test('po wycofaniu można ponownie opublikować aktualne workingShifts', () => {
 
 test('uprawnienie do wycofania odpowiada zarządzaniu grafikiem', () => {
   assert.equal(canUnpublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: true,
     employeePermissions: { can_view_schedule: true },
-    hasAdminSession: true
   }), false)
   assert.equal(canUnpublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: false,
     employeePermissions: { can_manage_schedule: true }
   }), false)
   assert.equal(canUnpublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: true,
     employeePermissions: { can_manage_schedule: true },
-    hasAdminSession: true
   }), true)
-  assert.equal(canUnpublishSchedule({ hasAdminSession: true }), true)
+  assert.equal(canUnpublishSchedule({ isOwner: true }), true)
 })
 
 test('po wycofaniu ponownie można usunąć grafik', () => {

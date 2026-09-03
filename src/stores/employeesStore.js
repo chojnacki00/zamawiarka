@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useEmployeeAuthStore } from './employeeAuthStore.js'
+import { useAuthorizationStore } from './authorizationStore.js'
 import {
   normalizeCompensation,
   normalizePositionAssignments
@@ -80,6 +81,7 @@ export const useEmployeesStore = defineStore('employees', () => {
   }
 
   const addEmployee = async (employeeData) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
     const uid = await getUid()
     if (!uid) return null
     try {
@@ -99,6 +101,7 @@ export const useEmployeesStore = defineStore('employees', () => {
   }
 
   const updateEmployee = async (empId, updatedData) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
     const uid = await getUid()
     if (!uid) return
     try {
@@ -119,6 +122,7 @@ export const useEmployeesStore = defineStore('employees', () => {
   }
 
   const deleteEmployee = async (empId) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
     const uid = await getUid()
     if (!uid) return
     try {

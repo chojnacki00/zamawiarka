@@ -5,7 +5,11 @@ import {
 } from 'firebase/auth'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js' // <-- NOWOŚĆ: Importujemy nasz sklep z uprawnieniami
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
-import { canUsePrivilegedEmployeeActions } from './utils/employeeIdentity.js'
+import { useAuthorizationStore } from './stores/authorizationStore.js'
+import {
+  accessContextCanOpenRoute,
+  getRoutePermissionRequirement
+} from './utils/accessControl.js'
 import {
   hasStoredLegacyPinSession,
   isPublicActivationRoute,
@@ -86,6 +90,7 @@ router.beforeEach(async (to, from, next) => {
 
     const employeeStore = useEmployeeAuthStore()
     const accountSessionStore = useAccountSessionStore()
+    const authorizationStore = useAuthorizationStore()
     const firebaseUser = await getResolvedFirebaseUser()
 
   if (
@@ -133,140 +138,18 @@ router.beforeEach(async (to, from, next) => {
     return next(authenticationRedirect)
   }
 
-  const hasAuthenticatedEmployeeContext = canUsePrivilegedEmployeeActions({
-    sessionMode: employeeStore.sessionMode,
-    firebaseUser,
-    hasActiveContext: accountSessionStore.hasActiveContext
-  })
-
-  // ZASADA 1: Zalogowany Pracownik chce wejść na logowanie -> odsyłamy na stronę główną
+  // Zalogowany pracownik chce wejść na logowanie -> odsyłamy na stronę główną.
   if (hasEmployeeSession && (to.path === '/logowanie' || to.path === '/login' || to.path === '/rejestracja')) {
     return next('/') 
   }
 
-
-
-  // Zarządzanie grafikiem:
-  // administrator albo pracownik z uprawnieniem
+  const requiredPermissions = getRoutePermissionRequirement(to.path)
   if (
-    [
-      '/grafik/dyspozycyjnosc/okresy',
-      '/grafik/tworzenie',
-      '/grafik/grafiki',
-      '/grafik/ustawienia',
-      '/grafik/ustawienia/reguly'
-    ].includes(to.path) || to.path.startsWith('/grafik/grafiki/')
+    requiredPermissions.length > 0 &&
+    !accessContextCanOpenRoute(authorizationStore.context, to.path)
   ) {
-    if (hasEmployeeSession) {
-      if (!hasAuthenticatedEmployeeContext) {
-        console.warn(
-          'Strażnik: Sesja PIN nie może zarządzać grafikiem.'
-        )
-        return next('/grafik')
-      }
-
-      if (
-        !employeeStore.hasPermission(
-          'can_manage_schedule'
-        )
-      ) {
-        console.warn(
-          'Strażnik: Brak uprawnienia do zarządzania grafikiem!'
-        )
-
-        return next('/grafik')
-      }
-    } else {
-      if (!firebaseUser) {
-        console.warn(
-          'Strażnik: Próba wejścia do zarządzania grafikiem bez logowania!'
-        )
-
-        return next('/login')
-      }
-    }
-  }
-
-
-
-
-  // ZASADA 2: Chronimy Ustawienia Managera przed Pracownikami bez uprawnień!
-  const isManagerRoute = [
-    '/ustawienia',
-    '/ustawienia/profile-zatrudnienia',
-    '/ustawienia/grupy-pracownicze',
-    '/profile-uprawnien',
-    '/stanowiska-grafik',
-    '/zespol'
-  ].includes(to.path)
-
-  if (hasEmployeeSession && isManagerRoute) {
-    if (!hasAuthenticatedEmployeeContext) {
-      console.warn(
-        'Strażnik: Sesja PIN nie może wykonywać operacji administracyjnych.'
-      )
-      return next('/')
-    }
-
-    // Odpytujemy nasz system o uprawnienia pracownika
-    // WAŻNE: To musi być wywołane wewnątrz strażnika, żeby Pinia działała poprawnie
-    const employeeAuthStore = useEmployeeAuthStore()
-    
-    const mozeKonta = employeeAuthStore.hasPermission('can_manage_employees')
-    const mozeStanowiska = employeeAuthStore.hasPermission('can_manage_roles')
-
-    // Jeśli pracownik nie ma ŻADNEGO z tych uprawnień -> blokujemy i wyrzucamy na główną
-    if (!mozeKonta && !mozeStanowiska) {
-      console.log('Strażnik: Pracownik nie ma odpowiednich uprawnień do Ustawień!')
-      return next('/') 
-    }
-    // W przeciwnym razie - brama otwarta, wpuszczamy!
-  }
-
-  if (to.name === 'GrafikKalendarzZmian') {
-    if (hasEmployeeSession) {
-      if (!employeeStore.hasPermission('can_view_schedule')) {
-        console.warn(
-          'Strażnik: Brak uprawnienia do podglądu grafiku!'
-        )
-        return next('/grafik')
-      }
-    } else {
-      if (!firebaseUser) {
-        console.warn(
-          'Strażnik: Próba podglądu grafiku bez logowania!'
-        )
-        return next('/login')
-      }
-    }
-  }
-
-  if (hasEmployeeSession && to.path === '/ustawienia/grupy-pracownicze' && !employeeStore.hasPermission('can_manage_employees')) {
-    return next('/ustawienia')
-  }
-
-  // === NOWOŚĆ: ZASADA 3 - Blokada konkretnych modułów na podstawie uprawnień ===
-  if (hasEmployeeSession) {
-    
-    // Zabezpieczenie Zamawiarki
-    if (to.path === '/zamawiarka') {
-      if (!employeeStore.hasPermission('can_view_zamawiarka') && !employeeStore.hasPermission('can_edit_products')) {
-        console.warn('Strażnik: Odmowa dostępu do Zamawiarki dla tego stanowiska!')
-        return next('/')
-      }
-    }
-
-    // Zabezpieczenie Rentowności
-    if (to.path === '/rentownosc') {
-      if (!employeeStore.hasPermission('can_view_foodcost') && !employeeStore.hasPermission('can_edit_menu')) {
-        console.warn('Strażnik: Odmowa dostępu do Rentowności dla tego stanowiska!')
-        return next('/')
-      }
-    }
-
-
-
-
+    console.warn('Strażnik: Brak uprawnienia do wybranego widoku.')
+    return next('/')
   }
 
   // Jeśli wszystko jest OK, wpuszczamy dalej

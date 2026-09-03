@@ -59,14 +59,14 @@ const getExpectedRevision = (expectedDayRevisions, dateKey) => {
 }
 
 export const canPublishSchedule = ({
-  hasEmployeeSession = false,
   employeePermissions = {},
-  hasAdminSession = false
+  isOwner = false,
+  isFirebaseEmployee = false
 } = {}) => (
-  hasEmployeeSession
-    ? hasAdminSession &&
-      employeePermissions?.can_manage_schedule === true
-    : hasAdminSession
+  isOwner || (
+    isFirebaseEmployee &&
+    employeePermissions?.can_manage_schedule === true
+  )
 )
 
 export const isScheduleDayPublished = day => (

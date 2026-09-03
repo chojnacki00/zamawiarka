@@ -78,7 +78,7 @@
               <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
                 🔍
               </button>
-              <button v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')" @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+              <button v-if="authorizationStore.hasPermission('can_edit_menu')" @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
               +
               </button>
             </div>
@@ -276,7 +276,7 @@
             <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
             <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
           </button>
-          <button v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')" @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+          <button v-if="authorizationStore.hasPermission('can_edit_menu')" @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
           </button>
@@ -697,8 +697,8 @@
         </div>
       </div>
 
-      <template v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')">
-  <template v-if="!employeeAuthStore.currentEmployee || employeeAuthStore.hasPermission('can_edit_menu')">
+      <template v-if="authorizationStore.hasPermission('can_edit_menu')">
+  <template v-if="authorizationStore.hasPermission('can_edit_menu')">
   <div style="display: flex; gap: 10px; margin-bottom: 12px;">
     <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
       <span>📑</span> Powiel
@@ -952,6 +952,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/authStore.js'
 import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
+import { useAuthorizationStore } from './stores/authorizationStore.js'
 import {
   hasStoredLegacyPinSession,
   isPublicActivationRoute,
@@ -959,6 +960,7 @@ import {
   resolveRouteAuthenticationRedirect,
   shouldDeferAccountBootstrapForActivation
 } from './utils/routeAccess.js'
+import { accessContextCanOpenRoute } from './utils/accessControl.js'
 
 export default {
   components: {
@@ -971,6 +973,7 @@ export default {
     const authStore = useAuthStore()
     const employeeAuthStore = useEmployeeAuthStore()
     const accountSessionStore = useAccountSessionStore()
+    const authorizationStore = useAuthorizationStore()
 
     const getCurrentRestaurantId = () => (
       employeeAuthStore.restaurantId || null
@@ -1278,6 +1281,13 @@ const applyAppState = (state) => {
 
 
 const saveAllAppStateToCloud = async () => {
+  if (!authorizationStore.hasAnyPermission([
+    'can_edit_products',
+    'can_edit_menu'
+  ])) {
+    throw new Error('Nie masz uprawnienia do zapisywania ustawień aplikacji.')
+  }
+
   // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
   const uid = getCurrentRestaurantId()
 
@@ -1461,7 +1471,12 @@ const scheduleSave = () => {
   clearTimeout(saveTimeout)
 
   saveTimeout = setTimeout(() => {
-    saveAllAppStateToCloud()
+    void saveAllAppStateToCloud().catch(error => {
+      console.warn(
+        'Zapis ustawień aplikacji został zablokowany:',
+        error?.message || 'Brak uprawnienia.'
+      )
+    })
   }, 500)
 }
 
@@ -1560,6 +1575,7 @@ const COLLECTIONS_TO_BACKUP = [
 
 // --- FUNKCJA EKSPORTU ---
 const eksportujBackup = async () => {
+  authorizationStore.requireOwner()
   const user = auth.currentUser;
   const restaurantId = getCurrentRestaurantId()
   if (!user || !restaurantId) return;
@@ -1631,6 +1647,7 @@ for (const collectionName of COLLECTIONS_TO_BACKUP) {
 
 // --- FUNKCJA WCZYTYWANIA BACKUPU ---
 const wczytajBackup = async (event) => {
+  authorizationStore.requireOwner()
   const file = event.target.files[0]
   if (!file) return
 
@@ -1986,6 +2003,7 @@ if (backupData.collections) {
     }
 
     const saveDishCategory = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       const name = cleanName(dishCategoryForm.value.name)
       if (!name) return
 
@@ -2040,6 +2058,7 @@ if (backupData.collections) {
     }
 
     const deleteDishCategory = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       if (editedDishCategoryId.value === null) return
 
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę kategorię? (Dania w niej pozostaną bez kategorii)', 'Usuń kategorię', '🗑️')
@@ -2076,6 +2095,7 @@ if (backupData.collections) {
 
     // --- FUNKCJE MENU ---
 const duplicateMenuItem = (item) => {
+  authorizationStore.requirePermission('can_edit_menu')
   const newItem = {
     ...item,
     id: Date.now(), 
@@ -2086,6 +2106,7 @@ const duplicateMenuItem = (item) => {
 }
 
 const deleteMenuItem = async (id) => {
+      authorizationStore.requirePermission('can_edit_menu')
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę pozycję z menu?', 'Usuń danie', '🗑️')
       if (!confirmed) return
       
@@ -2150,6 +2171,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveDishForm = async () => { 
+      authorizationStore.requirePermission('can_edit_menu')
   if (!editingDish.value.name || editingDish.value.name.trim() === '') {
     await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
     return 
@@ -2299,6 +2321,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveIngredientToRecipe = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       if (!ingredientQty.value || ingredientQty.value <= 0) {
         await showAlert('Wpisz poprawną ilość zużycia.', 'Błąd', '⚠️')
         return
@@ -2328,6 +2351,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const removeIngredientFromRecipe = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       const confirmed = await showConfirm('Usunąć ten składnik z receptury?', 'Usuń składnik', '🗑️')
       if (!confirmed) return
       
@@ -2347,6 +2371,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveSettings = () => {
+      authorizationStore.requirePermission('can_edit_menu')
       scheduleSave()
       isSettingsDirty.value = false
     }
@@ -2618,6 +2643,7 @@ const selectedTowaryPdfFields = ref([
 // FUNKCJE KOSZYKA
 // =========================
 const addToCart = async (productId) => {
+  authorizationStore.requirePermission('can_create_orders')
   // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
   const uid = getCurrentRestaurantId()
 
@@ -2636,6 +2662,7 @@ const addToCart = async (productId) => {
 }
 
   const removeFromCart = async (productId) => {
+    authorizationStore.requirePermission('can_create_orders')
   // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
   const uid = getCurrentRestaurantId()
 
@@ -2660,6 +2687,7 @@ const addToCart = async (productId) => {
 }
 
   const clearCart = async () => {
+    authorizationStore.requirePermission('can_create_orders')
   const confirmed = await showConfirm(
     'Czy na pewno chcesz wyczyścić koszyk?',
     'Potwierdź akcję',
@@ -2731,6 +2759,7 @@ const closeCustomCartItemModal = () => {
 }
 
 const saveCustomCartItem = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   // POPRAWKA: Nowy strażnik ID
   const uid = getCurrentRestaurantId()
   if (!uid) {
@@ -2808,6 +2837,7 @@ const closeQtyModal = () => {
 }
 
 const saveQtyModal = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (!selectedProductForQty.value) return
 
   // POPRAWKA: Nowy strażnik ID
@@ -2865,6 +2895,7 @@ const saveQtyModal = async () => {
 // KOSZYK - USUWANIE POZYCJI Z MODALA ILOŚCI
 // =========================
 const deleteCartItemFromQtyModal = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (!selectedProductForQty.value) return
 
   // POPRAWKA: Nowy strażnik ID
@@ -2959,6 +2990,7 @@ const editTowarFromQtyModal = () => {
     }
 
     const saveSupplier = async () => {
+      authorizationStore.requirePermission('can_edit_products')
       if (!supplierForm.value.name.trim()) return
 
       // =========================
@@ -3017,6 +3049,7 @@ const editTowarFromQtyModal = () => {
 // USUWANIE HURTOWNI (Z POTWIERDZENIEM)
 // =========================
 const deleteSupplier = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedSupplierId.value === null) return
 
   const supplierToDelete = suppliers.value.find(
@@ -3117,6 +3150,7 @@ if (!confirmed) return
     }
 
     const saveWarehouse = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(warehouseForm.value.name)
 
   if (!name) return
@@ -3172,6 +3206,7 @@ if (!confirmed) return
     // USUWANIE MAGAZYNU (Z POTWIERDZENIEM)
     // =========================
     const deleteWarehouse = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedWarehouseId.value === null) return
 
   const warehouseToDelete = warehouses.value.find(
@@ -3270,6 +3305,7 @@ if (!confirmed) return
     }
 
     const saveOrderTiming = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(orderTimingForm.value.name)
 
   if (!name) return
@@ -3316,6 +3352,7 @@ if (!confirmed) return
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteOrderTiming = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedOrderTimingId.value === null) return
 
   const timingToDelete = orderTimings.value.find(
@@ -3429,6 +3466,7 @@ if (!confirmed) return
     }
 
     const saveUnit = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(unitForm.value.name)
 
   if (!name) return
@@ -3477,6 +3515,7 @@ if (!confirmed) return
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteUnit = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedUnitId.value === null) return
 
   const unitToDelete = units.value.find(
@@ -3578,6 +3617,7 @@ const closeCategoryForm = () => {
 }
 
 const saveCategory = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(categoryForm.value.name)
 
   if (!name) return
@@ -3624,6 +3664,7 @@ const saveCategory = async () => {
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
 const deleteCategory = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedCategoryId.value === null) return
 
   const categoryToDelete = categories.value.find(
@@ -3725,6 +3766,7 @@ const closeWhoOrderForm = () => {
 }
 
 const saveWhoOrder = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(whoOrderForm.value.name)
 
   if (!name) return
@@ -3771,6 +3813,7 @@ const saveWhoOrder = async () => {
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
 const deleteWhoOrder = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedWhoOrderId.value === null) return
 
   const whoOrderToDelete = whoOrders.value.find(
@@ -3931,6 +3974,7 @@ if (!confirmed) return
 }
 
 const handleTowarActiveChange = () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (towarFormMode.value !== 'edit') return
   if (editedTowarId.value === null) return
 
@@ -4064,6 +4108,7 @@ const closeTowarForm = async () => {
 // TOWARY - USUWANIE GRUPOWE
 // =========================
 const removeSelectedTowary = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const confirmed = await showConfirm(
     'Czy na pewno chcesz usunąć zaznaczone towary?',
     'Usuń towary',
@@ -4247,6 +4292,7 @@ const removeSelectedTowary = async () => {
 
 
       const saveTowar = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   // =========================
   // PROSTA WALIDACJA
   // =========================
@@ -4337,6 +4383,7 @@ const removeSelectedTowary = async () => {
 // TOWARY - USUWANIE
 // =========================
 const deleteTowar = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedTowarId.value === null) return
 
   const confirmed = await showConfirm(
@@ -4794,6 +4841,7 @@ const bValid = !isNaN(bOrder) && bOrder > 0
 // ZAPIS AKTUALNEGO ZAMÓWIENIA DO REJESTRU (OSOBNA KOLEKCJA)
 // =========================
 const saveCurrentOrderToRegister = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (filteredCartItems.value.length === 0) {
     await showAlert('Brak pozycji do zapisania w aktualnym widoku koszyka', 'Brak pozycji', '⚠️')
     return null
@@ -4874,6 +4922,7 @@ const saveCurrentOrderToRegister = async () => {
 // REJESTR ZAMÓWIEŃ - USUWANIE (Z CHMURY)
 // =========================
 const deleteOrderFromRegister = async (orderId) => {
+  authorizationStore.requirePermission('can_edit_products')
   const confirmed = await showConfirm(
     'Czy na pewno chcesz usunąć to zamówienie?',
     'Potwierdź usunięcie',
@@ -5378,9 +5427,8 @@ const activateAccountRestaurant = async () => {
   authStore.currentCompany = currentCompany.value
   isLoggedIn.value = true
 
-  const employee = accountSessionStore.currentEmployee
   const employeePermissions = accountSessionStore.permissions || {}
-  const needsBusinessData = !employee || [
+  const needsBusinessData = authorizationStore.isOwner || [
     'can_view_zamawiarka',
     'can_create_orders',
     'can_edit_products',
@@ -5396,7 +5444,7 @@ const activateAccountRestaurant = async () => {
     isDataLoaded.value = true
   }
 
-  if (!employee) {
+  if (authorizationStore.isOwner) {
     subscribeCartItems(restaurantId)
     subscribeTowary(restaurantId)
     subscribeOrders(restaurantId)
@@ -5444,6 +5492,19 @@ watch(
     await activateAccountRestaurant()
   },
   { immediate: true }
+)
+
+watch(
+  () => [authorizationStore.context, route.path],
+  async ([accessContext, currentPath]) => {
+    if (
+      isAppReady.value &&
+      !accessContextCanOpenRoute(accessContext, currentPath)
+    ) {
+      await router.replace('/')
+    }
+  },
+  { deep: true }
 )
 
 
@@ -5992,6 +6053,7 @@ const openZamawiarkaMenuFromHome = () => {
 
       isDataLoaded,
       employeeAuthStore,
+      authorizationStore,
 
       fieldFilledClass,
 

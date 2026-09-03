@@ -226,9 +226,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAuth } from 'firebase/auth'
 import { useScheduleDraftsStore } from '../../stores/scheduleDraftsStore.js'
-import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import { canDeleteUnpublishedSchedule } from '../../utils/scheduleStructure.js'
 import { PUBLICATION_STATUSES } from '../../utils/schedulePublication.js'
 import {
@@ -237,7 +236,7 @@ import {
 
 const router = useRouter()
 const scheduleDraftsStore = useScheduleDraftsStore()
-const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const isLoading = ref(false)
 const loadError = ref('')
 const scheduleToDelete = ref(null)
@@ -249,10 +248,9 @@ const unpublishError = ref('')
 const showUnpublishSuccess = ref(false)
 
 const canManageSchedule = computed(() => canUnpublishSchedule({
-  hasEmployeeSession: Boolean(employeeAuthStore.currentEmployee),
-  employeePermissions:
-    employeeAuthStore.currentEmployee?.uprawnienia || {},
-  hasAdminSession: Boolean(getAuth().currentUser)
+  employeePermissions: authorizationStore.permissions,
+  isOwner: authorizationStore.isOwner,
+  isFirebaseEmployee: authorizationStore.isFirebaseEmployee
 }))
 
 onMounted(async () => {

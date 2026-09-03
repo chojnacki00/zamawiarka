@@ -462,25 +462,23 @@ test('zmiana rewizji dnia na innym urządzeniu blokuje publikację', () => {
 
 test('sam podstawowy dostęp do grafiku nie pozwala publikować', () => {
   assert.equal(canPublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: true,
     employeePermissions: {
       can_view_schedule: true,
       can_manage_schedule: false
     },
-    hasAdminSession: true
   }), false)
   assert.equal(canPublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: false,
     employeePermissions: {
       can_manage_schedule: true
     }
   }), false)
   assert.equal(canPublishSchedule({
-    hasEmployeeSession: true,
+    isFirebaseEmployee: true,
     employeePermissions: {
       can_manage_schedule: true
     },
-    hasAdminSession: true
   }), true)
-  assert.equal(canPublishSchedule({ hasAdminSession: true }), true)
+  assert.equal(canPublishSchedule({ isOwner: true }), true)
 })

@@ -2447,7 +2447,7 @@ selectedWhoOrders !== 'wszystkie'
      WIDOK: USTAWIENIA
 ========================== -->
 <ZamawiarkaUstawieniaView
-  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia'"
+  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia' && hasPerm('can_edit_products')"
   :suppliers="suppliers"
   :showSupplierForm="showSupplierForm"
   :supplierFormMode="supplierFormMode"
@@ -2535,14 +2535,13 @@ selectedWhoOrders !== 'wszystkie'
 </template>
 
 <script>
-import { inject, onMounted } from 'vue'
+import { inject, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ZamawiarkaPomocView from './ZamawiarkaPomocView.vue'
 import ZamawiarkaUstawieniaView from './ZamawiarkaUstawieniaView.vue'
 
 // --- KROK 1: DODAJEMY IMPORTY SKLEPÓW ---
-import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
-import { useAuthStore } from '../stores/authStore.js' 
+import { usePermissions } from '../composables/usePermissions.js'
 
 export default {
   components: {
@@ -2556,35 +2555,29 @@ export default {
     const router = useRouter()
 
     // --- KROK 2: INICJALIZUJEMY SKLEPY W SETUP ---
-    const employeeStore = useEmployeeAuthStore()
-    const authStore = useAuthStore()
+    const { can: hasPerm } = usePermissions()
 
     
     // --- KROK 3: NASZA FUNKCJA SPRAWDZAJĄCA UPRAWNIENIA ---
-    const hasPerm = (permissionKey) => {
-      if (authStore.isLoggedIn) {
-        return true
-      }
-      
-      const pracownik = employeeStore.currentEmployee
-      
-      // Sprawdzamy łagodniej: puszczamy jeśli to logiczne true LUB tekstowe "true"
-      if (pracownik && pracownik.uprawnienia) {
-        const uprawnienie = pracownik.uprawnienia[permissionKey]
-        if (uprawnienie === true || uprawnienie === 'true') {
-          return true
-        }
-      }
-      
-      return false
-    }
-
     // Wymuszamy widok
     onMounted(() => {
       if (appContext.currentScreen) {
         appContext.currentScreen.value = 'zamawiarka'
       }
     })
+
+    watch(
+      () => hasPerm('can_edit_products'),
+      canManageSettings => {
+        if (
+          !canManageSettings &&
+          appContext.zamawiarkaView.value === 'ustawienia'
+        ) {
+          appContext.zamawiarkaView.value = 'menu'
+        }
+      },
+      { immediate: true }
+    )
 
     // TUTAJ DODANA FUNKCJA OPÓŹNIAJĄCA
     const zmienWidokZOpuznieniem = (nowyWidok) => {
@@ -2594,7 +2587,7 @@ export default {
     }
 
     // --- KROK 4: ZWRACAMY hasPerm DO SZABLONU (ŻEBY HTML JĄ WIDZIAŁ) ---
-    return { ...appContext, router, zmienWidokZOpuznieniem, hasPerm, authStore }
+    return { ...appContext, router, zmienWidokZOpuznieniem, hasPerm }
   }
 }
 </script>

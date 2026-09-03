@@ -514,8 +514,8 @@ test('can_manage_schedule pozwala zmienić pracownika', () => {
   }), 'employee-2')
 })
 
-test('administrator rozpoczyna bez wybranego pracownika', () => {
-  const access = getPublishedCalendarAccess({ hasAdminSession: true })
+test('właściciel rozpoczyna bez wybranego pracownika', () => {
+  const access = getPublishedCalendarAccess({ hasOwnerAccess: true })
 
   assert.equal(access.canSelectEmployee, true)
   assert.equal(resolvePublishedCalendarEmployeeId({ access }), null)
