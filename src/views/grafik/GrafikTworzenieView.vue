@@ -760,7 +760,7 @@ import {
   where
 } from 'firebase/firestore'
 import { db } from '../../firebase.js'
-import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../../stores/authorizationStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useScheduleDemandModelsStore } from '../../stores/scheduleDemandModelsStore.js'
@@ -775,7 +775,7 @@ import {
 } from '../../utils/scheduleCreationValidation.js'
 
 const router = useRouter()
-const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const demandModelsStore = useScheduleDemandModelsStore()
@@ -876,7 +876,7 @@ onMounted(() => {
 })
 
 const getRestaurantId = () => {
-  return Promise.resolve(employeeAuthStore.requireRestaurantId())
+  return Promise.resolve(authorizationStore.requireRestaurantId())
 }
 
 const analyzeRange = async () => {

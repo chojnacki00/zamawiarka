@@ -14,7 +14,6 @@ import {
   getAuth
 } from 'firebase/auth'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
 import {
   DEFAULT_GENERATOR_SETTINGS,
@@ -105,7 +104,7 @@ export const useScheduleDraftsStore = defineStore(
     const isCreating = ref(false)
 
     const getRestaurantId = async () => (
-      useEmployeeAuthStore().requireRestaurantId()
+      useAuthorizationStore().requireRestaurantId()
     )
 
     const getCreationSafety = async ({ dateFrom, dateTo }) => {
@@ -393,7 +392,7 @@ export const useScheduleDraftsStore = defineStore(
           )
         }
 
-        const employeeAuthStore = useEmployeeAuthStore()
+        const authorizationStore = useAuthorizationStore()
         const auth = getAuth()
         const scheduleRef = doc(
           collection(db, 'users', restaurantId, 'grafiki')
@@ -437,7 +436,7 @@ export const useScheduleDraftsStore = defineStore(
           lastPublishedByEmployeeId: null,
           lastPublishedByAuthUid: null,
           createdByEmployeeId:
-            employeeAuthStore.currentEmployee?.id || null,
+            authorizationStore.employeeId || null,
           createdByAuthUid: auth.currentUser?.uid || null,
           continuity: {
             previousDate: creationSafety.continuity.previousDate,
@@ -449,7 +448,7 @@ export const useScheduleDraftsStore = defineStore(
                 : null,
             warningAcknowledgedBy:
               creationSafety.continuity.requiresWarning
-                ? employeeAuthStore.currentEmployee?.id ||
+                ? authorizationStore.employeeId ||
                   auth.currentUser?.uid ||
                   null
                 : null
@@ -908,7 +907,6 @@ export const useScheduleDraftsStore = defineStore(
         throw new Error('Brak danych grafiku do publikacji.')
       }
 
-      const employeeAuthStore = useEmployeeAuthStore()
       const auth = getAuth()
       const hasEmployeeSession = authorizationStore.isEmployee
 
@@ -965,7 +963,7 @@ export const useScheduleDraftsStore = defineStore(
       ))
       const performer = {
         employeeId:
-          employeeAuthStore.currentEmployee?.id || null,
+          authorizationStore.employeeId || null,
         authUid: hasEmployeeSession
           ? null
           : auth.currentUser?.uid || null
@@ -1152,7 +1150,6 @@ export const useScheduleDraftsStore = defineStore(
         throw new Error('Brak danych grafiku do wycofania publikacji.')
       }
 
-      const employeeAuthStore = useEmployeeAuthStore()
       const auth = getAuth()
       const hasEmployeeSession = authorizationStore.isEmployee
 

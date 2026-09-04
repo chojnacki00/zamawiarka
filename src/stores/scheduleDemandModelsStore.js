@@ -11,8 +11,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 
 export const useScheduleDemandModelsStore = defineStore(
   'scheduleDemandModels',
@@ -25,7 +25,7 @@ export const useScheduleDemandModelsStore = defineStore(
     let listenerReadyPromise = null
 
     const getRestaurantId = async () => (
-      useEmployeeAuthStore().requireRestaurantId()
+      useAuthorizationStore().requireRestaurantId()
     )
 
     const getModelsCollectionRef = async () => {
@@ -54,6 +54,14 @@ export const useScheduleDemandModelsStore = defineStore(
         unsubscribeModels = onSnapshot(
           collection(db, 'users', restaurantId, 'scheduleDemandModels'),
           snapshot => {
+            if (!isRestaurantContextCurrent(restaurantId, useAuthorizationStore().restaurantId)) {
+              if (firstSnapshot) {
+                firstSnapshot = false
+                isLoading.value = false
+                resolve(models.value)
+              }
+              return
+            }
             models.value = snapshot.docs.map(document => ({
               id: document.id,
               ...document.data()

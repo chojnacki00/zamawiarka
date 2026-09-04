@@ -94,6 +94,28 @@ export const completeLegacyOwnerBootstrap = async ({
     user.uid
   )
 
+  try {
+    const markerSnapshot = await getDoc(markerRef)
+    if (!markerSnapshot.exists()) {
+      return { bootstrapped: false, reason: 'marker-missing' }
+    }
+  } catch (error) {
+    if (error?.code !== 'permission-denied') throw error
+
+    const completedBootstrap = await readCompletedOwnerBootstrap({
+      accountRef,
+      restaurantRef,
+      memberRef,
+      user,
+      restaurantId
+    }).catch(() => null)
+
+    return completedBootstrap || {
+      bootstrapped: false,
+      reason: 'marker-missing'
+    }
+  }
+
   let result
   try {
     result = await runTransaction(db, async transaction => {

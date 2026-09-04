@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
   getWeeklyMaximumValidationMessage
 } from '../utils/employmentRules.js'
@@ -211,8 +211,7 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
 
   actions: {
     async getRestaurantId() {
-      const employeeAuthStore = useEmployeeAuthStore()
-      return employeeAuthStore.requireRestaurantId()
+      return useAuthorizationStore().requireRestaurantId()
     },
 
     async fetchProfiles() {
@@ -233,6 +232,14 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
         unsubscribeEmploymentProfiles = onSnapshot(
           collection(db, 'users', restaurantId, 'grafik_profile_zatrudnienia'),
           snapshot => {
+            if (!isRestaurantContextCurrent(restaurantId, useAuthorizationStore().restaurantId)) {
+              if (firstSnapshot) {
+                firstSnapshot = false
+                store.isLoading = false
+                resolve(store.profiles)
+              }
+              return
+            }
             store.profiles = snapshot.docs
               .map(profileSnapshot => normalizeProfile({
                 id: profileSnapshot.id,
@@ -280,7 +287,7 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
         const profileRef = isNew
           ? doc(collection(db, 'users', restaurantId, 'grafik_profile_zatrudnienia'))
           : doc(db, 'users', restaurantId, 'grafik_profile_zatrudnienia', normalizedProfile.id)
-        const employeeAuthStore = useEmployeeAuthStore()
+        const authorizationStore = useAuthorizationStore()
         const auth = getAuth()
         const nextVersionNumber = normalizedProfile.profileVersionNumber + 1
         const nextVersionId = createVersionId()
@@ -296,7 +303,7 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
           settlementPeriodAmount: normalizedProfile.settlementPeriod.amount,
           settlementPeriodUnit: normalizedProfile.settlementPeriod.unit,
           updatedAt: serverTimestamp(),
-          updatedBy: employeeAuthStore.currentEmployee?.id || auth.currentUser?.uid || null,
+          updatedBy: authorizationStore.employeeId || auth.currentUser?.uid || null,
           createdAt: currentCreatedAt
         }
 

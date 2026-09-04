@@ -961,6 +961,10 @@ import {
   shouldDeferAccountBootstrapForActivation
 } from './utils/routeAccess.js'
 import { accessContextCanOpenRoute } from './utils/accessControl.js'
+import {
+  isRestaurantContextCurrent,
+  persistRestaurantListChange
+} from './utils/restaurantDataContext.js'
 
 export default {
   components: {
@@ -976,7 +980,7 @@ export default {
     const authorizationStore = useAuthorizationStore()
 
     const getCurrentRestaurantId = () => (
-      employeeAuthStore.restaurantId || null
+      authorizationStore.requireRestaurantId()
     )
 
     // =========================
@@ -1091,6 +1095,39 @@ const saveUserStateToFirestore = async (uid, state) => {
   const stateRef = getUserStateDocRef(uid)
 
   await setDoc(stateRef, state, { merge: true })
+}
+
+const persistAppStateList = async (field, stateRef, nextValue) => {
+  authorizationStore.requirePermission('can_edit_products')
+
+  if (!isDataLoaded.value) {
+    throw new Error('Dane restauracji nie zostały jeszcze wczytane.')
+  }
+
+  const restaurantId = authorizationStore.requireRestaurantId()
+  const previousValue = stateRef.value
+
+  try {
+    await persistRestaurantListChange({
+      previousValue,
+      nextValue,
+      applyValue: value => { stateRef.value = value },
+      persistValue: value => setDoc(
+        getUserStateDocRef(restaurantId),
+        { [field]: value },
+        { merge: true }
+      )
+    })
+    return true
+  } catch (error) {
+    console.error(`Błąd zapisu pola ${field} w Firestore:`, error)
+    await showAlert(
+      'Nie udało się zapisać zmiany. Przywrócono poprzedni stan.',
+      'Błąd zapisu',
+      '❌'
+    )
+    return false
+  }
 }
 
 
@@ -1314,12 +1351,13 @@ const saveAllAppStateToCloud = async () => {
 
     if (isReallyEmptyState) {
       console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
-      return
+      throw new Error('Zapis pustego, niezaładowanego stanu został zablokowany.')
     }
 
     await saveUserStateToFirestore(uid, appState)
   } catch (error) {
     console.error('Błąd zapisu do Firestore:', error)
+    throw error
   }
 }
 
@@ -1340,9 +1378,17 @@ const subscribeUserState = (uid) => {
   const stateRef = getUserStateDocRef(uid)
 
   unsubscribeUserState = onSnapshot(stateRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     if (!snapshot.exists()) return
 
     const data = snapshot.data()
+
+    if (Array.isArray(data.suppliers)) suppliers.value = data.suppliers
+    if (Array.isArray(data.warehouses)) warehouses.value = data.warehouses
+    if (Array.isArray(data.orderTimings)) orderTimings.value = data.orderTimings
+    if (Array.isArray(data.units)) units.value = data.units
+    if (Array.isArray(data.categories)) categories.value = data.categories
+    if (Array.isArray(data.whoOrders)) whoOrders.value = data.whoOrders
 
     if (Array.isArray(data.ordersRegister)) {
       ordersRegister.value = data.ordersRegister
@@ -1361,6 +1407,7 @@ const subscribeCartItems = (uid) => {
   const cartItemsRef = getUserCartItemsCollectionRef(uid)
 
   unsubscribeCartItems = onSnapshot(cartItemsRef, (snapshot) => {
+  if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
   const nextCart = {}
   const nextCustomCartItems = []
 
@@ -1408,6 +1455,7 @@ const subscribeOrders = (uid) => {
   const ordersRef = getUserOrdersCollectionRef(uid)
 
   unsubscribeOrders = onSnapshot(ordersRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextOrders = []
     snapshot.forEach((docSnap) => {
       nextOrders.push(docSnap.data())
@@ -1429,6 +1477,7 @@ const subscribeMenuItems = (uid) => {
   const menuRef = getUserMenuItemsCollectionRef(uid)
 
   unsubscribeMenuItems = onSnapshot(menuRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextMenuItems = []
     snapshot.forEach((docSnap) => {
       nextMenuItems.push(docSnap.data())
@@ -1453,6 +1502,7 @@ const subscribeTowary = (uid) => {
 
   // Zaczynamy nasłuchiwać nowej kolekcji!
   unsubscribeTowary = onSnapshot(towaryRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextTowary = []
     
     snapshot.forEach((docSnap) => {
@@ -1471,10 +1521,18 @@ const scheduleSave = () => {
   clearTimeout(saveTimeout)
 
   saveTimeout = setTimeout(() => {
-    void saveAllAppStateToCloud().catch(error => {
+    void saveAllAppStateToCloud().catch(async error => {
       console.warn(
         'Zapis ustawień aplikacji został zablokowany:',
         error?.message || 'Brak uprawnienia.'
+      )
+      await loadSelectedRestaurantData().catch(reloadError => {
+        console.warn('Nie udało się ponownie pobrać danych:', reloadError?.message)
+      })
+      await showAlert(
+        'Nie udało się zapisać zmiany. Przywrócono dane zapisane w restauracji.',
+        'Błąd zapisu',
+        '❌'
       )
     })
   }, 500)
@@ -1521,11 +1579,17 @@ const resetCompanyDataState = () => {
 const loadSelectedRestaurantData = async () => {
   isHydrating.value = true
   isDataLoaded.value = false
+  let restaurantId = null
 
   try {
-    const uid = employeeAuthStore.requireRestaurantId()
+    restaurantId = authorizationStore.requireRestaurantId()
 
-    const cloudState = await loadUserStateFromFirestore(uid)
+    const cloudState = await loadUserStateFromFirestore(restaurantId)
+
+    if (!isRestaurantContextCurrent(
+      restaurantId,
+      authorizationStore.restaurantId
+    )) return
 
     resetCompanyDataState()
     applyAppState(cloudState)
@@ -1534,9 +1598,14 @@ const loadSelectedRestaurantData = async () => {
     console.error('Błąd ładowania z Firestore:', error)
     // Nie resetujemy tu stanu całkowicie, żeby nie wyczyścić tego, co może się udać pobrać
   } finally {
-    // ZAWSZE WYŁĄCZA KÓŁKO ŁADOWANIA, NAWET PO BŁĘDZIE FIREBASE
-    isDataLoaded.value = true 
-    isHydrating.value = false
+    if (!restaurantId || isRestaurantContextCurrent(
+      restaurantId,
+      authorizationStore.restaurantId
+    )) {
+      // ZAWSZE WYŁĄCZA KÓŁKO ŁADOWANIA, NAWET PO BŁĘDZIE FIREBASE
+      isDataLoaded.value = true
+      isHydrating.value = false
+    }
   }
 }
 
@@ -3008,13 +3077,15 @@ const editTowarFromQtyModal = () => {
       // =========================
       // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
       // =========================
+      let nextSuppliers = [...suppliers.value]
+
       if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
         const index = suppliers.value.findIndex(
           supplier => supplier.id === editedSupplierId.value
         )
 
         if (index !== -1) {
-          suppliers.value[index] = {
+          nextSuppliers[index] = {
             ...suppliers.value[index],
             name: cleanName(supplierForm.value.name),
             phone: supplierForm.value.phone,
@@ -3025,13 +3096,15 @@ const editTowarFromQtyModal = () => {
         // =========================
         // TRYB DODAWANIA
         // =========================
-        suppliers.value.push({
+        nextSuppliers.push({
           id: Date.now(),
           name: cleanName(supplierForm.value.name),
           phone: supplierForm.value.phone,
           email: supplierForm.value.email
         })
       }
+
+      if (!await persistAppStateList('suppliers', suppliers, nextSuppliers)) return
 
       supplierForm.value = {
         name: '',
@@ -3042,7 +3115,6 @@ const editTowarFromQtyModal = () => {
       showSupplierForm.value = false
       supplierFormMode.value = 'add'
       editedSupplierId.value = null
-      scheduleSave()
     }
 
 // =========================
@@ -3067,9 +3139,11 @@ const deleteSupplier = async () => {
 if (!confirmed) return
 
   // Aktualizacja listy metodą filter (Niemutowalność)
-  suppliers.value = suppliers.value.filter(
+  const nextSuppliers = suppliers.value.filter(
     supplier => supplier.id !== editedSupplierId.value
   )
+
+  if (!await persistAppStateList('suppliers', suppliers, nextSuppliers)) return
 
   if (supplierNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3092,7 +3166,6 @@ if (!confirmed) return
     email: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
@@ -3170,13 +3243,15 @@ if (!confirmed) return
   // =========================
   // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
   // =========================
+  const nextWarehouses = [...warehouses.value]
+
   if (warehouseFormMode.value === 'edit' && editedWarehouseId.value !== null) {
     const index = warehouses.value.findIndex(
       warehouse => warehouse.id === editedWarehouseId.value
     )
 
     if (index !== -1) {
-      warehouses.value[index] = {
+      nextWarehouses[index] = {
         ...warehouses.value[index],
         name: name
       }
@@ -3185,11 +3260,13 @@ if (!confirmed) return
     // =========================
     // TRYB DODAWANIA
     // =========================
-    warehouses.value.push({
+    nextWarehouses.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('warehouses', warehouses, nextWarehouses)) return
 
   showWarehouseForm.value = false
   warehouseFormMode.value = 'add'
@@ -3199,7 +3276,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
@@ -3222,9 +3298,11 @@ if (!confirmed) return
   )
   if (!confirmed) return
 
-  warehouses.value = warehouses.value.filter(
+  const nextWarehouses = warehouses.value.filter(
     warehouse => warehouse.id !== editedWarehouseId.value
   )
+
+  if (!await persistAppStateList('warehouses', warehouses, nextWarehouses)) return
 
   if (warehouseNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3245,7 +3323,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -3322,20 +3399,20 @@ if (!confirmed) return
     return
   }
 
-  if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
-    const itemToUpdate = orderTimings.value.find(
-      item => item.id === editedOrderTimingId.value
-    )
+  let nextOrderTimings = [...orderTimings.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
+    nextOrderTimings = nextOrderTimings.map(item => (
+      item.id === editedOrderTimingId.value ? { ...item, name } : item
+    ))
   } else {
-    orderTimings.value.push({
+    nextOrderTimings.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('orderTimings', orderTimings, nextOrderTimings)) return
 
   showOrderTimingForm.value = false
   orderTimingFormMode.value = 'add'
@@ -3345,7 +3422,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
@@ -3368,9 +3444,11 @@ if (!confirmed) return
 )
 if (!confirmed) return
 
-  orderTimings.value = orderTimings.value.filter(
+  const nextOrderTimings = orderTimings.value.filter(
     item => item.id !== editedOrderTimingId.value
   )
+
+  if (!await persistAppStateList('orderTimings', orderTimings, nextOrderTimings)) return
 
   if (timingNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3405,7 +3483,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -3483,20 +3560,20 @@ if (!confirmed) return
     return
   }
 
-  if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
-    const itemToUpdate = units.value.find(
-      item => item.id === editedUnitId.value
-    )
+  let nextUnits = [...units.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
+    nextUnits = nextUnits.map(item => (
+      item.id === editedUnitId.value ? { ...item, name } : item
+    ))
   } else {
-    units.value.push({
+    nextUnits.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('units', units, nextUnits)) return
 
   showUnitForm.value = false
   unitFormMode.value = 'add'
@@ -3506,7 +3583,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -3531,9 +3607,11 @@ if (!confirmed) return
 )
 if (!confirmed) return
 
-  units.value = units.value.filter(
+  const nextUnits = units.value.filter(
     item => item.id !== editedUnitId.value
   )
+
+  if (!await persistAppStateList('units', units, nextUnits)) return
 
   if (unitNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3554,7 +3632,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -3634,20 +3711,20 @@ const saveCategory = async () => {
     return
   }
 
-  if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
-    const itemToUpdate = categories.value.find(
-      item => item.id === editedCategoryId.value
-    )
+  let nextCategories = [...categories.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
+    nextCategories = nextCategories.map(item => (
+      item.id === editedCategoryId.value ? { ...item, name } : item
+    ))
   } else {
-    categories.value.push({
+    nextCategories.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('categories', categories, nextCategories)) return
 
   showCategoryForm.value = false
   categoryFormMode.value = 'add'
@@ -3657,7 +3734,6 @@ const saveCategory = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 // =========================
@@ -3680,9 +3756,11 @@ const deleteCategory = async () => {
   )
   if (!confirmed) return
 
-  categories.value = categories.value.filter(
+  const nextCategories = categories.value.filter(
     item => item.id !== editedCategoryId.value
   )
+
+  if (!await persistAppStateList('categories', categories, nextCategories)) return
 
   if (categoryNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3707,7 +3785,6 @@ const deleteCategory = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -3783,20 +3860,20 @@ const saveWhoOrder = async () => {
     return
   }
 
-  if (whoOrderFormMode.value === 'edit' && editedWhoOrderId.value !== null) {
-    const itemToUpdate = whoOrders.value.find(
-      item => item.id === editedWhoOrderId.value
-    )
+  let nextWhoOrders = [...whoOrders.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (whoOrderFormMode.value === 'edit' && editedWhoOrderId.value !== null) {
+    nextWhoOrders = nextWhoOrders.map(item => (
+      item.id === editedWhoOrderId.value ? { ...item, name } : item
+    ))
   } else {
-    whoOrders.value.push({
+    nextWhoOrders.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('whoOrders', whoOrders, nextWhoOrders)) return
 
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
@@ -3806,7 +3883,6 @@ const saveWhoOrder = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 // =========================
@@ -3829,9 +3905,11 @@ const deleteWhoOrder = async () => {
 )
 if (!confirmed) return
 
-  whoOrders.value = whoOrders.value.filter(
+  const nextWhoOrders = whoOrders.value.filter(
     item => item.id !== editedWhoOrderId.value
   )
+
+  if (!await persistAppStateList('whoOrders', whoOrders, nextWhoOrders)) return
 
   if (whoOrderNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -3856,7 +3934,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -5408,7 +5485,7 @@ let activatedRestaurantId = null
 
 const activateAccountRestaurant = async () => {
   const user = auth.currentUser
-  const restaurantId = accountSessionStore.currentRestaurantId
+  const restaurantId = authorizationStore.restaurantId
   if (!user || !restaurantId || !accountSessionStore.hasActiveContext) return
   if (activatedRestaurantId === restaurantId && isDataLoaded.value) return
 

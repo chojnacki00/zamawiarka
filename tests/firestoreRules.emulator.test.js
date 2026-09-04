@@ -1299,6 +1299,92 @@ test('właściwe uprawnienie oraz właściciel zapisują ustawienia', async () =
   ))
 })
 
+test('właściciel i uprawniony pracownik współdzielą ten sam stan restauracji', async () => {
+  await seedEmployeeAccess({ permissions: { can_edit_products: true } })
+  await seedOwner()
+  await seed([['users/restaurant-a/app/state', {
+    initialized: true,
+    suppliers: [{ id: 'supplier-1', name: 'Hurtownia testowa' }],
+    warehouses: [{ id: 'warehouse-1', name: 'Magazyn' }]
+  }]])
+
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const sharedPath = 'users/restaurant-a/app/state'
+
+  const ownerBefore = await assertSucceeds(getDoc(doc(ownerDb, sharedPath)))
+  const employeeBefore = await assertSucceeds(getDoc(doc(employeeDb, sharedPath)))
+  assert.deepEqual(employeeBefore.data().suppliers, ownerBefore.data().suppliers)
+
+  await assertSucceeds(updateDoc(doc(employeeDb, sharedPath), {
+    suppliers: [
+      { id: 'supplier-1', name: 'Hurtownia po edycji' },
+      { id: 'supplier-2', name: 'Druga hurtownia' }
+    ]
+  }))
+  let ownerAfter = await assertSucceeds(getDoc(doc(ownerDb, sharedPath)))
+  assert.equal(ownerAfter.data().suppliers.length, 2)
+  assert.equal(ownerAfter.data().suppliers[0].name, 'Hurtownia po edycji')
+
+  await assertSucceeds(updateDoc(doc(employeeDb, sharedPath), {
+    suppliers: [{ id: 'supplier-2', name: 'Druga hurtownia' }]
+  }))
+  ownerAfter = await assertSucceeds(getDoc(doc(ownerDb, sharedPath)))
+  assert.deepEqual(ownerAfter.data().suppliers, [
+    { id: 'supplier-2', name: 'Druga hurtownia' }
+  ])
+})
+
+test('pracownik nie czyta app/state spod authUid ani obcej restauracji', async () => {
+  await seedEmployeeAccess({ permissions: { can_edit_products: true } })
+  await seed([['users/restaurant-b/app/state', {
+    suppliers: [{ id: 'foreign' }]
+  }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertFails(getDoc(doc(db, 'users/employee-auth/app/state')))
+  await assertFails(getDoc(doc(db, 'users/restaurant-b/app/state')))
+  await assertFails(updateDoc(doc(db, 'users/employee-auth/app/state'), {
+    suppliers: []
+  }))
+})
+
+test('usunięcie ostatniej hurtowni zapisuje pustą listę i zachowuje resztę app/state', async () => {
+  await seedEmployeeAccess({ permissions: { can_edit_products: true } })
+  await seed([['users/restaurant-a/app/state', {
+    initialized: true,
+    suppliers: [{ id: 'supplier-1', name: 'Ostatnia hurtownia' }],
+    warehouses: [{ id: 'warehouse-1', name: 'Magazyn' }],
+    units: [{ id: 'unit-1', name: 'kg' }],
+    fcSettings: { target: 30 }
+  }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const stateRef = doc(db, 'users/restaurant-a/app/state')
+
+  await assertSucceeds(updateDoc(stateRef, { suppliers: [] }))
+  const snapshot = await assertSucceeds(getDoc(stateRef))
+
+  assert.deepEqual(snapshot.data().suppliers, [])
+  assert.deepEqual(snapshot.data().warehouses, [
+    { id: 'warehouse-1', name: 'Magazyn' }
+  ])
+  assert.deepEqual(snapshot.data().units, [{ id: 'unit-1', name: 'kg' }])
+  assert.deepEqual(snapshot.data().fcSettings, { target: 30 })
+  assert.equal(snapshot.data().initialized, true)
+})
+
 test('zablokowane członkostwo traci zapis ustawień', async () => {
   await seedEmployeeAccess({
     status: 'blocked',

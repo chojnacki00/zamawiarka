@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { collection, doc, getDoc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
   normalizeSchedulePositionColor
 } from '../utils/schedulePositionColors.js'
@@ -16,7 +16,7 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
   let listenerReadyPromise = null
 
   const getUid = async () => (
-    useEmployeeAuthStore().requireRestaurantId()
+    useAuthorizationStore().requireRestaurantId()
   )
 
   const fetchPositions = async () => {
@@ -32,6 +32,14 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
       unsubscribePositions = onSnapshot(
         collection(db, 'users', uid, 'positions'),
         snapshot => {
+          if (!isRestaurantContextCurrent(uid, useAuthorizationStore().restaurantId)) {
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(positions.value)
+            }
+            return
+          }
           positions.value = snapshot.docs
             .map(positionSnapshot => ({ id: positionSnapshot.id, ...positionSnapshot.data() }))
             .sort((first, second) => {

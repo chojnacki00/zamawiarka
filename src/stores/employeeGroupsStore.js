@@ -10,8 +10,8 @@ import {
   setDoc
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 
 export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   const groups = ref([])
@@ -21,7 +21,7 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
   let listenerReadyPromise = null
 
   const getRestaurantId = async () => (
-    useEmployeeAuthStore().requireRestaurantId()
+    useAuthorizationStore().requireRestaurantId()
   )
 
   const sortGroups = () => {
@@ -44,6 +44,14 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
       unsubscribeGroups = onSnapshot(
         collection(db, 'users', restaurantId, 'employeeGroups'),
         snapshot => {
+          if (!isRestaurantContextCurrent(restaurantId, useAuthorizationStore().restaurantId)) {
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(groups.value)
+            }
+            return
+          }
           groups.value = snapshot.docs.map(groupSnapshot => ({
             id: groupSnapshot.id,
             ...groupSnapshot.data()

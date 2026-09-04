@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import { normalizePermissionDependencies } from '../utils/permissionDependencies.js'
 
 const normalizeProfileData = profileData => ({
@@ -22,7 +22,7 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
   let listenerReadyPromise = null
 
   const getUid = async () => (
-    useEmployeeAuthStore().requireRestaurantId()
+    useAuthorizationStore().requireRestaurantId()
   )
 
   const fetchProfiles = async () => {
@@ -38,6 +38,14 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
       unsubscribeProfiles = onSnapshot(
         collection(db, 'users', uid, 'permissionProfiles'),
         snapshot => {
+          if (!isRestaurantContextCurrent(uid, useAuthorizationStore().restaurantId)) {
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(profiles.value)
+            }
+            return
+          }
           profiles.value = snapshot.docs
             .map(profileSnapshot => ({ id: profileSnapshot.id, ...profileSnapshot.data() }))
             .sort((first, second) => String(first.nazwa || '').localeCompare(String(second.nazwa || ''), 'pl'))
