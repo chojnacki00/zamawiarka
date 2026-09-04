@@ -7,7 +7,6 @@ import {
   where
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
 import {
   buildPublishedCalendarIndex,
@@ -50,7 +49,6 @@ export const usePublishedScheduleCalendarStore = defineStore(
     let activeRestaurantId = null
 
     const getReadContext = async () => {
-      const employeeAuthStore = useEmployeeAuthStore()
       const authorizationStore = useAuthorizationStore()
       const access = getPublishedCalendarAccess({
         hasEmployeeSession: authorizationStore.isEmployee,
@@ -71,7 +69,7 @@ export const usePublishedScheduleCalendarStore = defineStore(
         )
       }
 
-      const restaurantId = employeeAuthStore.requireRestaurantId()
+      const restaurantId = authorizationStore.requireRestaurantId()
 
       if (!restaurantId) {
         throw createCalendarError(

@@ -1480,11 +1480,11 @@ const canManageSchedule = computed(() => {
 })
 
 const loggedEmployeeId = computed(() => {
-  return employeeAuthStore.currentEmployee?.id || null
+  return authorizationStore.employeeId || null
 })
 
 const selectedEmployeeId = ref(
-  employeeAuthStore.currentEmployee?.id || null
+  authorizationStore.employeeId || null
 )
 
 const selectedViewMode = ref('mine')
@@ -1658,7 +1658,7 @@ const selectedAvailabilityEmployee = computed(() => {
 
 
 const availabilityRestaurantId = computed(() => {
-  return employeeAuthStore.restaurantId || null
+  return authorizationStore.restaurantId || null
 })
 
 

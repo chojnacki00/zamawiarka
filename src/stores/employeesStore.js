@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
   normalizeCompensation,
   normalizePositionAssignments
@@ -39,7 +39,7 @@ export const useEmployeesStore = defineStore('employees', () => {
   let listenerReadyPromise = null
 
   const getUid = async () => (
-    useEmployeeAuthStore().requireRestaurantId()
+    useAuthorizationStore().requireRestaurantId()
   )
 
   const fetchEmployees = async () => {
@@ -55,6 +55,14 @@ export const useEmployeesStore = defineStore('employees', () => {
       unsubscribeEmployees = onSnapshot(
         collection(db, 'users', uid, 'employees'),
         snapshot => {
+          if (!isRestaurantContextCurrent(uid, useAuthorizationStore().restaurantId)) {
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(employees.value)
+            }
+            return
+          }
           employees.value = snapshot.docs.map(employeeSnapshot => normalizeEmployee(
             employeeSnapshot.data(),
             employeeSnapshot.id

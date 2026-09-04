@@ -20,7 +20,8 @@ export const resolveAccessContext = ({
   employee = null,
   permissions = {},
   legacySessionMode = null,
-  legacyEmployee = null
+  legacyEmployee = null,
+  legacyRestaurantId = null
 } = {}) => {
   const authUid = String(firebaseAuthUid || '').trim()
 
@@ -84,7 +85,7 @@ export const resolveAccessContext = ({
     return {
       principal: ACCESS_PRINCIPALS.LEGACY_PIN,
       authUid: null,
-      restaurantId: null,
+      restaurantId: String(legacyRestaurantId || '').trim() || null,
       employeeId: String(legacyEmployee.id).trim(),
       permissions: normalizePermissions(legacyEmployee.uprawnienia)
     }
@@ -138,6 +139,18 @@ export const requireOwnerAccess = context => {
   }
 
   return true
+}
+
+export const requireRestaurantAccess = context => {
+  const restaurantId = String(context?.restaurantId || '').trim()
+
+  if (!restaurantId) {
+    throw new Error(
+      'Nie udało się rozpoznać aktywnej restauracji. Odśwież widok i spróbuj ponownie.'
+    )
+  }
+
+  return restaurantId
 }
 
 const EXACT_ROUTE_REQUIREMENTS = Object.freeze({

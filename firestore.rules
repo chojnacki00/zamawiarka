@@ -25,7 +25,7 @@ service cloud.firestore {
     // równoległego, idempotentnego bootstrapu. Sam odczyt nie nadaje żadnych
     // uprawnień właściciela ani prawa zapisu danych restauracji.
     function canReadOwnLegacyBootstrapMarker(restaurantId) {
-      return hasVerifiedEmail() && restaurantId == request.auth.uid;
+      return isLegacyOwnerBootstrapRestaurant(restaurantId);
     }
 
     function memberDocument(restaurantId) {

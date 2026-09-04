@@ -17,8 +17,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
   getScheduleRangeConflicts,
   isPeriodEffectivelyOpen
@@ -42,7 +42,7 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
     let unsubscribePeriods = null
 
     const getRestaurantId = async () => (
-      useEmployeeAuthStore().requireRestaurantId()
+      useAuthorizationStore().requireRestaurantId()
     )
 
     const getPeriodsCollectionRef = async () => {
@@ -288,7 +288,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       })
     }
 
-        const fetchPeriods = async () => {
+    const fetchPeriods = async () => {
+      const restaurantId = await getRestaurantId()
       const periodsRef = await getPeriodsCollectionRef()
 
       if (!periodsRef) {
@@ -309,6 +310,14 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
         unsubscribePeriods = onSnapshot(
           periodsRef,
           (snapshot) => {
+            if (!isRestaurantContextCurrent(restaurantId, useAuthorizationStore().restaurantId)) {
+              if (isFirstSnapshot) {
+                isFirstSnapshot = false
+                isLoading.value = false
+                resolve()
+              }
+              return
+            }
             periods.value = snapshot.docs
               .map((document) => ({
                 id: document.id,

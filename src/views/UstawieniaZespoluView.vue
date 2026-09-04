@@ -189,10 +189,10 @@ import QRCode from 'qrcode'
 import { db } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
 import { useEmployeeAuthStore } from '../stores/employeeAuthStore.js'
+import { useAuthorizationStore } from '../stores/authorizationStore.js'
 import { useEmployeeGroupsStore } from '../stores/employeeGroupsStore.js'
 import { useEmployeesStore } from '../stores/employeesStore.js'
 import { usePermissionProfilesStore } from '../stores/permissionProfilesStore.js'
-import { useAuthorizationStore } from '../stores/authorizationStore.js'
 import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmploymentProfilesStore.js'
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
@@ -211,10 +211,10 @@ import {
 const router = useRouter()
 const accountSessionStore = useAccountSessionStore()
 const employeeAuthStore = useEmployeeAuthStore()
+const authorizationStore = useAuthorizationStore()
 const groupsStore = useEmployeeGroupsStore()
 const employeesStore = useEmployeesStore()
 const permissionProfilesStore = usePermissionProfilesStore()
-const authorizationStore = useAuthorizationStore()
 const employmentProfilesStore = useScheduleEmploymentProfilesStore()
 const positionsStore = useSchedulePositionsStore()
 
@@ -842,7 +842,7 @@ const generatePairingCode = async () => {
   if (!editingEmployeeId.value) return
   let restaurantId
   try {
-    restaurantId = employeeAuthStore.requireRestaurantId()
+    restaurantId = authorizationStore.requireRestaurantId()
   } catch (error) {
     alert(error.message)
     return

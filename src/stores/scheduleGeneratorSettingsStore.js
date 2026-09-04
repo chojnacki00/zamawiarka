@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { db } from '../firebase.js'
-import { useEmployeeAuthStore } from './employeeAuthStore.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 
 const SETTINGS_MODES = ['hard', 'suggestion', 'off']
 
@@ -100,17 +100,27 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
     isSaving: false,
     isLoaded: false,
     hasStoredSettings: false,
+    loadedRestaurantId: null,
     error: ''
   }),
 
   actions: {
     async getRestaurantId() {
-      const employeeAuthStore = useEmployeeAuthStore()
-      return employeeAuthStore.requireRestaurantId()
+      return useAuthorizationStore().requireRestaurantId()
     },
 
     async fetchSettings(force = false) {
-      if (this.isLoading || (this.isLoaded && !force)) {
+      const restaurantId = await this.getRestaurantId()
+      const restaurantChanged = this.loadedRestaurantId !== restaurantId
+
+      if (restaurantChanged) {
+        this.settings = cloneSettings(DEFAULT_GENERATOR_SETTINGS)
+        this.isLoaded = false
+        this.hasStoredSettings = false
+        this.loadedRestaurantId = restaurantId
+      }
+
+      if ((!restaurantChanged && this.isLoading) || (this.isLoaded && !force)) {
         return cloneSettings(this.settings)
       }
 
@@ -118,12 +128,15 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
       this.error = ''
 
       try {
-        const restaurantId = await this.getRestaurantId()
-        if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
-
         const settingsSnapshot = await getDoc(
           doc(db, 'users', restaurantId, 'grafik_ustawienia', 'generator')
         )
+        if (!isRestaurantContextCurrent(
+          restaurantId,
+          useAuthorizationStore().restaurantId
+        )) {
+          throw new Error('Aktywna restauracja zmieniła się podczas pobierania danych.')
+        }
         const storedData = settingsSnapshot.exists() ? settingsSnapshot.data() : null
 
         this.hasStoredSettings = Boolean(storedData)
@@ -153,7 +166,7 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
         const restaurantId = await this.getRestaurantId()
         if (!restaurantId) throw new Error('Nie udało się rozpoznać restauracji.')
 
-        const employeeAuthStore = useEmployeeAuthStore()
+        const authorizationStore = useAuthorizationStore()
         const auth = getAuth()
         const normalizedSettings = normalizeGeneratorSettings(nextSettings)
 
@@ -163,11 +176,19 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
             ...normalizedSettings,
             settingsVersion: 3,
             updatedAt: serverTimestamp(),
-            updatedBy: employeeAuthStore.currentEmployee?.id || auth.currentUser?.uid || null
+            updatedBy: authorizationStore.employeeId || auth.currentUser?.uid || null
           }
         )
 
+        if (!isRestaurantContextCurrent(
+          restaurantId,
+          useAuthorizationStore().restaurantId
+        )) {
+          throw new Error('Aktywna restauracja zmieniła się podczas zapisywania danych.')
+        }
+
         this.settings = cloneSettings(normalizedSettings)
+        this.loadedRestaurantId = restaurantId
         this.isLoaded = true
         this.hasStoredSettings = true
         return cloneSettings(this.settings)

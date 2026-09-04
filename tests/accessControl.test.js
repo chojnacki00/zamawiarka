@@ -6,6 +6,7 @@ import {
   accessContextCanOpenRoute,
   accessContextHasPermission,
   requireAccessPermission,
+  requireRestaurantAccess,
   resolveAccessContext
 } from '../src/utils/accessControl.js'
 import { useAccountSessionStore } from '../src/stores/accountSessionStore.js'
@@ -66,6 +67,32 @@ test('właściciel z aktywnym członkostwem ma pełny dostęp', () => {
   assert.equal(accessContextHasPermission(context, 'can_manage_schedule'), true)
 })
 
+test('właściciel i pracownik tej samej restauracji rozwiązują ten sam restaurantId', () => {
+  const ownerContext = resolveAccessContext({
+    firebaseAuthUid: 'auth-owner',
+    hasActiveAccountContext: true,
+    membership: activeMembership({ role: 'owner', authUid: 'auth-owner' })
+  })
+  const employeeContext = resolveEmployee({ can_edit_products: true })
+
+  assert.equal(requireRestaurantAccess(ownerContext), 'restaurant-a')
+  assert.equal(requireRestaurantAccess(employeeContext), 'restaurant-a')
+  assert.notEqual(employeeContext.restaurantId, employeeContext.authUid)
+})
+
+test('brak aktywnego członkostwa nie uruchamia fallbacku restaurantId do authUid', () => {
+  const context = resolveAccessContext({
+    firebaseAuthUid: 'auth-employee',
+    hasActiveAccountContext: false
+  })
+
+  assert.equal(context.restaurantId, null)
+  assert.throws(
+    () => requireRestaurantAccess(context),
+    /Nie udało się rozpoznać aktywnej restauracji/
+  )
+})
+
 test('brak lub zablokowane członkostwo nie daje dostępu', () => {
   const withoutMembership = resolveAccessContext({
     firebaseAuthUid: 'auth-marzena',
@@ -84,6 +111,7 @@ test('brak lub zablokowane członkostwo nie daje dostępu', () => {
 test('sesja legacy PIN zachowuje tylko dozwolony odczyt', () => {
   const context = resolveAccessContext({
     legacySessionMode: 'legacy_pin',
+    legacyRestaurantId: 'legacy-restaurant',
     legacyEmployee: {
       id: 'employee-legacy',
       aktywny: true,
@@ -96,6 +124,7 @@ test('sesja legacy PIN zachowuje tylko dozwolony odczyt', () => {
   })
 
   assert.equal(context.principal, ACCESS_PRINCIPALS.LEGACY_PIN)
+  assert.equal(context.restaurantId, 'legacy-restaurant')
   assert.equal(accessContextHasPermission(context, 'can_view_zamawiarka'), true)
   assert.equal(accessContextHasPermission(context, 'can_edit_products'), false)
   assert.equal(accessContextHasPermission(context, 'can_manage_schedule'), false)

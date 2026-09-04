@@ -8,6 +8,7 @@ import {
   accessContextHasAnyPermission,
   accessContextHasPermission,
   requireAccessPermission,
+  requireRestaurantAccess,
   requireOwnerAccess,
   resolveAccessContext
 } from '../utils/accessControl.js'
@@ -24,7 +25,8 @@ export const useAuthorizationStore = defineStore('authorization', () => {
     employee: accountSessionStore.currentEmployee,
     permissions: accountSessionStore.permissions,
     legacySessionMode: employeeAuthStore.sessionMode,
-    legacyEmployee: employeeAuthStore.currentEmployee
+    legacyEmployee: employeeAuthStore.currentEmployee,
+    legacyRestaurantId: employeeAuthStore.restaurantId
   }))
 
   const isOwner = computed(() => (
@@ -41,6 +43,7 @@ export const useAuthorizationStore = defineStore('authorization', () => {
     context.value.principal === ACCESS_PRINCIPALS.LEGACY_PIN
   ))
   const employeeId = computed(() => context.value.employeeId)
+  const restaurantId = computed(() => context.value.restaurantId)
   const permissions = computed(() => context.value.permissions)
 
   const hasPermission = permissionKey => (
@@ -53,6 +56,7 @@ export const useAuthorizationStore = defineStore('authorization', () => {
     requireAccessPermission(context.value, permissionKey)
   )
   const requireOwner = () => requireOwnerAccess(context.value)
+  const requireRestaurantId = () => requireRestaurantAccess(context.value)
 
   return {
     context,
@@ -61,10 +65,12 @@ export const useAuthorizationStore = defineStore('authorization', () => {
     isFirebaseEmployee,
     isLegacyPin,
     employeeId,
+    restaurantId,
     permissions,
     hasPermission,
     hasAnyPermission,
     requirePermission,
+    requireRestaurantId,
     requireOwner
   }
 })
