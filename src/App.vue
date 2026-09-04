@@ -963,7 +963,10 @@ import {
 import { accessContextCanOpenRoute } from './utils/accessControl.js'
 import {
   isRestaurantContextCurrent,
-  persistRestaurantListChange
+  isRestaurantSnapshotCurrent,
+  persistRestaurantDataWhenReady,
+  persistRestaurantListChange,
+  RESTAURANT_DATA_STATUS
 } from './utils/restaurantDataContext.js'
 
 export default {
@@ -1082,12 +1085,18 @@ const loadUserStateFromFirestore = async (uid) => {
   const snapshot = await getDoc(stateRef)
 
   if (!snapshot.exists()) {
-    return createEmptyCloudState()
+    return {
+      exists: false,
+      state: null
+    }
   }
 
   return {
-    ...createEmptyCloudState(),
-    ...snapshot.data()
+    exists: true,
+    state: {
+      ...createEmptyCloudState(),
+      ...snapshot.data()
+    }
   }
 }
 
@@ -1098,25 +1107,26 @@ const saveUserStateToFirestore = async (uid, state) => {
 }
 
 const persistAppStateList = async (field, stateRef, nextValue) => {
-  authorizationStore.requirePermission('can_edit_products')
-
-  if (!isDataLoaded.value) {
-    throw new Error('Dane restauracji nie zostały jeszcze wczytane.')
-  }
-
-  const restaurantId = authorizationStore.requireRestaurantId()
   const previousValue = stateRef.value
 
   try {
+    authorizationStore.requirePermission('can_edit_products')
+    const restaurantId = authorizationStore.requireRestaurantId()
+
     await persistRestaurantListChange({
       previousValue,
       nextValue,
       applyValue: value => { stateRef.value = value },
-      persistValue: value => setDoc(
-        getUserStateDocRef(restaurantId),
-        { [field]: value },
-        { merge: true }
-      )
+      persistValue: value => persistRestaurantDataWhenReady({
+        status: restaurantDataStatus.value,
+        loadedRestaurantId: loadedRestaurantDataId.value,
+        currentRestaurantId: authorizationStore.restaurantId,
+        persistValue: () => setDoc(
+          getUserStateDocRef(restaurantId),
+          { [field]: value },
+          { merge: true }
+        )
+      })
     })
     return true
   } catch (error) {
@@ -1174,7 +1184,7 @@ const handleLogout = async () => {
     employeeAuthStore.logout() 
     
     // 2. TWARDY RESET - Niszczymy wszystkie pobrane dane!
-    isDataLoaded.value = false
+    stopCompanyDataListeners()
     resetCompanyDataState() 
 
     // 3. Wymuszamy ukrycie interfejsu (żeby Vue zniszczyło komponenty)
@@ -1189,11 +1199,7 @@ const handleLogout = async () => {
 
   // === SCENARIUSZ 2: WYLOGOWUJE SIĘ MANAGER (Twój nienaruszony kod) ===
   // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
-  if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null; }
-  if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null; }
-  if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null; }
-  if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null; }
-  if (typeof unsubscribeMenuItems !== 'undefined' && unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null; }
+  stopCompanyDataListeners()
 
   // 2. Wylogowanie z Firebase i usunięcie lokalnego PIN-u urządzenia
   if (accountSessionStore.authUser || auth.currentUser) {
@@ -1237,7 +1243,7 @@ const resetInactivityTimer = () => {
         accountSessionStore.localPinConfigured
       ) {
         accountSessionStore.lockApplication()
-        isDataLoaded.value = false
+        stopCompanyDataListeners()
         resetCompanyDataState()
         router.replace('/konto')
         return
@@ -1258,7 +1264,7 @@ watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
   if (oldEmployee && !newEmployee) {
     console.log('Sesja pracownika zakończona. Czyszczę dane aplikacji...')
 
-    isDataLoaded.value = false
+    stopCompanyDataListeners()
     resetCompanyDataState()
 
     if (!auth.currentUser) {
@@ -1317,7 +1323,7 @@ const applyAppState = (state) => {
 }
 
 
-const saveAllAppStateToCloud = async () => {
+const saveAllAppStateToCloud = async (expectedRestaurantId = null) => {
   if (!authorizationStore.hasAnyPermission([
     'can_edit_products',
     'can_edit_menu'
@@ -1325,12 +1331,23 @@ const saveAllAppStateToCloud = async () => {
     throw new Error('Nie masz uprawnienia do zapisywania ustawień aplikacji.')
   }
 
-  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
   const uid = getCurrentRestaurantId()
 
-  if (!uid) return
+  if (
+    expectedRestaurantId &&
+    !isRestaurantContextCurrent(expectedRestaurantId, uid)
+  ) {
+    throw new Error('Kontekst restauracji zmienił się przed zapisem.')
+  }
 
   try {
+    await persistRestaurantDataWhenReady({
+      status: restaurantDataStatus.value,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: uid,
+      persistValue: async () => true
+    })
+
     const appState = collectAppState()
 
     // ✂️ ODCIĘCIE: Wyrzucamy towary ze starego worka przed zapisem do bazy
@@ -1354,7 +1371,12 @@ const saveAllAppStateToCloud = async () => {
       throw new Error('Zapis pustego, niezaładowanego stanu został zablokowany.')
     }
 
-    await saveUserStateToFirestore(uid, appState)
+    await persistRestaurantDataWhenReady({
+      status: restaurantDataStatus.value,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: authorizationStore.restaurantId,
+      persistValue: () => saveUserStateToFirestore(uid, appState)
+    })
   } catch (error) {
     console.error('Błąd zapisu do Firestore:', error)
     throw error
@@ -1363,6 +1385,9 @@ const saveAllAppStateToCloud = async () => {
 
 const isHydrating = ref(false)
 const isDataLoaded = ref(false)
+const restaurantDataStatus = ref(RESTAURANT_DATA_STATUS.IDLE)
+const loadedRestaurantDataId = ref(null)
+let restaurantDataLoadRevision = 0
 let saveTimeout = null
 
 let unsubscribeCartItems = null
@@ -1378,7 +1403,12 @@ const subscribeUserState = (uid) => {
   const stateRef = getUserStateDocRef(uid)
 
   unsubscribeUserState = onSnapshot(stateRef, (snapshot) => {
-    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
+    if (!isRestaurantSnapshotCurrent({
+      status: restaurantDataStatus.value,
+      listenerRestaurantId: uid,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: authorizationStore.restaurantId
+    })) return
     if (!snapshot.exists()) return
 
     const data = snapshot.data()
@@ -1517,11 +1547,18 @@ const subscribeTowary = (uid) => {
 const scheduleSave = () => {
   if (isHydrating.value) return
   if (!isDataLoaded.value) return
+  if (restaurantDataStatus.value !== RESTAURANT_DATA_STATUS.READY) return
+
+  const scheduledRestaurantId = loadedRestaurantDataId.value
+  if (!isRestaurantContextCurrent(
+    scheduledRestaurantId,
+    authorizationStore.restaurantId
+  )) return
 
   clearTimeout(saveTimeout)
 
   saveTimeout = setTimeout(() => {
-    void saveAllAppStateToCloud().catch(async error => {
+    void saveAllAppStateToCloud(scheduledRestaurantId).catch(async error => {
       console.warn(
         'Zapis ustawień aplikacji został zablokowany:',
         error?.message || 'Brak uprawnienia.'
@@ -1577,32 +1614,61 @@ const resetCompanyDataState = () => {
 
 
 const loadSelectedRestaurantData = async () => {
+  const loadRevision = ++restaurantDataLoadRevision
   isHydrating.value = true
   isDataLoaded.value = false
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.LOADING
+  loadedRestaurantDataId.value = null
+  clearTimeout(saveTimeout)
+  saveTimeout = null
   let restaurantId = null
 
   try {
     restaurantId = authorizationStore.requireRestaurantId()
 
-    const cloudState = await loadUserStateFromFirestore(restaurantId)
+    resetCompanyDataState()
 
-    if (!isRestaurantContextCurrent(
+    const result = await loadUserStateFromFirestore(restaurantId)
+
+    if (
+      loadRevision !== restaurantDataLoadRevision ||
+      !isRestaurantContextCurrent(
       restaurantId,
       authorizationStore.restaurantId
-    )) return
+      )
+    ) return false
 
-    resetCompanyDataState()
-    applyAppState(cloudState)
+    if (!result.exists) {
+      restaurantDataStatus.value = RESTAURANT_DATA_STATUS.MISSING
+      return false
+    }
+
+    applyAppState(result.state)
+    loadedRestaurantDataId.value = restaurantId
+    restaurantDataStatus.value = RESTAURANT_DATA_STATUS.READY
+    return true
 
   } catch (error) {
     console.error('Błąd ładowania z Firestore:', error)
-    // Nie resetujemy tu stanu całkowicie, żeby nie wyczyścić tego, co może się udać pobrać
+    if (
+      loadRevision === restaurantDataLoadRevision &&
+      (!restaurantId || isRestaurantContextCurrent(
+        restaurantId,
+        authorizationStore.restaurantId
+      ))
+    ) {
+      restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+      loadedRestaurantDataId.value = null
+    }
+    return false
   } finally {
-    if (!restaurantId || isRestaurantContextCurrent(
-      restaurantId,
-      authorizationStore.restaurantId
-    )) {
-      // ZAWSZE WYŁĄCZA KÓŁKO ŁADOWANIA, NAWET PO BŁĘDZIE FIREBASE
+    if (
+      loadRevision === restaurantDataLoadRevision &&
+      (!restaurantId || isRestaurantContextCurrent(
+        restaurantId,
+        authorizationStore.restaurantId
+      ))
+    ) {
       isDataLoaded.value = true
       isHydrating.value = false
     }
@@ -5447,7 +5513,11 @@ const activateLegacyPinRestaurant = async newEmployee => {
   }
 
   const companyUid = employeeAuthStore.requireRestaurantId()
-  if (activatedLegacyRestaurantId === companyUid && isDataLoaded.value) return
+  if (
+    activatedLegacyRestaurantId === companyUid &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.READY &&
+    isRestaurantContextCurrent(companyUid, loadedRestaurantDataId.value)
+  ) return
 
   activatedLegacyRestaurantId = companyUid
   isLoggedIn.value = true
@@ -5474,6 +5544,13 @@ watch(() => employeeAuthStore.currentEmployee, async newEmployee => {
 
 
 const stopCompanyDataListeners = () => {
+  restaurantDataLoadRevision += 1
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.IDLE
+  loadedRestaurantDataId.value = null
+  isHydrating.value = false
+  isDataLoaded.value = false
+  clearTimeout(saveTimeout)
+  saveTimeout = null
   if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null }
   if (unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null }
   if (unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null }
@@ -5487,7 +5564,11 @@ const activateAccountRestaurant = async () => {
   const user = auth.currentUser
   const restaurantId = authorizationStore.restaurantId
   if (!user || !restaurantId || !accountSessionStore.hasActiveContext) return
-  if (activatedRestaurantId === restaurantId && isDataLoaded.value) return
+  if (
+    activatedRestaurantId === restaurantId &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.READY &&
+    isRestaurantContextCurrent(restaurantId, loadedRestaurantDataId.value)
+  ) return
 
   stopCompanyDataListeners()
   activatedRestaurantId = restaurantId
@@ -5600,29 +5681,7 @@ onMounted(() => {
     if (!user) {
       await accountSessionStore.initializeForUser(null, { force: true })
       activatedRestaurantId = null
-      if (unsubscribeCartItems) {
-        unsubscribeCartItems()
-        unsubscribeCartItems = null
-      }
-
-      // Odpięcie nasłuchiwania towarów przy wylogowaniu
-      if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) {
-        unsubscribeTowary()
-        unsubscribeTowary = null
-      }
-      
-      if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) {
-        unsubscribeOrders()
-        unsubscribeOrders = null
-      }
-
-
-      if (unsubscribeUserState) {
-        unsubscribeUserState()
-        unsubscribeUserState = null
-      }
-
-      isDataLoaded.value = false
+      stopCompanyDataListeners()
       isLoggedIn.value = false
       currentCompany.value = null
       
@@ -5674,6 +5733,7 @@ onMounted(() => {
       route: router.currentRoute.value,
       user
     })) {
+      stopCompanyDataListeners()
       await accountSessionStore.initializeForUser(null, { force: true })
       isDataLoaded.value = true
       isAppReady.value = true
@@ -5708,20 +5768,7 @@ onUnmounted(() => {
     unsubscribeAuth()
   }
 
-  if (unsubscribeCartItems) {
-    unsubscribeCartItems()
-    unsubscribeCartItems = null
-  }
-
-  if (unsubscribeUserState) {
-    unsubscribeUserState()
-    unsubscribeUserState = null
-  }
-
-  if (unsubscribeMenuItems) {
-    unsubscribeMenuItems()
-    unsubscribeMenuItems = null
-  }
+  stopCompanyDataListeners()
 })
 
 

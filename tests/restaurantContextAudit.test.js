@@ -41,6 +41,14 @@ test('App korzysta z centralnego kontekstu i odrzuca snapshot starej restauracji
     /const getCurrentRestaurantId = \(\) => \(\s*authorizationStore\.requireRestaurantId\(\)/
   )
   assert.match(source, /isRestaurantContextCurrent/)
+  assert.match(source, /RESTAURANT_DATA_STATUS\.LOADING/)
+  assert.match(source, /RESTAURANT_DATA_STATUS\.READY/)
+  assert.match(source, /RESTAURANT_DATA_STATUS\.ERROR/)
+  assert.match(source, /RESTAURANT_DATA_STATUS\.MISSING/)
+  assert.match(source, /persistRestaurantDataWhenReady/)
+  assert.match(source, /isRestaurantSnapshotCurrent/)
+  assert.match(source, /loadRevision !== restaurantDataLoadRevision/)
+  assert.match(source, /clearTimeout\(saveTimeout\)/)
   assert.doesNotMatch(
     source,
     /const getCurrentRestaurantId = \(\) => \(\s*employeeAuthStore\.restaurantId/
