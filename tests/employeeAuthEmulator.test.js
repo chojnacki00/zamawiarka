@@ -26,7 +26,8 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
-  Timestamp
+  Timestamp,
+  updateDoc
 } from 'firebase/firestore'
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' }
 import { completeLegacyOwnerBootstrap } from '../src/services/legacyOwnerBootstrap.js'
@@ -34,6 +35,11 @@ import {
   assertEmailMatchesPublicInvitation,
   hashIdentityValue
 } from '../src/utils/identityInvitations.js'
+import { resolveAccessContext } from '../src/utils/accessControl.js'
+import {
+  normalizeRestaurantList,
+  serializeRestaurantList
+} from '../src/utils/restaurantDataContext.js'
 
 let rulesEnv
 let appCounter = 0
@@ -200,6 +206,201 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
 
   assert.equal(credential.user.emailVerified, true)
   assert.equal(token.claims.email_verified, true)
+})
+
+test('rzeczywisty bootstrap pracownika czyta i zmienia wspólny legacy app/state restauracji', async () => {
+  const restaurantId = 'restaurant-shared'
+  const employeeId = 'employee-julia'
+  const profileId = 'profile-full'
+  const owner = await createVerifiedClient({
+    email: 'shared-owner@example.test'
+  })
+  const employee = await createVerifiedClient({
+    email: 'shared-employee@example.test'
+  })
+  const authTime = Number(
+    (await employee.user.getIdTokenResult()).claims.auth_time
+  )
+  const employeeMembership = {
+    authUid: employee.user.uid,
+    restaurantId,
+    employeeId,
+    permissionProfileId: profileId,
+    invitationId: 'seed-invitation',
+    role: 'employee',
+    status: 'active',
+    createdAt: Timestamp.now(),
+    acceptedAt: Timestamp.now()
+  }
+
+  await seed([
+    [`restaurants/${restaurantId}`, {
+      id: restaurantId,
+      name: 'Wspólna restauracja',
+      ownerAuthUid: owner.user.uid,
+      status: 'active'
+    }],
+    [`restaurants/${restaurantId}/members/${owner.user.uid}`, {
+      authUid: owner.user.uid,
+      restaurantId,
+      employeeId: null,
+      permissionProfileId: null,
+      invitationId: null,
+      role: 'owner',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      acceptedAt: Timestamp.now()
+    }],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}`, employeeMembership],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}/deviceSessions/${authTime}`, {
+      deviceId: 'device-shared-employee-0001',
+      restaurantId,
+      employeeId,
+      authUid: employee.user.uid,
+      deviceName: 'Telefon Julii',
+      platform: 'Emulator',
+      authTime,
+      status: 'active',
+      addedAt: Timestamp.now(),
+      lastActiveAt: Timestamp.now(),
+      approvedAt: Timestamp.now(),
+      approvedByAuthUid: owner.user.uid,
+      invitationId: 'seed-invitation',
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    }],
+    [`users/${restaurantId}/employees/${employeeId}`, {
+      imie: 'Julia',
+      nazwisko: 'Testowa',
+      aktywny: true,
+      permissionProfileId: profileId
+    }],
+    [`users/${restaurantId}/permissionProfiles/${profileId}`, {
+      nazwa: 'Pełny dostęp Zamawiarki',
+      uprawnienia: {
+        can_view_zamawiarka: true,
+        can_edit_products: true
+      }
+    }],
+    [`users/${restaurantId}/app/state`, {
+      initialized: true,
+      suppliers: ['Hurtownia legacy'],
+      warehouses: ['Magazyn legacy'],
+      units: ['kg'],
+      fcSettings: { target: 31 }
+    }]
+  ])
+
+  let membershipContextReady = false
+  const beforeContext = resolveAccessContext({
+    firebaseAuthUid: employee.user.uid,
+    hasActiveAccountContext: membershipContextReady,
+    membership: employeeMembership
+  })
+  assert.equal(beforeContext.restaurantId, null)
+
+  const memberSnapshot = await getDoc(doc(
+    employee.db,
+    `restaurants/${restaurantId}/members/${employee.user.uid}`
+  ))
+  const sessionSnapshot = await getDoc(doc(
+    employee.db,
+    `restaurants/${restaurantId}/members/${employee.user.uid}/deviceSessions/${authTime}`
+  ))
+  const restaurantSnapshot = await getDoc(doc(
+    employee.db,
+    `restaurants/${restaurantId}`
+  ))
+  const employeeSnapshot = await getDoc(doc(
+    employee.db,
+    `users/${restaurantId}/employees/${employeeId}`
+  ))
+  const profileSnapshot = await getDoc(doc(
+    employee.db,
+    `users/${restaurantId}/permissionProfiles/${profileId}`
+  ))
+
+  assert.equal(memberSnapshot.exists(), true)
+  assert.equal(sessionSnapshot.data().status, 'active')
+  assert.equal(restaurantSnapshot.data().id, restaurantId)
+  assert.equal(employeeSnapshot.data().imie, 'Julia')
+  assert.equal(profileSnapshot.data().uprawnienia.can_edit_products, true)
+
+  membershipContextReady = true
+  const resolvedContext = resolveAccessContext({
+    firebaseAuthUid: employee.user.uid,
+    hasActiveAccountContext: membershipContextReady,
+    membership: { id: memberSnapshot.id, ...memberSnapshot.data() },
+    employee: { id: employeeSnapshot.id, ...employeeSnapshot.data() },
+    permissions: profileSnapshot.data().uprawnienia
+  })
+  assert.equal(resolvedContext.restaurantId, restaurantId)
+  assert.notEqual(resolvedContext.restaurantId, employee.user.uid)
+
+  const sharedPath = `users/${resolvedContext.restaurantId}/app/state`
+  const employeeState = await getDoc(doc(employee.db, sharedPath))
+  const ownerState = await getDoc(doc(owner.db, sharedPath))
+  assert.deepEqual(employeeState.data(), ownerState.data())
+
+  await updateDoc(doc(owner.db, sharedPath), {
+    suppliers: ['Hurtownia legacy', 'Hurtownia właściciela']
+  })
+  const employeeAfterOwnerWrite = await getDoc(doc(employee.db, sharedPath))
+  assert.deepEqual(employeeAfterOwnerWrite.data().suppliers, [
+    'Hurtownia legacy',
+    'Hurtownia właściciela'
+  ])
+
+  let hydratedSuppliers = normalizeRestaurantList(
+    'suppliers',
+    employeeAfterOwnerWrite.data().suppliers
+  )
+  assert.equal(hydratedSuppliers[0].name, 'Hurtownia legacy')
+  assert.equal(hydratedSuppliers[1].name, 'Hurtownia właściciela')
+
+  hydratedSuppliers.push({ id: 'supplier-new', name: 'Nowa hurtownia' })
+  await updateDoc(doc(employee.db, sharedPath), {
+    suppliers: serializeRestaurantList('suppliers', hydratedSuppliers)
+  })
+  let ownerAfter = await getDoc(doc(owner.db, sharedPath))
+  assert.deepEqual(ownerAfter.data().suppliers, [
+    'Hurtownia legacy',
+    'Hurtownia właściciela',
+    { id: 'supplier-new', name: 'Nowa hurtownia' }
+  ])
+
+  hydratedSuppliers[0] = {
+    ...hydratedSuppliers[0],
+    name: 'Hurtownia po edycji'
+  }
+  await updateDoc(doc(employee.db, sharedPath), {
+    suppliers: serializeRestaurantList('suppliers', hydratedSuppliers)
+  })
+  ownerAfter = await getDoc(doc(owner.db, sharedPath))
+  assert.equal(ownerAfter.data().suppliers[0].name, 'Hurtownia po edycji')
+
+  await updateDoc(doc(employee.db, sharedPath), { suppliers: [] })
+  ownerAfter = await getDoc(doc(owner.db, sharedPath))
+  assert.deepEqual(ownerAfter.data().suppliers, [])
+  assert.deepEqual(ownerAfter.data().warehouses, ['Magazyn legacy'])
+  assert.deepEqual(ownerAfter.data().units, ['kg'])
+  assert.deepEqual(ownerAfter.data().fcSettings, { target: 31 })
+
+  await assert.rejects(
+    getDoc(doc(employee.db, `users/${employee.user.uid}/app/state`)),
+    error => String(error?.code || '').includes('permission-denied')
+  )
+
+  await seed([[`users/${restaurantId}/permissionProfiles/${profileId}`, {
+    nazwa: 'Tylko odczyt',
+    uprawnienia: { can_view_zamawiarka: true }
+  }]])
+  await assert.rejects(
+    updateDoc(doc(employee.db, sharedPath), {
+      suppliers: ['Niedozwolona zmiana']
+    }),
+    error => String(error?.code || '').includes('permission-denied')
+  )
 })
 
 test('aktywacja zachowuje zaproszenie po utworzeniu niezweryfikowanego konta i kończy się atomowo', async () => {

@@ -78,6 +78,7 @@ export const useAccountSessionStore = defineStore(
     const permissionProfile = ref(null)
     const permissions = ref({})
     const isInitialized = ref(false)
+    const isMembershipContextReady = ref(false)
     const isLoading = ref(false)
     const error = ref('')
     const accessRevoked = ref(false)
@@ -114,6 +115,7 @@ export const useAccountSessionStore = defineStore(
       Boolean(
         authUser.value &&
         authUser.value.emailVerified &&
+        isMembershipContextReady.value &&
         currentMembership.value?.status === 'active' &&
         currentRestaurantId.value &&
         !accessRevoked.value &&
@@ -135,6 +137,7 @@ export const useAccountSessionStore = defineStore(
         deviceApprovalRequired.value ||
         requiresRestaurantSelection.value ||
         accessRevoked.value ||
+        !isMembershipContextReady.value ||
         !currentMembership.value
       )
     ))
@@ -152,6 +155,7 @@ export const useAccountSessionStore = defineStore(
 
     const clearSensitiveContext = () => {
       stopSensitiveListeners()
+      isMembershipContextReady.value = false
       currentRestaurant.value = null
       currentRestaurantId.value = null
       currentMembership.value = null
@@ -181,6 +185,7 @@ export const useAccountSessionStore = defineStore(
 
     const handleAccessRevoked = message => {
       stopSensitiveListeners()
+      isMembershipContextReady.value = false
       accessRevoked.value = true
       currentEmployee.value = null
       permissionProfile.value = null
@@ -492,8 +497,13 @@ export const useAccountSessionStore = defineStore(
       { pinUnlocked = false } = {}
     ) => {
       stopSensitiveListeners()
+      isMembershipContextReady.value = false
       accessRevoked.value = false
       error.value = ''
+      currentRestaurant.value = null
+      currentEmployee.value = null
+      permissionProfile.value = null
+      permissions.value = {}
       currentMembership.value = membership
       currentRestaurantId.value = membership.restaurantId
       localStorage.setItem(ACTIVE_RESTAURANT_KEY, membership.restaurantId)
@@ -560,6 +570,7 @@ export const useAccountSessionStore = defineStore(
       }
 
       requiresRestaurantSelection.value = false
+      isMembershipContextReady.value = true
       startContextListeners()
       if (isEmployeeMembership.value && currentDeviceSession.value?.sessionId) {
         void updateDoc(doc(
@@ -1196,6 +1207,7 @@ export const useAccountSessionStore = defineStore(
       if (!authUser.value?.uid || !localPinConfigured.value) return
 
       stopSensitiveListeners()
+      isMembershipContextReady.value = false
       currentRestaurant.value = null
       currentEmployee.value = null
       permissionProfile.value = null
@@ -1247,6 +1259,7 @@ export const useAccountSessionStore = defineStore(
       permissionProfile,
       permissions,
       isInitialized,
+      isMembershipContextReady,
       isLoading,
       error,
       accessRevoked,

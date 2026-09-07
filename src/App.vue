@@ -39,6 +39,24 @@
 
       </div>
       
+      <div
+        v-else-if="restaurantDataLoadError"
+        style="min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center;"
+      >
+        <div style="font-size: 38px;" aria-hidden="true">⚠️</div>
+        <h2 style="margin: 0; color: #111827; font-size: 21px;">Nie udało się wczytać danych</h2>
+        <p style="max-width: 420px; margin: 0; color: #64748b; line-height: 1.5;">
+          {{ restaurantDataLoadError }}
+        </p>
+        <button
+          type="button"
+          style="min-height: 46px; padding: 0 20px; border: 0; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 16px; font-weight: 700; cursor: pointer;"
+          @click="retryRestaurantDataLoad"
+        >
+          Spróbuj ponownie
+        </button>
+      </div>
+
       <div v-else style="height: 100%;">
         <!-- ROUTER: WIDOKI ZALOGOWANEGO UŻYTKOWNIKA -->
         <router-view />
@@ -962,11 +980,14 @@ import {
 } from './utils/routeAccess.js'
 import { accessContextCanOpenRoute } from './utils/accessControl.js'
 import {
+  buildRestaurantHydrationDiagnostic,
   isRestaurantContextCurrent,
   isRestaurantSnapshotCurrent,
+  normalizeRestaurantList,
   persistRestaurantDataWhenReady,
   persistRestaurantListChange,
-  RESTAURANT_DATA_STATUS
+  RESTAURANT_DATA_STATUS,
+  serializeRestaurantList
 } from './utils/restaurantDataContext.js'
 
 export default {
@@ -1123,7 +1144,7 @@ const persistAppStateList = async (field, stateRef, nextValue) => {
         currentRestaurantId: authorizationStore.restaurantId,
         persistValue: () => setDoc(
           getUserStateDocRef(restaurantId),
-          { [field]: value },
+          { [field]: serializeRestaurantList(field, value) },
           { merge: true }
         )
       })
@@ -1285,13 +1306,13 @@ watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
 
 
 const collectAppState = () => ({
-  suppliers: suppliers.value,
+  suppliers: serializeRestaurantList('suppliers', suppliers.value),
   towary: towary.value,
-  warehouses: warehouses.value,
-  orderTimings: orderTimings.value,
-  units: units.value,
-  categories: categories.value,
-  whoOrders: whoOrders.value,
+  warehouses: serializeRestaurantList('warehouses', warehouses.value),
+  orderTimings: serializeRestaurantList('orderTimings', orderTimings.value),
+  units: serializeRestaurantList('units', units.value),
+  categories: serializeRestaurantList('categories', categories.value),
+  whoOrders: serializeRestaurantList('whoOrders', whoOrders.value),
   fcSettings: fcSettings.value,
   dishCategories: dishCategories.value
   // Usunęliśmy menuItems z głównego stanu!
@@ -1303,13 +1324,13 @@ const applyAppState = (state) => {
     ...(state || {})
   }
 
-  suppliers.value = safeState.suppliers
+  suppliers.value = normalizeRestaurantList('suppliers', safeState.suppliers)
   towary.value = safeState.towary
-  warehouses.value = safeState.warehouses
-  orderTimings.value = safeState.orderTimings
-  units.value = safeState.units
-  categories.value = safeState.categories
-  whoOrders.value = safeState.whoOrders
+  warehouses.value = normalizeRestaurantList('warehouses', safeState.warehouses)
+  orderTimings.value = normalizeRestaurantList('orderTimings', safeState.orderTimings)
+  units.value = normalizeRestaurantList('units', safeState.units)
+  categories.value = normalizeRestaurantList('categories', safeState.categories)
+  whoOrders.value = normalizeRestaurantList('whoOrders', safeState.whoOrders)
   
   if (state?.fcSettings) {
     fcSettings.value = state.fcSettings
@@ -1386,9 +1407,28 @@ const saveAllAppStateToCloud = async (expectedRestaurantId = null) => {
 const isHydrating = ref(false)
 const isDataLoaded = ref(false)
 const restaurantDataStatus = ref(RESTAURANT_DATA_STATUS.IDLE)
+const restaurantDataLoadError = ref('')
 const loadedRestaurantDataId = ref(null)
 let restaurantDataLoadRevision = 0
 let saveTimeout = null
+
+const logRestaurantHydration = ({
+  event,
+  restaurantId = authorizationStore.restaurantId,
+  status = restaurantDataStatus.value,
+  reason = null
+}) => {
+  const diagnostic = buildRestaurantHydrationDiagnostic({
+    mode: import.meta.env.MODE,
+    event,
+    authUid: auth.currentUser?.uid,
+    restaurantId,
+    status,
+    reason
+  })
+
+  if (diagnostic) console.info('[dev:test][app/state]', diagnostic)
+}
 
 let unsubscribeCartItems = null
 let unsubscribeUserState = null
@@ -1413,16 +1453,43 @@ const subscribeUserState = (uid) => {
 
     const data = snapshot.data()
 
-    if (Array.isArray(data.suppliers)) suppliers.value = data.suppliers
-    if (Array.isArray(data.warehouses)) warehouses.value = data.warehouses
-    if (Array.isArray(data.orderTimings)) orderTimings.value = data.orderTimings
-    if (Array.isArray(data.units)) units.value = data.units
-    if (Array.isArray(data.categories)) categories.value = data.categories
-    if (Array.isArray(data.whoOrders)) whoOrders.value = data.whoOrders
+    if (Array.isArray(data.suppliers)) {
+      suppliers.value = normalizeRestaurantList('suppliers', data.suppliers)
+    }
+    if (Array.isArray(data.warehouses)) {
+      warehouses.value = normalizeRestaurantList('warehouses', data.warehouses)
+    }
+    if (Array.isArray(data.orderTimings)) {
+      orderTimings.value = normalizeRestaurantList('orderTimings', data.orderTimings)
+    }
+    if (Array.isArray(data.units)) {
+      units.value = normalizeRestaurantList('units', data.units)
+    }
+    if (Array.isArray(data.categories)) {
+      categories.value = normalizeRestaurantList('categories', data.categories)
+    }
+    if (Array.isArray(data.whoOrders)) {
+      whoOrders.value = normalizeRestaurantList('whoOrders', data.whoOrders)
+    }
 
     if (Array.isArray(data.ordersRegister)) {
       ordersRegister.value = data.ordersRegister
     }
+  }, error => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
+
+    console.error('Błąd nasłuchiwania app/state:', error)
+    restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+    restaurantDataLoadError.value =
+      'Utracono dostęp do danych restauracji. Odśwież widok albo spróbuj ponownie.'
+    loadedRestaurantDataId.value = null
+    isDataLoaded.value = true
+    logRestaurantHydration({
+      event: 'listener-error',
+      restaurantId: uid,
+      status: RESTAURANT_DATA_STATUS.ERROR,
+      reason: error?.code || error?.name || 'firestore-listener-failed'
+    })
   })
 }
 
@@ -1618,6 +1685,7 @@ const loadSelectedRestaurantData = async () => {
   isHydrating.value = true
   isDataLoaded.value = false
   restaurantDataStatus.value = RESTAURANT_DATA_STATUS.LOADING
+  restaurantDataLoadError.value = ''
   loadedRestaurantDataId.value = null
   clearTimeout(saveTimeout)
   saveTimeout = null
@@ -1625,6 +1693,11 @@ const loadSelectedRestaurantData = async () => {
 
   try {
     restaurantId = authorizationStore.requireRestaurantId()
+    logRestaurantHydration({
+      event: 'loading',
+      restaurantId,
+      status: RESTAURANT_DATA_STATUS.LOADING
+    })
 
     resetCompanyDataState()
 
@@ -1636,16 +1709,36 @@ const loadSelectedRestaurantData = async () => {
       restaurantId,
       authorizationStore.restaurantId
       )
-    ) return false
+    ) {
+      logRestaurantHydration({
+        event: 'ignored',
+        restaurantId,
+        reason: 'stale-restaurant-context'
+      })
+      return false
+    }
 
     if (!result.exists) {
       restaurantDataStatus.value = RESTAURANT_DATA_STATUS.MISSING
+      restaurantDataLoadError.value =
+        'Nie znaleziono danych tej restauracji. Zapis pozostaje zablokowany.'
+      logRestaurantHydration({
+        event: 'missing',
+        restaurantId,
+        status: RESTAURANT_DATA_STATUS.MISSING,
+        reason: 'app-state-document-does-not-exist'
+      })
       return false
     }
 
     applyAppState(result.state)
     loadedRestaurantDataId.value = restaurantId
     restaurantDataStatus.value = RESTAURANT_DATA_STATUS.READY
+    logRestaurantHydration({
+      event: 'ready',
+      restaurantId,
+      status: RESTAURANT_DATA_STATUS.READY
+    })
     return true
 
   } catch (error) {
@@ -1658,7 +1751,15 @@ const loadSelectedRestaurantData = async () => {
       ))
     ) {
       restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+      restaurantDataLoadError.value =
+        'Nie udało się pobrać danych restauracji. Sprawdź połączenie i spróbuj ponownie.'
       loadedRestaurantDataId.value = null
+      logRestaurantHydration({
+        event: 'error',
+        restaurantId,
+        status: RESTAURANT_DATA_STATUS.ERROR,
+        reason: error?.code || error?.name || 'firestore-read-failed'
+      })
     }
     return false
   } finally {
@@ -5546,6 +5647,7 @@ watch(() => employeeAuthStore.currentEmployee, async newEmployee => {
 const stopCompanyDataListeners = () => {
   restaurantDataLoadRevision += 1
   restaurantDataStatus.value = RESTAURANT_DATA_STATUS.IDLE
+  restaurantDataLoadError.value = ''
   loadedRestaurantDataId.value = null
   isHydrating.value = false
   isDataLoaded.value = false
@@ -5559,19 +5661,39 @@ const stopCompanyDataListeners = () => {
 }
 
 let activatedRestaurantId = null
+let activatedBusinessDataAccess = false
+
+const hasAccountBusinessDataAccess = computed(() => (
+  authorizationStore.isOwner || [
+    'can_view_zamawiarka',
+    'can_create_orders',
+    'can_edit_products',
+    'can_view_foodcost',
+    'can_edit_menu'
+  ].some(permission => authorizationStore.hasPermission(permission))
+))
 
 const activateAccountRestaurant = async () => {
   const user = auth.currentUser
   const restaurantId = authorizationStore.restaurantId
+  const needsBusinessData = hasAccountBusinessDataAccess.value
   if (!user || !restaurantId || !accountSessionStore.hasActiveContext) return
   if (
     activatedRestaurantId === restaurantId &&
+    activatedBusinessDataAccess === needsBusinessData &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.LOADING
+  ) return
+  if (
+    activatedRestaurantId === restaurantId &&
+    activatedBusinessDataAccess === needsBusinessData &&
     restaurantDataStatus.value === RESTAURANT_DATA_STATUS.READY &&
     isRestaurantContextCurrent(restaurantId, loadedRestaurantDataId.value)
   ) return
 
+  logRestaurantHydration({ event: 'context-ready', restaurantId })
   stopCompanyDataListeners()
   activatedRestaurantId = restaurantId
+  activatedBusinessDataAccess = needsBusinessData
   const email = String(user.email || '').trim().toLowerCase()
   currentCompany.value = {
     uid: restaurantId,
@@ -5586,14 +5708,6 @@ const activateAccountRestaurant = async () => {
   isLoggedIn.value = true
 
   const employeePermissions = accountSessionStore.permissions || {}
-  const needsBusinessData = authorizationStore.isOwner || [
-    'can_view_zamawiarka',
-    'can_create_orders',
-    'can_edit_products',
-    'can_view_foodcost',
-    'can_edit_menu'
-  ].some(permission => employeePermissions[permission] === true)
-
   if (needsBusinessData) {
     await loadSelectedRestaurantData()
     subscribeUserState(restaurantId)
@@ -5626,17 +5740,42 @@ const activateAccountRestaurant = async () => {
   }
 }
 
+const retryRestaurantDataLoad = async () => {
+  restaurantDataLoadError.value = ''
+  isDataLoaded.value = false
+  await activateAccountRestaurant()
+}
+
 watch(
   () => [
     accountSessionStore.isInitialized,
+    accountSessionStore.isMembershipContextReady,
     accountSessionStore.hasActiveContext,
-    accountSessionStore.currentRestaurantId
+    accountSessionStore.currentRestaurantId,
+    authorizationStore.restaurantId,
+    hasAccountBusinessDataAccess.value,
+    accountSessionStore.isLoading
   ],
-  async ([initialized, hasAccess]) => {
+  async ([initialized, contextReady, hasAccess, , , , contextLoading]) => {
     if (!auth.currentUser || !initialized) return
 
     if (!hasAccess) {
+      if (
+        accountSessionStore.currentMembership?.status === 'active' &&
+        !contextReady &&
+        contextLoading &&
+        !accountSessionStore.accessRevoked
+      ) {
+        activatedRestaurantId = null
+        activatedBusinessDataAccess = false
+        stopCompanyDataListeners()
+        resetCompanyDataState()
+        isDataLoaded.value = false
+        return
+      }
+
       activatedRestaurantId = null
+      activatedBusinessDataAccess = false
       stopCompanyDataListeners()
       resetCompanyDataState()
       isDataLoaded.value = true
@@ -5681,6 +5820,7 @@ onMounted(() => {
     if (!user) {
       await accountSessionStore.initializeForUser(null, { force: true })
       activatedRestaurantId = null
+      activatedBusinessDataAccess = false
       stopCompanyDataListeners()
       isLoggedIn.value = false
       currentCompany.value = null
@@ -6176,6 +6316,8 @@ const openZamawiarkaMenuFromHome = () => {
       koszykListRef,
 
       isDataLoaded,
+      restaurantDataLoadError,
+      retryRestaurantDataLoad,
       employeeAuthStore,
       authorizationStore,
 
