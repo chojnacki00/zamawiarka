@@ -187,6 +187,7 @@ test('store autoryzacji odrzuca ręczne wywołanie zapisu bez uprawnienia', () =
   }
   accountSessionStore.localPinConfigured = true
   accountSessionStore.currentDeviceSession = { status: 'active' }
+  accountSessionStore.isMembershipContextReady = true
 
   const authorizationStore = useAuthorizationStore()
 
@@ -212,6 +213,7 @@ test('store autoryzacji traci dostęp po zablokowaniu członkostwa', () => {
   accountSessionStore.permissions = { can_edit_products: true }
   accountSessionStore.localPinConfigured = true
   accountSessionStore.currentDeviceSession = { status: 'active' }
+  accountSessionStore.isMembershipContextReady = true
 
   const authorizationStore = useAuthorizationStore()
   assert.equal(authorizationStore.hasPermission('can_edit_products'), true)

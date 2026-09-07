@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  buildRestaurantHydrationDiagnostic,
   isRestaurantContextCurrent,
   isRestaurantDataReadyForWrite,
   isRestaurantSnapshotCurrent,
+  normalizeRestaurantList,
   persistRestaurantDataWhenReady,
-  persistRestaurantListChange
+  persistRestaurantListChange,
+  serializeRestaurantList
 } from '../src/utils/restaurantDataContext.js'
 
 test('listener przyjmuje dane wyłącznie z aktualnej restauracji', () => {
@@ -182,4 +185,66 @@ test('po hydracji zapis aktualnej restauracji jest dozwolony', async () => {
   })
 
   assert.equal(writes, 1)
+})
+
+test('legacy hurtownia jest czytelna w UI bez automatycznej migracji', () => {
+  const normalized = normalizeRestaurantList(
+    'suppliers',
+    ['Hurtownia testowa']
+  )
+
+  assert.equal(normalized.length, 1)
+  assert.equal(normalized[0].name, 'Hurtownia testowa')
+  assert.match(normalized[0].id, /^legacy-suppliers-/)
+  assert.deepEqual(
+    serializeRestaurantList('suppliers', normalized),
+    ['Hurtownia testowa']
+  )
+})
+
+test('świadomie edytowana pozycja legacy jest zapisywana jako obiekt', () => {
+  const [legacySupplier] = normalizeRestaurantList(
+    'suppliers',
+    ['Hurtownia testowa']
+  )
+  const editedSupplier = {
+    ...legacySupplier,
+    name: 'Hurtownia po zmianie'
+  }
+
+  assert.deepEqual(
+    serializeRestaurantList('suppliers', [editedSupplier]),
+    [{
+      id: legacySupplier.id,
+      name: 'Hurtownia po zmianie'
+    }]
+  )
+})
+
+test('usunięcie ostatniej pozycji legacy zapisuje wyłącznie pustą listę', () => {
+  assert.deepEqual(serializeRestaurantList('suppliers', []), [])
+})
+
+test('diagnostyka hydracji działa tylko w dev:test i nie przyjmuje sekretów', () => {
+  assert.equal(buildRestaurantHydrationDiagnostic({
+    mode: 'production',
+    event: 'ready',
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a'
+  }), null)
+
+  assert.deepEqual(buildRestaurantHydrationDiagnostic({
+    mode: 'test',
+    event: 'ready',
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    status: 'ready'
+  }), {
+    event: 'ready',
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    path: 'users/restaurant-a/app/state',
+    status: 'ready',
+    reason: null
+  })
 })
