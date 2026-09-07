@@ -54,6 +54,7 @@ import {
   cleanupExpiredInvitations,
   cleanupExpiredPairingCodes
 } from '../services/temporaryDataCleanup.js'
+import { getCleanupFailureDetails } from '../utils/temporaryDataCleanup.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -834,10 +835,13 @@ export const useAccountSessionStore = defineStore(
 
       void cleanupExpiredInvitations({ db, restaurantId }).then(result => {
         if (!result.completed) {
-          console.warn(
-            'Nie udało się wyczyścić wygasłych zaproszeń:',
-            result.error
-          )
+          console.warn('Nie udało się wyczyścić wygasłych zaproszeń.')
+          if (import.meta.env.DEV) {
+            console.warn(
+              'Szczegóły czyszczenia zaproszeń:',
+              getCleanupFailureDetails({ invitations: result })
+            )
+          }
         }
       })
 
