@@ -1,17 +1,17 @@
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
-  limit,
   query,
-  Timestamp,
   where,
   writeBatch
 } from 'firebase/firestore'
 import {
   FIRESTORE_CLEANUP_BATCH_SIZE,
+  FIRESTORE_INVITATION_CLEANUP_BATCH_SIZE,
+  isDisconnectedDeviceSessionExpired,
+  isExpiredTemporaryDocument,
   runScopedCleanupBatches
 } from '../utils/temporaryDataCleanup.js'
 
@@ -45,15 +45,20 @@ export const cleanupExpiredInvitations = async ({
   now = new Date()
 } = {}) => runScopedCleanupBatches({
   restaurantId,
-  batchSize: Math.min(FIRESTORE_CLEANUP_BATCH_SIZE, 150),
-  loadBatch: async ({ batchSize }) => {
+  batchSize: FIRESTORE_INVITATION_CLEANUP_BATCH_SIZE,
+  maxBatches: 100,
+  loadBatch: async () => {
     const snapshot = await getDocs(query(
       collection(db, 'identityInvitations'),
-      where('restaurantId', '==', restaurantId),
-      where('expiresAt', '<=', Timestamp.fromDate(now)),
-      limit(batchSize)
+      where('restaurantId', '==', restaurantId)
     ))
-    return Promise.all(snapshot.docs.map(async invitationSnapshot => {
+    const expiredSnapshots = snapshot.docs.filter(invitationSnapshot => (
+      isExpiredTemporaryDocument({
+        expiresAt: invitationSnapshot.data().expiresAt,
+        now
+      })
+    ))
+    return Promise.all(expiredSnapshots.map(async invitationSnapshot => {
       const invitation = invitationSnapshot.data()
       const slotSnapshot = invitation.slotId
         ? await getDoc(doc(
@@ -86,18 +91,21 @@ export const cleanupExpiredPairingCodes = async ({
 } = {}) => runScopedCleanupBatches({
   restaurantId,
   batchSize: FIRESTORE_CLEANUP_BATCH_SIZE,
-  loadBatch: async ({ batchSize }) => {
+  loadBatch: async () => {
     const snapshot = await getDocs(query(
       collection(db, 'pairing_codes'),
-      where('companyUid', '==', restaurantId),
-      where('expiresAt', '<=', Timestamp.fromDate(now)),
-      limit(batchSize)
+      where('companyUid', '==', restaurantId)
     ))
-    return snapshot.docs.map(document => ({
-      ref: document.ref,
-      restaurantId: document.data().companyUid,
-      collectionName: 'pairing_codes'
-    }))
+    return snapshot.docs
+      .filter(document => isExpiredTemporaryDocument({
+        expiresAt: document.data().expiresAt,
+        now
+      }))
+      .map(document => ({
+        ref: document.ref,
+        restaurantId: document.data().companyUid,
+        collectionName: 'pairing_codes'
+      }))
   },
   expectedCollection: 'pairing_codes',
   deleteBatch: deleteFirestoreBatch(db)
@@ -115,19 +123,30 @@ export const cleanupDisconnectedDeviceSessions = async ({
   return runScopedCleanupBatches({
     restaurantId,
     batchSize: FIRESTORE_CLEANUP_BATCH_SIZE,
-    loadBatch: async ({ batchSize }) => {
-      const snapshot = await getDocs(query(
-        collectionGroup(db, 'deviceSessions'),
-        where('restaurantId', '==', restaurantId),
-        where('status', '==', 'disconnected'),
-        where('disconnectedAt', '<=', Timestamp.fromDate(threshold)),
-        limit(batchSize)
+    loadBatch: async () => {
+      const membersSnapshot = await getDocs(collection(
+        db,
+        'restaurants',
+        restaurantId,
+        'members'
       ))
-      return snapshot.docs.map(deviceSnapshot => ({
-        ref: deviceSnapshot.ref,
-        restaurantId: deviceSnapshot.data().restaurantId,
-        collectionName: 'deviceSessions'
-      }))
+      const deviceSnapshots = await Promise.all(
+        membersSnapshot.docs.map(memberSnapshot => getDocs(collection(
+          memberSnapshot.ref,
+          'deviceSessions'
+        )))
+      )
+      return deviceSnapshots.flatMap(snapshot => snapshot.docs)
+        .filter(deviceSnapshot => isDisconnectedDeviceSessionExpired({
+          status: deviceSnapshot.data().status,
+          disconnectedAt: deviceSnapshot.data().disconnectedAt,
+          threshold
+        }))
+        .map(deviceSnapshot => ({
+          ref: deviceSnapshot.ref,
+          restaurantId: deviceSnapshot.data().restaurantId,
+          collectionName: 'deviceSessions'
+        }))
     },
     expectedCollection: 'deviceSessions',
     deleteBatch: deleteFirestoreBatch(db)

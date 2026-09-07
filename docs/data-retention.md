@@ -8,7 +8,7 @@ być ograniczone do konkretnej kolekcji i restauracji oraz otrzymać osobne test
 
 | Kolekcja / miejsce | Rodzaj danych | Trwałe | Okres przechowywania | Zdarzenie usuwające | Mechanizm awaryjny | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `identityInvitations/{tokenHash}` | Prywatne zaproszenia kont i urządzeń | Nie | Do przyjęcia, anulowania, zastąpienia albo wygaśnięcia; 7 dni | Akceptacja usuwa dokument atomowo razem z podglądem publicznym i slotem; nowe zaproszenie tego samego typu zastępuje stare | Uprawniony manager sprząta wygasłe dokumenty w partiach po maks. 150 zaproszeń | Wdrożone w tym etapie; surowy token nie jest zapisywany |
+| `identityInvitations/{tokenHash}` | Prywatne zaproszenia kont i urządzeń | Nie | Do przyjęcia, anulowania, zastąpienia albo wygaśnięcia; 7 dni | Akceptacja usuwa dokument atomowo razem z podglądem publicznym i slotem; nowe zaproszenie tego samego typu zastępuje stare | Uprawniony manager sprząta wygasłe dokumenty pojedynczo, aby nie przekroczyć limitu odczytów reguł w operacji atomowej | Wdrożone w tym etapie; surowy token nie jest zapisywany |
 | `activationInvitations/{tokenHash}` | Bezpieczny publiczny podgląd zaproszenia | Nie | Dokładnie jak prywatne zaproszenie | Usuwany w tej samej operacji co prywatne zaproszenie | Sprzątanie prywatnego zaproszenia usuwa również podgląd; osierocony dokument nie jest celowym stanem | Wdrożone w tym etapie; brak pełnego e-maila i identyfikatorów restauracji/pracownika |
 | `restaurants/{restaurantId}/identityInvitationSlots/{slotId}` | Wskaźnik jedynego aktywnego zaproszenia danego celu | Nie | Jak wskazywane zaproszenie | Akceptacja, anulowanie, zastąpienie albo sprzątanie | Usuwany tylko wtedy, gdy nadal wskazuje sprzątany token | Wdrożone w tym etapie |
 | `pairing_codes` | Przejściowe kody starego parowania PIN | Nie | 3 minuty | Stary ekran próbuje usunąć kod po użyciu albo po wykryciu wygaśnięcia | Uprawniony manager usuwa wygasłe kody swojej restauracji partiami po maks. 450 | Częściowo poprawione; stary niezalogowany ekran jest blokowany przez nowe reguły i zostanie usunięty wraz z legacy PIN |
@@ -30,11 +30,16 @@ być ograniczone do konkretnej kolekcji i restauracji oraz otrzymać osobne test
 ## Zachowanie nowych operacji czyszczenia
 
 - Czyszczenie zaproszeń wyszukuje wyłącznie `identityInvitations` wskazanej
-  restauracji i usuwa prywatny dokument, publiczny podgląd oraz aktualny slot.
+  restauracji, lokalnie wybiera rekordy po terminie i usuwa prywatny dokument,
+  publiczny podgląd oraz aktualny slot.
 - Czyszczenie kodów działa tylko w `pairing_codes`, wymaga filtra
   `companyUid == restaurantId` i ponownie porównuje właściciela dokumentu.
-- Zaproszenia są czyszczone po maksymalnie 150 sztuk, ponieważ jedno zaproszenie
-  może wymagać trzech usunięć. Kody i sesje używają partii do 450 dokumentów.
+- Zaproszenia są czyszczone pojedynczo, ponieważ trzy powiązane usunięcia
+  uruchamiają dodatkowe odczyty `get()` i `existsAfter()` w regułach. Kody i
+  sesje używają partii do 450 dokumentów.
+- Zapytania czyszczące nie łączą już filtra restauracji z filtrem zakresowym
+  czasu. Dzięki temu nie zależą od ręcznie wdrażanych indeksów złożonych;
+  warunek czasu jest stosowany po bezpiecznym odczycie danych jednej restauracji.
 - Błąd kolejnej partii zwraca wynik częściowy i nie blokuje otwarcia formularza
   ani utworzenia nowego zaproszenia. Kolejne wejście może bezpiecznie wznowić
   czyszczenie.

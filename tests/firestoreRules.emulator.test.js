@@ -28,6 +28,7 @@ import {
   cleanupExpiredInvitations,
   cleanupExpiredPairingCodes
 } from '../src/services/temporaryDataCleanup.js'
+import { getCleanupFailureDetails } from '../src/utils/temporaryDataCleanup.js'
 
 let testEnv
 const AUTH_TIME = 1700000000
@@ -859,7 +860,130 @@ test('sprzątanie usuwa wygasłe zaproszenie wraz z publicznym dokumentem i slot
     const adminDb = adminContext.firestore()
     assert.equal((await getDoc(doc(adminDb, `identityInvitations/${'c'.repeat(64)}`))).exists(), false)
     assert.equal((await getDoc(doc(adminDb, `activationInvitations/${'c'.repeat(64)}`))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1__ACCOUNT_ACTIVATION'
+    ))).exists(), false)
     assert.equal((await getDoc(doc(adminDb, `identityInvitations/${'d'.repeat(64)}`))).exists(), true)
+  })
+})
+
+test('sprzątanie wielu zaproszeń kończy bezpieczne pojedyncze partie', async () => {
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seed([
+    ...identityInvitationDocuments({
+      tokenHash: 'e'.repeat(64),
+      employeeId: 'employee-2',
+      expiresAt: past(),
+      createdByAuthUid: 'manager-auth'
+    }),
+    ...identityInvitationDocuments({
+      tokenHash: 'f'.repeat(64),
+      employeeId: 'employee-3',
+      expiresAt: past(),
+      createdByAuthUid: 'manager-auth'
+    })
+  ])
+  const db = context({
+    uid: 'manager-auth',
+    email: 'manager@example.com'
+  }).firestore()
+
+  const result = await cleanupExpiredInvitations({
+    db,
+    restaurantId: 'restaurant-a'
+  })
+
+  assert.equal(result.completed, true)
+  assert.equal(result.deletedCount, 2)
+  assert.equal(result.batchCount, 2)
+})
+
+test('brak uprawnienia daje kontrolowany błąd i nie usuwa danych', async () => {
+  await seedEmployeeAccess({
+    uid: 'worker-auth',
+    employeeId: 'worker-employee',
+    profileId: 'worker-profile',
+    permissions: {}
+  })
+  await seed([['pairing_codes/expired-a', {
+    companyUid: 'restaurant-a',
+    expiresAt: past()
+  }]])
+  const db = context({
+    uid: 'worker-auth',
+    email: 'worker@example.com'
+  }).firestore()
+
+  const result = await cleanupExpiredPairingCodes({
+    db,
+    restaurantId: 'restaurant-a'
+  })
+
+  assert.equal(result.completed, false)
+  assert.match(String(result.error?.code), /permission-denied/)
+  assert.deepEqual(getCleanupFailureDetails({ pairingCodes: result }), [{
+    operation: 'pairingCodes',
+    collection: 'pairing_codes',
+    code: result.error.code
+  }])
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    assert.equal((await getDoc(doc(
+      adminContext.firestore(),
+      'pairing_codes/expired-a'
+    ))).exists(), true)
+  })
+})
+
+test('częściowy błąd jednej restauracji nie cofa poprawnego sprzątania drugiej', async () => {
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seed([
+    ['pairing_codes/expired-a', {
+      companyUid: 'restaurant-a',
+      expiresAt: past()
+    }],
+    ['pairing_codes/expired-b', {
+      companyUid: 'restaurant-b',
+      expiresAt: past()
+    }]
+  ])
+  const db = context({
+    uid: 'manager-auth',
+    email: 'manager@example.com'
+  }).firestore()
+
+  const ownResult = await cleanupExpiredPairingCodes({
+    db,
+    restaurantId: 'restaurant-a'
+  })
+  const foreignResult = await cleanupExpiredPairingCodes({
+    db,
+    restaurantId: 'restaurant-b'
+  })
+
+  assert.equal(ownResult.completed, true)
+  assert.equal(ownResult.deletedCount, 1)
+  assert.equal(foreignResult.completed, false)
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'pairing_codes/expired-a'
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'pairing_codes/expired-b'
+    ))).exists(), true)
   })
 })
 
@@ -893,6 +1017,17 @@ test('sprzątanie usuwa odłączone sesje dopiero po 90 dniach', async () => {
   })
   assert.equal(result.completed, true)
   assert.equal(result.deletedCount, 1)
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/members/worker-auth/deviceSessions/old-session'
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/members/worker-auth/deviceSessions/recent-session'
+    ))).exists(), true)
+  })
 })
 
 test('serwis kodów usuwa tylko wygasłe kody wskazanej restauracji', async () => {
