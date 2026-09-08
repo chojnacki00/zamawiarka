@@ -972,6 +972,7 @@ import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
 import { useAccountSessionStore } from './stores/accountSessionStore.js'
 import { useAuthorizationStore } from './stores/authorizationStore.js'
 import {
+  createLocalPinRedirector,
   hasStoredLegacyPinSession,
   isPublicActivationRoute,
   LOCAL_PIN_LOCK_PATH,
@@ -1001,6 +1002,7 @@ export default {
   setup() {
     const router = useRouter()
     const route = useRoute()
+    const redirectToLocalPin = createLocalPinRedirector(router)
     const authStore = useAuthStore()
     const employeeAuthStore = useEmployeeAuthStore()
     const accountSessionStore = useAccountSessionStore()
@@ -1205,10 +1207,7 @@ const handleLogout = async () => {
     accountSessionStore.localPinConfigured
   ) {
     const result = accountSessionStore.lockApplication()
-    if (result.locked) {
-      await router.replace(LOCAL_PIN_LOCK_PATH)
-      return
-    }
+    if (result.locked) return
   }
 
   // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
@@ -1282,7 +1281,7 @@ const resetInactivityTimer = () => {
         accountSessionStore.localPinConfigured
       ) {
         const result = accountSessionStore.lockApplication()
-        if (result.locked) router.replace(LOCAL_PIN_LOCK_PATH)
+        if (result.locked) return
         return
       }
 
@@ -1300,9 +1299,6 @@ watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
   // Ten watcher zachowuje oddzielną obsługę sesji legacy oraz odebrania dostępu.
   if (oldEmployee && !newEmployee) {
     if (auth.currentUser && accountSessionStore.isPinLocked) {
-      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
-        router.replace(LOCAL_PIN_LOCK_PATH)
-      }
       return
     }
 
@@ -2060,9 +2056,10 @@ if (backupData.collections) {
       if (
         auth.currentUser &&
         accountSessionStore.isPinLocked &&
+        route.matched.length > 0 &&
         route.path !== LOCAL_PIN_LOCK_PATH
       ) {
-        router.replace(LOCAL_PIN_LOCK_PATH)
+        redirectToLocalPin()
         return
       }
       
@@ -5817,9 +5814,6 @@ watch(
       resetCompanyDataState()
       isDataLoaded.value = true
       isLoggedIn.value = false
-      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
-        await router.replace(LOCAL_PIN_LOCK_PATH)
-      }
       return
     }
 
@@ -5858,14 +5852,6 @@ watch(
 watch(
   () => [authorizationStore.context, route.path],
   async ([accessContext, currentPath]) => {
-    if (
-      auth.currentUser &&
-      accountSessionStore.isPinLocked &&
-      currentPath !== LOCAL_PIN_LOCK_PATH
-    ) {
-      await router.replace(LOCAL_PIN_LOCK_PATH)
-      return
-    }
     if (
       isAppReady.value &&
       !accessContextCanOpenRoute(accessContext, currentPath)
@@ -5959,9 +5945,6 @@ onMounted(() => {
       resetCompanyDataState()
       isDataLoaded.value = true
       isLoggedIn.value = false
-      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
-        await router.replace(LOCAL_PIN_LOCK_PATH)
-      }
     } else if (accountSessionStore.hasActiveContext) {
       await activateAccountRestaurant()
     } else {

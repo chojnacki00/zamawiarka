@@ -15,6 +15,7 @@ import {
   isPublicActivationRoute,
   LOCAL_PIN_LOCK_PATH,
   resolveAccountActionPath,
+  resolveLocalPinGuardRedirect,
   resolveRouteAuthenticationRedirect
 } from './utils/routeAccess.js'
 
@@ -112,26 +113,20 @@ router.beforeEach(async (to, from, next) => {
     return next('/konto')
   }
 
-  if (
-    firebaseUser &&
-    accountSessionStore.isPinLocked &&
-    to.path !== LOCAL_PIN_LOCK_PATH
-  ) {
-    return next(LOCAL_PIN_LOCK_PATH)
-  }
+  const localPinRedirect = firebaseUser
+    ? resolveLocalPinGuardRedirect({
+        path: to.path,
+        isPinLocked: accountSessionStore.isPinLocked,
+        requiresAccountAction: accountSessionStore.requiresAccountAction
+      })
+    : null
 
-  if (
-    firebaseUser &&
-    to.path === LOCAL_PIN_LOCK_PATH &&
-    !accountSessionStore.isPinLocked
-  ) {
-    return next(accountSessionStore.requiresAccountAction ? '/konto' : '/')
-  }
+  if (localPinRedirect) return next(localPinRedirect)
 
   if (
     firebaseUser &&
     accountSessionStore.requiresAccountAction &&
-    !['/konto', '/aktywacja'].includes(to.path)
+    !['/konto', '/aktywacja', LOCAL_PIN_LOCK_PATH].includes(to.path)
   ) {
     return next(resolveAccountActionPath({
       isPinLocked: accountSessionStore.isPinLocked

@@ -225,11 +225,6 @@ const logoutDevice = () => runAction(async () => {
 onMounted(async () => {
   if (!auth.currentUser) return
 
-  if (sessionStore.isPinLocked) {
-    await router.replace('/pin')
-    return
-  }
-
   if (
     auth.currentUser.emailVerified === false ||
     sessionStore.needsEmailVerification
