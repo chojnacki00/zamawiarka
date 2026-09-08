@@ -16,7 +16,8 @@ export const assertDeviceEnrollmentTargetMembership = ({
   membership,
   restaurantId,
   employeeId,
-  targetAuthUid
+  targetAuthUid,
+  allowBlocked = false
 } = {}) => {
   const normalizedRestaurantId = normalizeText(restaurantId)
   const normalizedEmployeeId = normalizeText(employeeId)
@@ -28,7 +29,10 @@ export const assertDeviceEnrollmentTargetMembership = ({
     normalizeText(membership.restaurantId) !== normalizedRestaurantId ||
     normalizeText(membership.employeeId) !== normalizedEmployeeId ||
     membership.role !== 'employee' ||
-    membership.status !== 'active'
+    !(
+      membership.status === 'active' ||
+      (allowBlocked && membership.status === 'blocked')
+    )
   ) {
     throw new Error(
       'Nie można dodać urządzenia. Konto pracownika nie ma aktywnego członkostwa w tej restauracji.'
@@ -97,11 +101,43 @@ export const maskIdentityEmail = value => {
 
 export const buildInvitationSlotId = ({
   restaurantId,
-  employeeId,
-  purpose
-} = {}) => [restaurantId, employeeId, purpose]
+  employeeId
+} = {}) => [restaurantId, employeeId]
   .map(normalizeText)
   .join('__')
+
+export const resolveEmployeeInvitationTarget = ({
+  membership,
+  restoreBlocked = false
+} = {}) => {
+  if (!membership) {
+    return {
+      purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
+      targetAuthUid: null,
+      reactivateMembership: false
+    }
+  }
+
+  if (
+    membership.status !== 'active' &&
+    !(restoreBlocked && membership.status === 'blocked')
+  ) {
+    throw new Error(
+      'Dostęp pracownika jest zablokowany. Najpierw przywróć dostęp.'
+    )
+  }
+
+  const targetAuthUid = normalizeText(membership.authUid)
+  if (!targetAuthUid || membership.role !== 'employee') {
+    throw new Error('Konto pracownika nie jest poprawnie powiązane.')
+  }
+
+  return {
+    purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
+    targetAuthUid,
+    reactivateMembership: membership.status === 'blocked'
+  }
+}
 
 export const createIdentityInvitationBundle = async ({
   restaurantId,
@@ -139,8 +175,7 @@ export const createIdentityInvitationBundle = async ({
   ])
   const slotId = buildInvitationSlotId({
     restaurantId,
-    employeeId,
-    purpose
+    employeeId
   })
 
   const privateInvitation = {

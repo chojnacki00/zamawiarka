@@ -32,7 +32,8 @@ import {
   createIdentityInvitationBundle,
   hashIdentityValue,
   INVITATION_PURPOSES,
-  normalizeIdentityEmail
+  normalizeIdentityEmail,
+  resolveEmployeeInvitationTarget
 } from '../utils/identityInvitations.js'
 import {
   buildDeviceSessionDocument,
@@ -926,7 +927,8 @@ export const useAccountSessionStore = defineStore(
     const createInvitation = async ({
       employee,
       purpose = INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
-      targetAuthUid = null
+      targetAuthUid = null,
+      reactivateMembership = false
     }) => {
       const restaurantId = currentRestaurantId.value
       const user = auth.currentUser
@@ -1000,21 +1002,24 @@ export const useAccountSessionStore = defineStore(
         expiresAt
       })
 
+      let targetMembershipRef = null
       if (purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
-        const targetMembershipSnapshot = await getDoc(doc(
+        targetMembershipRef = doc(
           db,
           'restaurants',
           restaurantId,
           'members',
           String(targetAuthUid).trim()
-        ))
+        )
+        const targetMembershipSnapshot = await getDoc(targetMembershipRef)
         assertDeviceEnrollmentTargetMembership({
           membership: targetMembershipSnapshot.exists()
             ? targetMembershipSnapshot.data()
             : null,
           restaurantId,
           employeeId: employee.id,
-          targetAuthUid
+          targetAuthUid,
+          allowBlocked: reactivateMembership
         })
       } else {
         const memberSnapshot = await getDocs(query(
@@ -1038,19 +1043,115 @@ export const useAccountSessionStore = defineStore(
         bundle.slotId
       )
 
+      const existingInvitationsSnapshot = await getDocs(query(
+        collection(db, 'identityInvitations'),
+        where('restaurantId', '==', restaurantId),
+        where('employeeId', '==', employee.id)
+      ))
+
       await runTransaction(db, async transaction => {
-        const slotSnapshot = await transaction.get(slotRef)
+        const [slotSnapshot, membershipSnapshot] = await Promise.all([
+          transaction.get(slotRef),
+          targetMembershipRef
+            ? transaction.get(targetMembershipRef)
+            : Promise.resolve(null)
+        ])
+        const invitationRefs = new Map()
+        existingInvitationsSnapshot.docs.forEach(snapshot => {
+          invitationRefs.set(snapshot.ref.path, snapshot.ref)
+          invitationRefs.set(
+            `activationInvitations/${snapshot.id}`,
+            doc(db, 'activationInvitations', snapshot.id)
+          )
+          const oldSlotId = snapshot.data().slotId
+          if (oldSlotId) {
+            const oldSlotRef = doc(
+              db,
+              'restaurants',
+              restaurantId,
+              'identityInvitationSlots',
+              oldSlotId
+            )
+            invitationRefs.set(oldSlotRef.path, oldSlotRef)
+          }
+        })
         if (slotSnapshot.exists()) {
           const oldTokenHash = slotSnapshot.data().tokenHash
-          const oldPrivateRef = doc(db, 'identityInvitations', oldTokenHash)
-          const oldPublicRef = doc(db, 'activationInvitations', oldTokenHash)
-          const [oldPrivate, oldPublic] = await Promise.all([
-            transaction.get(oldPrivateRef),
-            transaction.get(oldPublicRef)
-          ])
-          if (oldPrivate.exists()) transaction.delete(oldPrivateRef)
-          if (oldPublic.exists()) transaction.delete(oldPublicRef)
+          invitationRefs.set(
+            `identityInvitations/${oldTokenHash}`,
+            doc(db, 'identityInvitations', oldTokenHash)
+          )
+          invitationRefs.set(
+            `activationInvitations/${oldTokenHash}`,
+            doc(db, 'activationInvitations', oldTokenHash)
+          )
         }
+
+        const oldSnapshots = await Promise.all(
+          [...invitationRefs.values()].map(reference => transaction.get(reference))
+        )
+        const oldSnapshotsByPath = new Map(oldSnapshots.map(snapshot => [
+          snapshot.ref.path,
+          snapshot
+        ]))
+
+        existingInvitationsSnapshot.docs.forEach(snapshot => {
+          const oldPrivate = oldSnapshotsByPath.get(snapshot.ref.path)
+          const oldPublicRef = doc(db, 'activationInvitations', snapshot.id)
+          const oldPublic = oldSnapshotsByPath.get(oldPublicRef.path)
+          const oldSlotId = snapshot.data().slotId
+          const oldSlotRef = oldSlotId
+            ? doc(
+                db,
+                'restaurants',
+                restaurantId,
+                'identityInvitationSlots',
+                oldSlotId
+              )
+            : null
+          const oldSlot = oldSlotRef
+            ? oldSnapshotsByPath.get(oldSlotRef.path)
+            : null
+
+          if (oldPrivate?.exists()) transaction.delete(oldPrivate.ref)
+          if (oldPublic?.exists()) transaction.delete(oldPublic.ref)
+          if (
+            oldSlotRef?.path !== slotRef.path &&
+            oldSlot?.exists() &&
+            oldSlot.data().tokenHash === snapshot.id
+          ) transaction.delete(oldSlot.ref)
+        })
+
+        if (slotSnapshot.exists()) {
+          const oldTokenHash = slotSnapshot.data().tokenHash
+          const oldPrivate = oldSnapshotsByPath.get(
+            `identityInvitations/${oldTokenHash}`
+          )
+          const oldPublic = oldSnapshotsByPath.get(
+            `activationInvitations/${oldTokenHash}`
+          )
+          if (oldPrivate?.exists()) transaction.delete(oldPrivate.ref)
+          if (oldPublic?.exists()) transaction.delete(oldPublic.ref)
+        }
+
+        if (targetMembershipRef) {
+          assertDeviceEnrollmentTargetMembership({
+            membership: membershipSnapshot?.exists()
+              ? membershipSnapshot.data()
+              : null,
+            restaurantId,
+            employeeId: employee.id,
+            targetAuthUid,
+            allowBlocked: reactivateMembership
+          })
+          if (
+            reactivateMembership &&
+            membershipSnapshot.data().status === 'blocked'
+          ) {
+            transaction.update(targetMembershipRef, { status: 'active' })
+          }
+        }
+
         transaction.set(privateRef, bundle.privateInvitation)
         transaction.set(publicRef, bundle.publicInvitation)
         transaction.set(slotRef, bundle.slot)
@@ -1063,6 +1164,40 @@ export const useAccountSessionStore = defineStore(
         expiresAt,
         maskedEmail: bundle.publicInvitation.maskedEmail
       }
+    }
+
+    const createEmployeeAccessInvitation = async ({
+      employee,
+      restoreBlocked = false
+    }) => {
+      const restaurantId = currentRestaurantId.value
+      if (!restaurantId || !employee?.id) {
+        throw new Error('Brak danych pracownika lub restauracji.')
+      }
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do zapraszania pracowników.')
+      }
+
+      const membershipSnapshot = await getDocs(query(
+        collection(db, 'restaurants', restaurantId, 'members'),
+        where('employeeId', '==', employee.id)
+      ))
+      if (membershipSnapshot.size > 1) {
+        throw new Error('Pracownik ma niespójne dane dostępu do restauracji.')
+      }
+
+      const membershipDocument = membershipSnapshot.empty
+        ? null
+        : membershipSnapshot.docs[0].data()
+      const target = resolveEmployeeInvitationTarget({
+        membership: membershipDocument,
+        restoreBlocked
+      })
+
+      return createInvitation({
+        employee,
+        ...target
+      })
     }
 
     const getEmployeeAccountAccess = async employeeId => {
@@ -1277,15 +1412,103 @@ export const useAccountSessionStore = defineStore(
         throw new Error('Nie masz uprawnienia do blokowania dostępu.')
       }
 
-      await updateDoc(doc(
+      const restaurantId = currentRestaurantId.value
+      const memberRef = doc(
         db,
         'restaurants',
-        currentRestaurantId.value,
+        restaurantId,
         'members',
         authUid
-      ), {
-        status: 'blocked'
+      )
+      const memberSnapshot = await getDoc(memberRef)
+      if (!memberSnapshot.exists()) {
+        throw new Error('Pracownik nie ma dostępu do tej restauracji.')
+      }
+      const member = memberSnapshot.data()
+      if (
+        member.restaurantId !== restaurantId ||
+        member.authUid !== authUid ||
+        member.role !== 'employee'
+      ) {
+        throw new Error('Nie można zmienić dostępu tego konta.')
+      }
+
+      const [deviceSnapshots, invitationSnapshots, slotSnapshots] =
+        await Promise.all([
+          getDocs(collection(
+            db,
+            'restaurants',
+            restaurantId,
+            'members',
+            authUid,
+            'deviceSessions'
+          )),
+          getDocs(query(
+            collection(db, 'identityInvitations'),
+            where('restaurantId', '==', restaurantId),
+            where('employeeId', '==', member.employeeId)
+          )),
+          getDocs(query(
+            collection(
+              db,
+              'restaurants',
+              restaurantId,
+              'identityInvitationSlots'
+            ),
+            where('employeeId', '==', member.employeeId)
+          ))
+        ])
+      const activeDevices = deviceSnapshots.docs.filter(
+        snapshot => snapshot.data().status === 'active'
+      )
+      const slotsById = new Map(slotSnapshots.docs.map(snapshot => [
+        snapshot.id,
+        snapshot
+      ]))
+      const invitationSlotIds = new Set(
+        invitationSnapshots.docs
+          .filter(snapshot => (
+            slotsById.get(snapshot.data().slotId)?.data().tokenHash ===
+            snapshot.id
+          ))
+          .map(snapshot => snapshot.data().slotId)
+      )
+      const operationCount = 1 + activeDevices.length +
+        (invitationSnapshots.size * 2) + invitationSlotIds.size
+      if (operationCount > 450) {
+        throw new Error(
+          'Nie można bezpiecznie zablokować dostępu. Skontaktuj się z administratorem.'
+        )
+      }
+
+      const batch = writeBatch(db)
+      batch.update(memberRef, { status: 'blocked' })
+      activeDevices.forEach(snapshot => {
+        batch.update(snapshot.ref, {
+          status: 'disconnected',
+          disconnectedAt: serverTimestamp(),
+          disconnectedByAuthUid: auth.currentUser.uid
+        })
       })
+      invitationSnapshots.docs.forEach(snapshot => {
+        batch.delete(snapshot.ref)
+        batch.delete(doc(db, 'activationInvitations', snapshot.id))
+      })
+      invitationSlotIds.forEach(slotId => {
+        batch.delete(doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'identityInvitationSlots',
+          slotId
+        ))
+      })
+      await batch.commit()
+
+      return {
+        disconnectedDevices: activeDevices.length,
+        cancelledInvitations: invitationSnapshots.size
+      }
     }
 
     const configureLocalPin = async pin => {
@@ -1538,6 +1761,7 @@ export const useAccountSessionStore = defineStore(
       selectRestaurant,
       acceptIdentityInvitation,
       createInvitation,
+      createEmployeeAccessInvitation,
       cancelInvitation,
       getEmployeeDevices,
       disconnectDevice,

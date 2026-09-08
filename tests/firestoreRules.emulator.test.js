@@ -17,6 +17,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  runTransaction,
   setDoc,
   Timestamp,
   updateDoc,
@@ -157,7 +158,7 @@ const identityInvitationDocuments = ({
   status = 'pending',
   createdByAuthUid = 'owner-auth'
 } = {}) => {
-  const slotId = `${restaurantId}__${employeeId}__${purpose}`
+  const slotId = `${restaurantId}__${employeeId}`
   const emailHash = 'e'.repeat(64)
   const resolvedCreatedAt = createdAt || now()
   const resolvedExpiresAt = expiresAt || Timestamp.fromMillis(
@@ -211,6 +212,50 @@ const writeIdentityInvitation = async ({ db, options = {} }) => {
   await batch.commit()
 }
 
+const replaceIdentityInvitation = async ({
+  db,
+  options = {},
+  restoreMembershipAuthUid = null
+}) => {
+  const documents = identityInvitationDocuments(options)
+  const privateEntry = documents.find(([path]) => path.startsWith('identityInvitations/'))
+  const publicEntry = documents.find(([path]) => path.startsWith('activationInvitations/'))
+  const slotEntry = documents.find(([path]) => path.includes('/identityInvitationSlots/'))
+  const slotRef = doc(db, slotEntry[0])
+  const memberRef = restoreMembershipAuthUid
+    ? doc(
+        db,
+        `restaurants/${options.restaurantId || 'restaurant-a'}/members/${restoreMembershipAuthUid}`
+      )
+    : null
+
+  await runTransaction(db, async transaction => {
+    const [slotSnapshot, memberSnapshot] = await Promise.all([
+      transaction.get(slotRef),
+      memberRef ? transaction.get(memberRef) : Promise.resolve(null)
+    ])
+    let oldPrivate = null
+    let oldPublic = null
+    if (slotSnapshot.exists()) {
+      const oldTokenHash = slotSnapshot.data().tokenHash
+      ;[oldPrivate, oldPublic] = await Promise.all([
+        transaction.get(doc(db, `identityInvitations/${oldTokenHash}`)),
+        transaction.get(doc(db, `activationInvitations/${oldTokenHash}`))
+      ])
+    }
+
+    if (oldPrivate?.exists()) transaction.delete(oldPrivate.ref)
+    if (oldPublic?.exists()) transaction.delete(oldPublic.ref)
+    if (memberRef) {
+      assert.equal(memberSnapshot?.exists(), true)
+      transaction.update(memberRef, { status: 'active' })
+    }
+    transaction.set(doc(db, privateEntry[0]), privateEntry[1])
+    transaction.set(doc(db, publicEntry[0]), publicEntry[1])
+    transaction.set(slotRef, slotEntry[1])
+  })
+}
+
 const deviceSessionData = ({
   uid = 'employee-auth',
   restaurantId = 'restaurant-a',
@@ -247,7 +292,7 @@ const acceptIdentityInvitation = async ({
   authTime = AUTH_TIME,
   deleteArtifacts = true
 }) => {
-  const slotId = `${restaurantId}__${employeeId}__${purpose}`
+  const slotId = `${restaurantId}__${employeeId}`
   const batch = writeBatch(db)
   if (purpose === 'ACCOUNT_ACTIVATION') {
     batch.set(doc(db, `restaurants/${restaurantId}/members/${uid}`), memberData({
@@ -500,6 +545,60 @@ test('właściciel atomowo tworzy prywatne, publiczne i indeksowane zaproszenie'
   await assertSucceeds(writeIdentityInvitation({ db }))
 })
 
+test('właściciel tworzy pierwsze zaproszenie bez authUid mimo niewielkiego wyprzedzenia zegara klienta', async () => {
+  await seedOwner()
+  await seed([
+    ['users/restaurant-a/employees/employee-new', {
+      aktywny: true,
+      permissionProfileId: 'profile-new',
+      email: 'new@example.com'
+    }],
+    ['users/restaurant-a/permissionProfiles/profile-new', { uprawnienia: {} }]
+  ])
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+  const createdAt = Timestamp.fromMillis(Date.now() + (2 * 60 * 1000))
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db,
+    options: {
+      employeeId: 'employee-new',
+      profileId: 'profile-new',
+      email: 'new@example.com',
+      targetAuthUid: null,
+      createdAt
+    }
+  }))
+})
+
+test('manager zespołu tworzy pierwsze zaproszenie bez authUid', async () => {
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seed([['users/restaurant-a/employees/employee-new', {
+    aktywny: true,
+    permissionProfileId: 'manager-profile',
+    email: 'new@example.com'
+  }]])
+  const db = context({
+    uid: 'manager-auth',
+    email: 'manager@example.com'
+  }).firestore()
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db,
+    options: {
+      employeeId: 'employee-new',
+      profileId: 'manager-profile',
+      email: 'new@example.com',
+      targetAuthUid: null,
+      createdByAuthUid: 'manager-auth'
+    }
+  }))
+})
+
 test('właściciel tworzy zaproszenie urządzenia po odłączeniu wszystkich sesji pracownika', async () => {
   await seedOwner()
   await seedEmployeeAccess()
@@ -741,6 +840,100 @@ test('nowe zaproszenie tego samego celu atomowo unieważnia poprzedni token', as
   })
 })
 
+test('nowe zaproszenie pracownika zastępuje poprzednie także przy zmianie rodzaju technicznego', async () => {
+  const oldTokenHash = 'a'.repeat(64)
+  const newTokenHash = 'b'.repeat(64)
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed(identityInvitationDocuments({
+    tokenHash: oldTokenHash,
+    purpose: 'ACCOUNT_ACTIVATION'
+  }))
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db,
+    options: {
+      tokenHash: newTokenHash,
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${oldTokenHash}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `activationInvitations/${oldTokenHash}`
+    ))).exists(), false)
+    const slot = await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+    ))
+    assert.equal(slot.data().tokenHash, newTokenHash)
+    assert.equal(slot.data().purpose, 'DEVICE_ENROLLMENT')
+  })
+})
+
+test('dwa równoczesne zaproszenia kończą się jednym spójnym tokenem i slotem', async () => {
+  const firstTokenHash = 'a'.repeat(64)
+  const secondTokenHash = 'b'.repeat(64)
+  await seedOwner()
+  await seed([
+    ['users/restaurant-a/employees/employee-1', {
+      aktywny: true,
+      permissionProfileId: 'profile-1',
+      email: 'employee@example.com'
+    }],
+    ['users/restaurant-a/permissionProfiles/profile-1', { uprawnienia: {} }]
+  ])
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+
+  await Promise.all([
+    replaceIdentityInvitation({
+      db,
+      options: { tokenHash: firstTokenHash }
+    }),
+    replaceIdentityInvitation({
+      db,
+      options: { tokenHash: secondTokenHash }
+    })
+  ])
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    const slot = await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+    ))
+    const winningToken = slot.data().tokenHash
+    const losingToken = winningToken === firstTokenHash
+      ? secondTokenHash
+      : firstTokenHash
+    assert.equal([firstTokenHash, secondTokenHash].includes(winningToken), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${winningToken}`
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `activationInvitations/${winningToken}`
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${losingToken}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `activationInvitations/${losingToken}`
+    ))).exists(), false)
+  })
+})
+
 test('manager zespołu tworzy zaproszenie, a zwykły pracownik nie', async () => {
   await seedEmployeeAccess({
     uid: 'manager-auth',
@@ -889,6 +1082,183 @@ test('zaproszenie urządzenia działa tylko dla istniejącego właściwego authU
     purpose: 'DEVICE_ENROLLMENT',
     authTime: newAuthTime
   }))
+})
+
+test('istniejące konto z innej restauracji przyjmuje pierwsze zaproszenie do kolejnej', async () => {
+  await seedEmployeeAccess({
+    restaurantId: 'restaurant-b',
+    uid: 'employee-auth',
+    employeeId: 'employee-b',
+    profileId: 'profile-b'
+  })
+  await seed([
+    ...identityInvitationDocuments(),
+    ['restaurants/restaurant-a', {
+      id: 'restaurant-a',
+      name: 'restaurant-a',
+      ownerAuthUid: 'owner-auth',
+      status: 'active'
+    }],
+    ['users/restaurant-a/employees/employee-1', {
+      aktywny: true,
+      permissionProfileId: 'profile-1'
+    }],
+    ['users/restaurant-a/permissionProfiles/profile-1', { uprawnienia: {} }]
+  ])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertSucceeds(acceptIdentityInvitation({ db }))
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/members/employee-auth'
+    ))).data().status, 'active')
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-b/members/employee-auth'
+    ))).data().status, 'active')
+  })
+})
+
+test('blokada odłącza sesje i zaproszenie, a przywrócenie tworzy wyłącznie nową sesję', async () => {
+  const oldTokenHash = 'a'.repeat(64)
+  const newTokenHash = 'b'.repeat(64)
+  const newAuthTime = AUTH_TIME + 200
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seedEmployeeAccess({
+    restaurantId: 'restaurant-b',
+    uid: 'employee-auth',
+    employeeId: 'employee-b',
+    profileId: 'profile-b'
+  })
+  await seed(identityInvitationDocuments({
+    tokenHash: oldTokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth'
+  }))
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const memberRef = doc(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const oldSessionRef = doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )
+  const blockBatch = writeBatch(ownerDb)
+  blockBatch.update(memberRef, { status: 'blocked' })
+  blockBatch.update(oldSessionRef, {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'owner-auth'
+  })
+  blockBatch.delete(doc(ownerDb, `identityInvitations/${oldTokenHash}`))
+  blockBatch.delete(doc(ownerDb, `activationInvitations/${oldTokenHash}`))
+  blockBatch.delete(doc(
+    ownerDb,
+    'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+  ))
+
+  await assertSucceeds(blockBatch.commit())
+  assert.equal((await getDoc(memberRef)).data().status, 'blocked')
+  assert.equal((await getDoc(oldSessionRef)).data().status, 'disconnected')
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-b/members/employee-auth'
+    ))).data().status, 'active')
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${oldTokenHash}`
+    ))).exists(), false)
+  })
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db: ownerDb,
+    restoreMembershipAuthUid: 'employee-auth',
+    options: {
+      tokenHash: newTokenHash,
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+  assert.equal((await getDoc(memberRef)).data().status, 'active')
+  assert.equal((await getDoc(oldSessionRef)).data().status, 'disconnected')
+
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com',
+    authTime: newAuthTime
+  }).firestore()
+  await assertSucceeds(acceptIdentityInvitation({
+    db: employeeDb,
+    tokenHash: newTokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    authTime: newAuthTime
+  }))
+  const newSession = await getDoc(doc(
+    employeeDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${newAuthTime}`
+  ))
+  assert.equal(newSession.data().status, 'active')
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const oldSession = await getDoc(doc(
+      adminContext.firestore(),
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))
+    assert.equal(oldSession.data().status, 'disconnected')
+  })
+})
+
+test('manager z can_manage_employees blokuje i przywraca dostęp pracownika', async () => {
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seedEmployeeAccess()
+  const managerDb = context({
+    uid: 'manager-auth',
+    email: 'manager@example.com'
+  }).firestore()
+  const memberRef = doc(
+    managerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const sessionRef = doc(
+    managerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )
+  const batch = writeBatch(managerDb)
+  batch.update(memberRef, { status: 'blocked' })
+  batch.update(sessionRef, {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'manager-auth'
+  })
+  await assertSucceeds(batch.commit())
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db: managerDb,
+    restoreMembershipAuthUid: 'employee-auth',
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth',
+      createdByAuthUid: 'manager-auth'
+    }
+  }))
+  assert.equal((await getDoc(memberRef)).data().status, 'active')
+  assert.equal((await getDoc(sessionRef)).data().status, 'disconnected')
 })
 
 test('samo hasło bez zaproszenia nie zatwierdza nowej sesji urządzenia', async () => {
@@ -1059,7 +1429,7 @@ test('sprzątanie usuwa wygasłe zaproszenie wraz z publicznym dokumentem i slot
     assert.equal((await getDoc(doc(adminDb, `activationInvitations/${'c'.repeat(64)}`))).exists(), false)
     assert.equal((await getDoc(doc(
       adminDb,
-      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1__ACCOUNT_ACTIVATION'
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
     ))).exists(), false)
     assert.equal((await getDoc(doc(adminDb, `identityInvitations/${'d'.repeat(64)}`))).exists(), true)
   })

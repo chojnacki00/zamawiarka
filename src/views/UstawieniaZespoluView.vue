@@ -117,30 +117,20 @@
             <label class="form-field"><span>Profil uprawnień *</span><select v-model="form.permissionProfileId"><option value="" disabled>Wybierz profil…</option><option v-for="profile in availablePermissionProfiles" :key="profile.id" :value="profile.id">{{ profile.nazwa }}</option></select></label>
             <p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p>
             <div v-if="editingEmployeeId" class="account-access-card">
-              <strong>Dostęp i urządzenia</strong>
+              <strong>Dostęp pracownika</strong>
               <p v-if="!canUseFirebaseAccountAccess" class="field-note">Zarządzanie nowym dostępem wymaga zalogowania kontem Firebase z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
               <template v-else>
-                <p v-if="accountAccess" class="account-access-status" :class="accountAccess.status">{{ accountAccess.status === 'active' ? 'Aktywne członkostwo' : accountAccess.status === 'pending' ? 'Oczekujące zaproszenie' : 'Dostęp zablokowany' }}</p>
-                <template v-if="!accountAccess">
-                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Utwórz zaproszenie' }}</button>
-                  <small>Zaproszenie użyje adresu e-mail zapisanego w danych pracownika. Aplikacja nie wysyła go automatycznie.</small>
+                <template v-if="accountAccess?.status === 'blocked'">
+                  <p class="account-access-status blocked">Dostęp zablokowany</p>
+                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="restoreEmployeeAccess">{{ isAccountActionPending ? 'Przywracanie…' : 'Przywróć dostęp' }}</button>
+                  <small>Przywrócenie nie uruchomi starych urządzeń. Pracownik otrzyma nowe zaproszenie.</small>
                 </template>
-                <template v-else-if="accountAccess.status === 'active'">
-                  <div class="device-actions">
-                    <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteDevice">Dodaj urządzenie</button>
-                    <button class="block-access-button" type="button" :disabled="isAccountActionPending || !activeDevices.length" @click="disconnectEveryDevice">Odłącz wszystkie urządzenia</button>
+                <template v-else>
+                  <div class="access-actions">
+                    <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Utwórz zaproszenie' }}</button>
+                    <button v-if="accountAccess?.accessType === 'membership'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp</button>
                   </div>
-                  <div v-if="!activeDevices.length" class="inline-empty">Brak aktywnych urządzeń.</div>
-                  <article v-for="device in activeDevices" :key="device.sessionId" class="device-card">
-                    <span><strong>{{ device.deviceName || 'Urządzenie bez nazwy' }}</strong><small>{{ device.platform || 'Brak opisu platformy' }}</small><small>Dodano: {{ formatDeviceDate(device.addedAt) }} · Ostatnia aktywność: {{ formatDeviceDate(device.lastActiveAt) }}</small></span>
-                    <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="disconnectOneDevice(device)">Odłącz</button>
-                  </article>
-                  <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp do restauracji</button>
-                </template>
-                <template v-else-if="accountAccess.status === 'pending'">
-                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">Wygeneruj nowe zaproszenie</button>
-                  <button class="block-access-button" type="button" :disabled="isAccountActionPending" @click="cancelEmployeeInvitation">Anuluj zaproszenie</button>
-                  <small>Nowy link unieważni poprzednie zaproszenie.</small>
+                  <small>Nowe zaproszenie zastąpi poprzednie. Aplikacja nie wysyła go automatycznie.</small>
                 </template>
                 <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
               </template>
@@ -171,11 +161,11 @@
     <div v-if="identityInvitation" class="app-dialog-overlay">
       <div class="app-dialog-card invitation-dialog">
         <button class="dialog-close" type="button" aria-label="Zamknij" @click="closeIdentityInvitation">×</button>
-        <div class="app-dialog-title">{{ identityInvitation.purpose === invitationPurposes.DEVICE_ENROLLMENT ? 'Dodaj urządzenie' : 'Aktywuj konto pracownika' }}</div>
+        <div class="app-dialog-title">Zaproszenie dla pracownika</div>
         <p>Zeskanuj kod na urządzeniu pracownika albo przekaż dokładnie ten sam link.</p>
         <img v-if="identityInvitation.qrDataUrl" class="invitation-qr" :src="identityInvitation.qrDataUrl" alt="Kod QR zaproszenia">
         <label class="form-field"><span>Link aktywacyjny</span><input :value="identityInvitation.link" type="text" readonly></label>
-        <small>Ważne do: {{ formatDeviceDate(identityInvitation.expiresAt) }}</small>
+        <small>Ważne do: {{ formatInvitationDate(identityInvitation.expiresAt) }}</small>
         <button class="invite-button full" type="button" @click="copyActivationLink">Kopiuj link</button>
         <button class="block-access-button full" type="button" :disabled="isAccountActionPending" @click="cancelVisibleInvitation">Anuluj zaproszenie</button>
         <button class="invite-button full" type="button" :disabled="isAccountActionPending" @click="replaceVisibleInvitation">Wygeneruj nowe zaproszenie</button>
@@ -202,7 +192,6 @@ import { useScheduleEmploymentProfilesStore } from '../stores/scheduleEmployment
 import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
 import { buildActivationUrl } from '../config/publicAppUrl.js'
-import { INVITATION_PURPOSES } from '../utils/identityInvitations.js'
 import { getCleanupFailureDetails } from '../utils/temporaryDataCleanup.js'
 import {
   COMPENSATION_TYPES,
@@ -239,17 +228,12 @@ const openSections = ref(closedSections())
 const sectionElements = ref({})
 const assignmentRateInputs = ref({})
 const accountAccess = ref(null)
-const employeeDevices = ref([])
 const identityInvitation = ref(null)
-const invitationPurposes = INVITATION_PURPOSES
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
 const actionFeedback = ref('')
 const temporaryCleanupWarning = ref('')
 let actionFeedbackTimer = null
-const activeDevices = computed(() => employeeDevices.value.filter(
-  device => device.status === 'active'
-))
 
 const createEmptyForm = () => ({
   imie: '',
@@ -459,7 +443,6 @@ const openForm = (employee = null) => {
   openSections.value = closedSections()
   formError.value = ''
   accountAccess.value = null
-  employeeDevices.value = []
   identityInvitation.value = null
   accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
@@ -475,7 +458,6 @@ const cancelForm = () => {
   editingEmployeeId.value = null
   formError.value = ''
   accountAccess.value = null
-  employeeDevices.value = []
   identityInvitation.value = null
   accountAccessMessage.value = ''
   nextTick(() => {
@@ -631,9 +613,6 @@ const loadEmployeeAccountAccess = async employeeId => {
   try {
     accountAccess.value = await accountSessionStore
       .getEmployeeAccountAccess(employeeId)
-    employeeDevices.value = accountAccess.value?.accessType === 'membership'
-      ? await accountSessionStore.getEmployeeDevices(accountAccess.value.authUid)
-      : []
   } catch (error) {
     console.error('Błąd odczytu dostępu pracownika:', error)
     accountAccessMessage.value =
@@ -651,10 +630,11 @@ const inviteEmployee = async () => {
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
   try {
-    await showIdentityInvitation(await accountSessionStore.createInvitation({
-      employee: { id: editingEmployeeId.value },
-      purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION
-    }))
+    await showIdentityInvitation(
+      await accountSessionStore.createEmployeeAccessInvitation({
+        employee: { id: editingEmployeeId.value }
+      })
+    )
     await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
       'Zaproszenie zapisano. Przekaż pracownikowi link aktywacyjny — aplikacja nie wysłała wiadomości z zaproszeniem.'
@@ -701,34 +681,9 @@ const closeIdentityInvitation = () => {
   identityInvitation.value = null
 }
 
-const inviteDevice = async () => {
-  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
-  isAccountActionPending.value = true
-  accountAccessMessage.value = ''
-  try {
-    await showIdentityInvitation(await accountSessionStore.createInvitation({
-      employee: { id: editingEmployeeId.value },
-      purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
-      targetAuthUid: accountAccess.value.authUid
-    }))
-  } catch (error) {
-    accountAccessMessage.value = getAccountActionError(
-      error,
-      'Nie udało się utworzyć zaproszenia urządzenia.'
-    )
-  } finally {
-    isAccountActionPending.value = false
-  }
-}
-
 const replaceVisibleInvitation = async () => {
-  const purpose = identityInvitation.value?.purpose
-  if (!purpose) return
-  if (purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
-    await inviteDevice()
-  } else {
-    await inviteEmployee()
-  }
+  if (!identityInvitation.value) return
+  await inviteEmployee()
 }
 
 const cancelVisibleInvitation = async () => {
@@ -754,50 +709,9 @@ const cancelVisibleInvitation = async () => {
   }
 }
 
-const formatDeviceDate = value => {
+const formatInvitationDate = value => {
   const date = value?.toDate?.() || (value instanceof Date ? value : new Date(value))
   return Number.isNaN(date.getTime()) ? 'brak danych' : date.toLocaleString('pl-PL')
-}
-
-const disconnectOneDevice = async device => {
-  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
-  isAccountActionPending.value = true
-  try {
-    await accountSessionStore.disconnectDevice({
-      authUid: accountAccess.value.authUid,
-      sessionId: device.sessionId
-    })
-    employeeDevices.value = await accountSessionStore
-      .getEmployeeDevices(accountAccess.value.authUid)
-    accountAccessMessage.value = 'Urządzenie zostało odłączone.'
-  } catch (error) {
-    accountAccessMessage.value = getAccountActionError(
-      error,
-      'Nie udało się odłączyć urządzenia.'
-    )
-  } finally {
-    isAccountActionPending.value = false
-  }
-}
-
-const disconnectEveryDevice = async () => {
-  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
-  isAccountActionPending.value = true
-  try {
-    const count = await accountSessionStore.disconnectAllDevices(
-      accountAccess.value.authUid
-    )
-    employeeDevices.value = await accountSessionStore
-      .getEmployeeDevices(accountAccess.value.authUid)
-    accountAccessMessage.value = `Odłączono urządzenia: ${count}.`
-  } catch (error) {
-    accountAccessMessage.value = getAccountActionError(
-      error,
-      'Nie udało się odłączyć urządzeń.'
-    )
-  } finally {
-    isAccountActionPending.value = false
-  }
 }
 
 const blockEmployeeAccess = async () => {
@@ -809,12 +723,9 @@ const blockEmployeeAccess = async () => {
     await accountSessionStore.blockRestaurantAccess(
       accountAccess.value.authUid
     )
-    accountAccess.value = {
-      ...accountAccess.value,
-      status: 'blocked'
-    }
+    await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
-      'Dostęp tego konta do restauracji został zablokowany.'
+      'Dostęp został zablokowany, a dotychczasowe urządzenia odłączone.'
   } catch (error) {
     accountAccessMessage.value =
       'Nie udało się zablokować dostępu.'
@@ -823,26 +734,25 @@ const blockEmployeeAccess = async () => {
   }
 }
 
-const cancelEmployeeInvitation = async () => {
-  if (
-    !accountAccess.value?.id ||
-    !editingEmployeeId.value ||
-    isAccountActionPending.value
-  ) return
-
+const restoreEmployeeAccess = async () => {
+  if (!editingEmployeeId.value || isAccountActionPending.value) return
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
   try {
-    await accountSessionStore.cancelInvitation({
-      invitationId: accountAccess.value.id,
-      employeeId: editingEmployeeId.value
-    })
-    accountAccess.value = null
-    accountAccessMessage.value = 'Zaproszenie zostało anulowane i usunięte.'
+    await showIdentityInvitation(
+      await accountSessionStore.createEmployeeAccessInvitation({
+        employee: { id: editingEmployeeId.value },
+        restoreBlocked: true
+      })
+    )
+    await loadEmployeeAccountAccess(editingEmployeeId.value)
+    accountAccessMessage.value =
+      'Dostęp przywrócono. Przekaż pracownikowi nowe zaproszenie.'
+    showActionFeedback('Przywrócono dostęp i utworzono zaproszenie.')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,
-      'Nie udało się anulować zaproszenia.'
+      'Nie udało się przywrócić dostępu.'
     )
   } finally {
     isAccountActionPending.value = false
@@ -913,9 +823,7 @@ const generatePairingCode = async () => {
 .invite-button:active:not(:disabled), .block-access-button:active:not(:disabled) { transform: scale(.97); filter: brightness(.94); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .12); }
 .invite-button:disabled, .block-access-button:disabled { opacity: .55; }
 .account-access-message { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
-.device-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.device-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px; border: 1px solid #dbeafe; border-radius: 11px; background: #fff; }
-.device-card.disconnected { opacity: .58; }.device-card span { display: grid; min-width: 0; gap: 3px; }.device-card small { color: #64748b; font-size: 11px; line-height: 1.35; }.device-card button { flex: 0 0 auto; }
+.access-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
 .invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
 .action-feedback { position: fixed; z-index: 10050; top: calc(18px + env(safe-area-inset-top)); left: 50%; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(15, 23, 42, .94); box-shadow: 0 8px 24px rgba(15, 23, 42, .24); font-size: 14px; font-weight: 750; text-align: center; }
@@ -925,6 +833,6 @@ const generatePairingCode = async () => {
 .accordion-card.open { border-color: #7dd3fc; background: #f0f9ff; box-shadow: 0 5px 18px rgba(14, 165, 233, .13); }
 .accordion-card.open .accordion-toggle { background: #e8f7ff; }
 .accordion-card.open .accordion-content { background: rgba(255, 255, 255, .8); }
-@media (max-width: 380px) { .two-columns, .device-actions { grid-template-columns: 1fr; }.pin-row { grid-template-columns: 82px 44px minmax(0, 1fr); }.pin-row .pin-input { width: 82px; }.pin-row button { padding: 0 7px; font-size: 12px; } }
+@media (max-width: 380px) { .two-columns, .access-actions { grid-template-columns: 1fr; }.pin-row { grid-template-columns: 82px 44px minmax(0, 1fr); }.pin-row .pin-input { width: 82px; }.pin-row button { padding: 0 7px; font-size: 12px; } }
 @media (min-width: 760px) { .employee-form, .employee-list, .team-toolbar { max-width: 720px; margin-right: auto; margin-left: auto; box-sizing: border-box; } }
 </style>

@@ -11,7 +11,6 @@
           <strong>{{ invitation.restaurantNameSnapshot }}</strong>
           <span>E-mail: {{ invitation.maskedEmail }}</span>
           <span>Ważne do: {{ formatDate(invitation.expiresAt) }}</span>
-          <span>{{ invitationPurposeLabel }}</span>
         </div>
 
         <template v-if="step === 'email'">
@@ -20,8 +19,14 @@
           <button class="primary-button" type="button" :disabled="isBusy || !email" @click="checkEmail">Dalej</button>
         </template>
 
+        <template v-else-if="step === 'choice'">
+          <p>Utwórz nowe konto albo zaloguj się, jeżeli masz już konto GastroManager.</p>
+          <button class="primary-button" type="button" :disabled="isBusy" @click="step = 'register'">Utwórz konto</button>
+          <button class="secondary-button" type="button" :disabled="isBusy" @click="step = 'login'">Mam już konto</button>
+        </template>
+
         <template v-else-if="step === 'register'">
-          <p>Utwórz konto GastroManager. Po rejestracji Firebase wyśle wiadomość potwierdzającą e-mail.</p>
+          <p>Utwórz konto GastroManager. Po rejestracji wyślemy wiadomość potwierdzającą e-mail.</p>
           <label><span>Hasło</span><input v-model="password" type="password" autocomplete="new-password" @input="passwordError = ''"></label>
           <label><span>Powtórz hasło</span><input v-model="passwordConfirmation" type="password" autocomplete="new-password" @input="passwordError = ''"></label>
           <p v-if="passwordError" class="field-error">{{ passwordError }}</p>
@@ -33,13 +38,14 @@
           <p>Zaloguj się istniejącym kontem przypisanym do tego zaproszenia.</p>
           <label><span>Hasło</span><input v-model="password" type="password" autocomplete="current-password"></label>
           <button class="primary-button" type="button" :disabled="isBusy" @click="login">Zaloguj się</button>
+          <button class="secondary-button" type="button" :disabled="isBusy" @click="resetPassword">Nie pamiętam hasła</button>
           <button v-if="invitation.purpose === purposes.ACCOUNT_ACTIVATION" class="secondary-button" type="button" :disabled="isBusy" @click="step = 'register'">Nie mam konta</button>
         </template>
 
         <template v-else-if="step === 'verify'">
           <h2>Potwierdź adres e-mail</h2>
-          <p>Potwierdź adres <strong>{{ email }}</strong> w wiadomości wysłanej przez Firebase, a następnie wróć do tego linku.</p>
-          <p v-if="useFirebaseEmulators" class="emulator-hint">W Emulatorze link weryfikacyjny znajdziesz w Emulator UI, w sekcji Authentication.</p>
+          <p>Potwierdź adres <strong>{{ email }}</strong> w otrzymanej wiadomości, a następnie wróć do tego linku.</p>
+          <p v-if="useFirebaseEmulators" class="emulator-hint">W Emulatorze link weryfikacyjny znajdziesz w sekcji Authentication.</p>
           <button class="primary-button" type="button" :disabled="isBusy" @click="checkVerification">Sprawdź potwierdzenie</button>
           <button class="secondary-button" type="button" :disabled="isBusy" @click="resendVerification">Wyślij wiadomość ponownie</button>
           <button class="secondary-button" type="button" :disabled="isBusy" @click="changeAccount">Wyloguj i wróć</button>
@@ -72,12 +78,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut
 } from 'firebase/auth'
@@ -118,11 +124,6 @@ const passwordConfirmation = ref('')
 const passwordError = ref('')
 const deviceName = ref(suggestDeviceName())
 const step = ref('email')
-const invitationPurposeLabel = computed(() => (
-  invitation.value?.purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT
-    ? 'Zaproszenie dotyczy dodania kolejnego urządzenia.'
-    : 'Zaproszenie dotyczy aktywacji konta pracownika.'
-))
 
 const formatDate = value => {
   const date = value?.toDate?.() || new Date(value)
@@ -204,8 +205,7 @@ const checkEmail = () => runAction(async () => {
     step.value = 'login'
     return
   }
-  const methods = await fetchSignInMethodsForEmail(auth, email.value)
-  step.value = methods.length ? 'login' : 'register'
+  step.value = 'choice'
 })
 
 const afterAuthentication = async user => {
@@ -232,14 +232,17 @@ const register = () => {
       step.value = 'verify'
       password.value = ''
       passwordConfirmation.value = ''
+      auth.languageCode = 'pl'
       await sendEmailVerification(credential.user, {
         url: buildActivationUrl({ token })
       })
-      message.value = 'Wysłaliśmy wiadomość weryfikacyjną Firebase.'
+      message.value = 'Wysłaliśmy wiadomość weryfikacyjną.'
     } catch (error) {
       if (error?.code === 'auth/email-already-in-use') {
         step.value = 'login'
-        throw new Error('Konto z tym adresem już istnieje. Zaloguj się.')
+        throw new Error(
+          'Konto z tym adresem już istnieje. Zaloguj się lub skorzystaj z przypomnienia hasła.'
+        )
       }
       throw error
     }
@@ -252,8 +255,20 @@ const login = () => runAction(async () => {
   await afterAuthentication(credential.user)
 })
 
+const resetPassword = () => runAction(async () => {
+  if (!email.value) throw new Error('Najpierw wpisz adres e-mail.')
+  auth.languageCode = 'pl'
+  await sendPasswordResetEmail(auth, email.value, {
+    url: buildActivationUrl({ token })
+  })
+  password.value = ''
+  message.value =
+    'Jeżeli konto istnieje, wysłaliśmy instrukcję zmiany hasła.'
+})
+
 const resendVerification = () => runAction(async () => {
   if (!auth.currentUser) throw new Error('Najpierw zaloguj się ponownie.')
+  auth.languageCode = 'pl'
   await sendEmailVerification(auth.currentUser, {
     url: buildActivationUrl({ token })
   })

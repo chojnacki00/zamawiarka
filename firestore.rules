@@ -177,14 +177,25 @@ service cloud.firestore {
       targetAuthUid
     ) {
       let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(targetAuthUid);
-      let member = get(memberPath);
+      let member = getAfter(memberPath);
       return targetAuthUid is string &&
-        exists(memberPath) &&
+        existsAfter(memberPath) &&
         member.data.authUid == targetAuthUid &&
         member.data.restaurantId == restaurantId &&
         member.data.employeeId == employeeId &&
         member.data.role == 'employee' &&
         member.data.status == 'active';
+    }
+
+    function invitationWindowIsValid(invitation) {
+      return invitation.createdAt is timestamp &&
+        invitation.expiresAt is timestamp &&
+        invitation.createdAt >= request.time - duration.value(5, 'm') &&
+        invitation.createdAt <= request.time + duration.value(5, 'm') &&
+        invitation.expiresAt > request.time &&
+        invitation.expiresAt <= request.time + duration.value(10085, 'm') &&
+        invitation.expiresAt ==
+          invitation.createdAt + duration.value(7, 'd');
     }
 
     function pendingInvitationIsValid(invitation, invitationId) {
@@ -527,6 +538,7 @@ service cloud.firestore {
           ]) &&
           request.resource.data.id == slotId &&
           request.resource.data.restaurantId == restaurantId &&
+          slotId == restaurantId + '__' + request.resource.data.employeeId &&
           getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
           getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
           getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.purpose == request.resource.data.purpose &&
@@ -544,8 +556,8 @@ service cloud.firestore {
           ]) &&
           request.resource.data.id == slotId &&
           request.resource.data.restaurantId == restaurantId &&
+          slotId == restaurantId + '__' + request.resource.data.employeeId &&
           request.resource.data.employeeId == resource.data.employeeId &&
-          request.resource.data.purpose == resource.data.purpose &&
           request.resource.data.tokenHash != resource.data.tokenHash &&
           getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
           getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
@@ -590,6 +602,9 @@ service cloud.firestore {
         ]) &&
         request.resource.data.id == invitationId &&
         request.resource.data.tokenHash == invitationId &&
+        request.resource.data.slotId ==
+          request.resource.data.restaurantId + '__' +
+          request.resource.data.employeeId &&
         request.resource.data.purpose in [
           'ACCOUNT_ACTIVATION',
           'DEVICE_ENROLLMENT'
@@ -605,14 +620,7 @@ service cloud.firestore {
         request.resource.data.emailHash.size() == 64 &&
         request.resource.data.status == 'pending' &&
         request.resource.data.createdByAuthUid == request.auth.uid &&
-        request.resource.data.createdAt is timestamp &&
-        request.resource.data.expiresAt is timestamp &&
-        request.resource.data.createdAt <= request.time &&
-        request.resource.data.expiresAt <=
-          request.time + duration.value(7, 'd') &&
-        request.resource.data.expiresAt > request.time &&
-        request.resource.data.expiresAt ==
-          request.resource.data.createdAt + duration.value(7, 'd') &&
+        invitationWindowIsValid(request.resource.data) &&
         (
           (
             request.resource.data.purpose == 'ACCOUNT_ACTIVATION' &&
