@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { webcrypto } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { buildActivationUrl } from '../src/config/publicAppUrl.js'
 import {
+  assertDeviceEnrollmentTargetMembership,
   assertEmailMatchesPublicInvitation,
   assertPrivateInvitationForAccount,
   assertPublicInvitationIsActive,
@@ -164,6 +166,49 @@ test('zaproszenie urządzenia jest związane z właściwym authUid', async () =>
     purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
     now: new Date('2026-09-01T10:00:00Z')
   }), /inne konto/)
+})
+
+test('nowe urządzenie wymaga aktywnego członkostwa właściwego pracownika', () => {
+  const membership = {
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    role: 'employee',
+    status: 'active'
+  }
+  assert.equal(assertDeviceEnrollmentTargetMembership({
+    membership,
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    targetAuthUid: 'auth-1'
+  }), true)
+  assert.throws(() => assertDeviceEnrollmentTargetMembership({
+    membership: { ...membership, status: 'blocked' },
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    targetAuthUid: 'auth-1'
+  }), /aktywnego członkostwa/)
+  assert.throws(() => assertDeviceEnrollmentTargetMembership({
+    membership,
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-other',
+    targetAuthUid: 'auth-1'
+  }), /aktywnego członkostwa/)
+})
+
+test('tworzenie zaproszenia czeka na zakończenie czyszczenia starego slotu', async () => {
+  const source = await readFile(
+    new URL('../src/stores/accountSessionStore.js', import.meta.url),
+    'utf8'
+  )
+  const cleanup = source.indexOf(
+    'const invitationCleanup = await cleanupExpiredInvitations'
+  )
+  const transaction = source.indexOf('await runTransaction(db, async transaction =>', cleanup)
+
+  assert.ok(cleanup >= 0)
+  assert.ok(transaction > cleanup)
+  assert.doesNotMatch(source, /void cleanupExpiredInvitations/)
 })
 
 test('rejestr urządzenia nie zawiera PIN-u, hasła ani surowego sekretu', () => {
