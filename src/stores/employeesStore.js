@@ -139,5 +139,14 @@ export const useEmployeesStore = defineStore('employees', () => {
     } catch (error) { throw error }
   }
 
-  return { employees, isLoading, fetchEmployees, addEmployee, updateEmployee, deleteEmployee }
+  const clearSensitiveData = () => {
+    if (unsubscribeEmployees) unsubscribeEmployees()
+    unsubscribeEmployees = null
+    listenerUid = null
+    listenerReadyPromise = null
+    employees.value = []
+    isLoading.value = false
+  }
+
+  return { employees, isLoading, fetchEmployees, addEmployee, updateEmployee, deleteEmployee, clearSensitiveData }
 })

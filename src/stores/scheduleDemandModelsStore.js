@@ -222,6 +222,16 @@ export const useScheduleDemandModelsStore = defineStore(
       }
     }
 
+    const clearSensitiveData = () => {
+      if (unsubscribeModels) unsubscribeModels()
+      unsubscribeModels = null
+      listenerRestaurantId = null
+      listenerReadyPromise = null
+      models.value = []
+      isLoading.value = false
+      isSaving.value = false
+    }
+
     return {
       models,
       isLoading,
@@ -230,7 +240,8 @@ export const useScheduleDemandModelsStore = defineStore(
       fetchModelById,
       addModel,
       updateModel,
-      deleteModel
+      deleteModel,
+      clearSensitiveData
     }
   }
 )

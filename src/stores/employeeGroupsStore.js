@@ -117,5 +117,14 @@ export const useEmployeeGroupsStore = defineStore('employeeGroups', () => {
     if (!unsubscribeGroups) groups.value = groups.value.filter(group => group.id !== groupId)
   }
 
-  return { groups, isLoading, fetchGroups, saveGroup, deleteGroup }
+  const clearSensitiveData = () => {
+    if (unsubscribeGroups) unsubscribeGroups()
+    unsubscribeGroups = null
+    listenerRestaurantId = null
+    listenerReadyPromise = null
+    groups.value = []
+    isLoading.value = false
+  }
+
+  return { groups, isLoading, fetchGroups, saveGroup, deleteGroup, clearSensitiveData }
 })

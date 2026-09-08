@@ -2115,6 +2115,20 @@ export const useScheduleDraftsStore = defineStore(
       return result
     }
 
+    const clearSensitiveData = () => {
+      schedules.value = []
+      currentSchedule.value = null
+      currentDays.value = []
+      currentPlanningContext.value = null
+      planningEmployees.value = []
+      planningPositions.value = []
+      planningEmploymentProfiles.value = []
+      planningGeneratorSettings.value = {}
+      availabilityEntries.value = []
+      isLoading.value = false
+      isCreating.value = false
+    }
+
     return {
       schedules,
       currentSchedule,
@@ -2139,7 +2153,8 @@ export const useScheduleDraftsStore = defineStore(
       updateWorkingShift,
       addExtraShift,
       removeExtraShift,
-      updateWorkingShiftAssessments
+      updateWorkingShiftAssessments,
+      clearSensitiveData
     }
   }
 )

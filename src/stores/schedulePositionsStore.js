@@ -137,5 +137,14 @@ export const useSchedulePositionsStore = defineStore('schedulePositions', () => 
     return updatePosition(positionId, { ...position, active })
   }
 
-  return { positions, isLoading, fetchPositions, addPosition, updatePosition, deletePosition, setPositionActive }
+  const clearSensitiveData = () => {
+    if (unsubscribePositions) unsubscribePositions()
+    unsubscribePositions = null
+    listenerUid = null
+    listenerReadyPromise = null
+    positions.value = []
+    isLoading.value = false
+  }
+
+  return { positions, isLoading, fetchPositions, addPosition, updatePosition, deletePosition, setPositionActive, clearSensitiveData }
 })

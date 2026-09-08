@@ -13,6 +13,8 @@ import {
 import {
   hasStoredLegacyPinSession,
   isPublicActivationRoute,
+  LOCAL_PIN_LOCK_PATH,
+  resolveAccountActionPath,
   resolveRouteAuthenticationRedirect
 } from './utils/routeAccess.js'
 
@@ -26,6 +28,7 @@ const routes = [
   { path: '/rejestracja', name: 'Rejestracja', component: () => import('./views/RegisterView.vue') },
   { path: '/aktywacja', name: 'Aktywacja', component: () => import('./views/ActivationView.vue') },
   { path: '/konto', name: 'KontoDostep', component: () => import('./views/AccountAccessView.vue') },
+  { path: LOCAL_PIN_LOCK_PATH, name: 'BlokadaPIN', component: () => import('./views/LocalPinLockView.vue') },
   { path: '/', name: 'Home', component: HomeView },
   { path: '/zamawiarka', name: 'Zamawiarka', component: ZamawiarkaView },
   { path: '/rentownosc', name: 'Rentownosc', component: RentownoscView },
@@ -111,10 +114,28 @@ router.beforeEach(async (to, from, next) => {
 
   if (
     firebaseUser &&
+    accountSessionStore.isPinLocked &&
+    to.path !== LOCAL_PIN_LOCK_PATH
+  ) {
+    return next(LOCAL_PIN_LOCK_PATH)
+  }
+
+  if (
+    firebaseUser &&
+    to.path === LOCAL_PIN_LOCK_PATH &&
+    !accountSessionStore.isPinLocked
+  ) {
+    return next(accountSessionStore.requiresAccountAction ? '/konto' : '/')
+  }
+
+  if (
+    firebaseUser &&
     accountSessionStore.requiresAccountAction &&
     !['/konto', '/aktywacja'].includes(to.path)
   ) {
-    return next('/konto')
+    return next(resolveAccountActionPath({
+      isPinLocked: accountSessionStore.isPinLocked
+    }))
   }
 
   const hasSavedEmployeeSession = hasStoredLegacyPinSession(localStorage)

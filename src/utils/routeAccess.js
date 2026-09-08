@@ -5,7 +5,12 @@ const FIREBASE_PUBLIC_PATHS = new Set([
 ])
 
 export const LEGACY_PIN_LOGIN_PATH = '/logowanie'
+export const LOCAL_PIN_LOCK_PATH = '/pin'
 export const ACTIVATION_ROUTE_NAME = 'Aktywacja'
+
+export const resolveAccountActionPath = ({
+  isPinLocked = false
+} = {}) => isPinLocked ? LOCAL_PIN_LOCK_PATH : '/konto'
 
 export const isPublicActivationRoute = route => (
   route?.name === ACTIVATION_ROUTE_NAME ||
@@ -39,6 +44,12 @@ export const resolveAuthenticationRedirect = ({
   const normalizedPath = String(path || '/').split(/[?#]/, 1)[0] || '/'
 
   if (normalizedPath === '/konto') {
+    return hasFirebaseSession ? null : '/login'
+  }
+
+  // Nowy ekran lokalnego PIN-u należy wyłącznie do kont Firebase.
+  // Sesja legacy nadal korzysta z osobnej trasy /logowanie.
+  if (normalizedPath === LOCAL_PIN_LOCK_PATH) {
     return hasFirebaseSession ? null : '/login'
   }
 

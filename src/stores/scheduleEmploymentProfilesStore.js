@@ -210,6 +210,14 @@ export const useScheduleEmploymentProfilesStore = defineStore('scheduleEmploymen
   }),
 
   actions: {
+    clearSensitiveData() {
+      if (unsubscribeEmploymentProfiles) unsubscribeEmploymentProfiles()
+      unsubscribeEmploymentProfiles = null
+      employmentProfilesRestaurantId = null
+      employmentProfilesReadyPromise = null
+      this.$reset()
+    },
+
     async getRestaurantId() {
       return useAuthorizationStore().requireRestaurantId()
     },
