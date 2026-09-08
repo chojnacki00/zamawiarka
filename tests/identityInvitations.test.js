@@ -8,10 +8,12 @@ import {
   assertEmailMatchesPublicInvitation,
   assertPrivateInvitationForAccount,
   assertPublicInvitationIsActive,
+  buildInvitationSlotId,
   buildSafePublicInvitationPreview,
   createIdentityInvitationBundle,
   hashIdentityValue,
-  INVITATION_PURPOSES
+  INVITATION_PURPOSES,
+  resolveEmployeeInvitationTarget
 } from '../src/utils/identityInvitations.js'
 import {
   buildDeviceSessionDocument,
@@ -254,4 +256,72 @@ test('skrót tokenu jest deterministyczny, ale nie ujawnia tokenu', async () => 
   const second = await hashIdentityValue('sekretny-token', { cryptoImpl: webcrypto })
   assert.equal(first, second)
   assert.equal(first.includes('sekretny-token'), false)
+})
+
+test('oba techniczne rodzaje zaproszenia korzystają z jednego slotu pracownika', async () => {
+  const account = await createBundle(INVITATION_PURPOSES.ACCOUNT_ACTIVATION)
+  const device = await createBundle(INVITATION_PURPOSES.DEVICE_ENROLLMENT)
+
+  assert.equal(buildInvitationSlotId({
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION
+  }), 'restaurant-a__employee-1')
+  assert.equal(account.slotId, 'restaurant-a__employee-1')
+  assert.equal(device.slotId, account.slotId)
+})
+
+test('rodzaj zaproszenia jest rozstrzygany bez wyboru managera', () => {
+  assert.deepEqual(resolveEmployeeInvitationTarget(), {
+    purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
+    targetAuthUid: null,
+    reactivateMembership: false
+  })
+
+  const activeMembership = {
+    authUid: 'auth-1',
+    role: 'employee',
+    status: 'active'
+  }
+  assert.deepEqual(resolveEmployeeInvitationTarget({
+    membership: activeMembership
+  }), {
+    purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
+    targetAuthUid: 'auth-1',
+    reactivateMembership: false
+  })
+  assert.throws(() => resolveEmployeeInvitationTarget({
+    membership: { ...activeMembership, status: 'blocked' }
+  }), /zablokowany/)
+  assert.deepEqual(resolveEmployeeInvitationTarget({
+    membership: { ...activeMembership, status: 'blocked' },
+    restoreBlocked: true
+  }), {
+    purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
+    targetAuthUid: 'auth-1',
+    reactivateMembership: true
+  })
+})
+
+test('przywrócenie może zweryfikować zablokowane członkostwo, ale zwykłe zaproszenie nie', () => {
+  const membership = {
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    role: 'employee',
+    status: 'blocked'
+  }
+  assert.throws(() => assertDeviceEnrollmentTargetMembership({
+    membership,
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    targetAuthUid: 'auth-1'
+  }), /aktywnego członkostwa/)
+  assert.equal(assertDeviceEnrollmentTargetMembership({
+    membership,
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    targetAuthUid: 'auth-1',
+    allowBlocked: true
+  }), true)
 })
