@@ -10,8 +10,13 @@ const readSource = relativePath => readFile(
 test('ręczne Wyloguj i bezczynność korzystają z jednej funkcji centralnej blokady', async () => {
   const source = await readSource('src/App.vue')
   const calls = source.match(/accountSessionStore\.lockApplication\(\)/g) || []
+  const pinRedirects = source.match(/redirectToLocalPin\(\)/g) || []
 
   assert.equal(calls.length, 2)
+  assert.equal(pinRedirects.length, 1)
+  assert.doesNotMatch(source, /router\.replace\(LOCAL_PIN_LOCK_PATH\)/)
+  assert.match(source, /createLocalPinRedirector\(router\)/)
+  assert.match(source, /route\.matched\.length > 0/)
   assert.match(source, /const handleLogout = async \(\) =>/)
   assert.match(source, /const resetInactivityTimer = \(\) =>/)
   assert.match(source, /registerApplicationLockCleanup/)

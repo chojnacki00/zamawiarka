@@ -12,6 +12,53 @@ export const resolveAccountActionPath = ({
   isPinLocked = false
 } = {}) => isPinLocked ? LOCAL_PIN_LOCK_PATH : '/konto'
 
+const normalizeRoutePath = path => (
+  String(path || '/').split(/[?#]/, 1)[0] || '/'
+)
+
+export const resolveLocalPinGuardRedirect = ({
+  path,
+  isPinLocked = false,
+  requiresAccountAction = false
+} = {}) => {
+  const normalizedPath = normalizeRoutePath(path)
+
+  if (isPinLocked) {
+    return normalizedPath === LOCAL_PIN_LOCK_PATH
+      ? null
+      : LOCAL_PIN_LOCK_PATH
+  }
+
+  if (normalizedPath === LOCAL_PIN_LOCK_PATH) {
+    return requiresAccountAction ? '/konto' : '/'
+  }
+
+  return null
+}
+
+export const createLocalPinRedirector = router => {
+  let pendingNavigation = null
+
+  return async () => {
+    if (router.currentRoute.value.path === LOCAL_PIN_LOCK_PATH) return false
+    if (pendingNavigation) {
+      await pendingNavigation
+      return false
+    }
+
+    pendingNavigation = Promise.resolve(
+      router.replace(LOCAL_PIN_LOCK_PATH)
+    )
+
+    try {
+      await pendingNavigation
+      return true
+    } finally {
+      pendingNavigation = null
+    }
+  }
+}
+
 export const isPublicActivationRoute = route => (
   route?.name === ACTIVATION_ROUTE_NAME ||
   String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
@@ -41,7 +88,7 @@ export const resolveAuthenticationRedirect = ({
   hasFirebaseSession = false,
   hasLegacyPinSession = false
 } = {}) => {
-  const normalizedPath = String(path || '/').split(/[?#]/, 1)[0] || '/'
+  const normalizedPath = normalizeRoutePath(path)
 
   if (normalizedPath === '/konto') {
     return hasFirebaseSession ? null : '/login'
