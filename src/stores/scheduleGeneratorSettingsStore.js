@@ -105,6 +105,10 @@ export const useScheduleGeneratorSettingsStore = defineStore('scheduleGeneratorS
   }),
 
   actions: {
+    clearSensitiveData() {
+      this.$reset()
+    },
+
     async getRestaurantId() {
       return useAuthorizationStore().requireRestaurantId()
     },

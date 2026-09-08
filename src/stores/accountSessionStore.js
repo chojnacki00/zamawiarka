@@ -3,7 +3,6 @@ import { defineStore } from 'pinia'
 import {
   collection,
   collectionGroup,
-  clearIndexedDbPersistence,
   doc,
   getDoc,
   getDocs,
@@ -13,7 +12,6 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
-  terminate,
   updateDoc,
   writeBatch,
   where
@@ -41,6 +39,7 @@ import {
   getDeviceSessionId,
   getFirebaseAuthTime,
   getPlatformDescription,
+  readLocalApprovedDevice,
   saveLocalApprovedDevice
 } from '../utils/deviceAccess.js'
 import {
@@ -49,6 +48,11 @@ import {
   setLocalPin,
   verifyLocalPin
 } from '../utils/localPinLock.js'
+import {
+  getLocalPinAccessFailure,
+  getLocalPinAccessMessage,
+  LOCAL_PIN_ACCESS_FAILURES
+} from '../utils/localPinAccess.js'
 import {
   cleanupDisconnectedDeviceSessions,
   cleanupExpiredInvitations,
@@ -87,6 +91,9 @@ export const useAccountSessionStore = defineStore(
     const currentDeviceSession = ref(null)
     const localPinConfigured = ref(false)
     const isPinLocked = ref(false)
+    const pinAccessFailure = ref(null)
+    const deviceAccessState = ref('unknown')
+    const lockedEmployeeName = ref('')
     const requiresRestaurantSelection = ref(false)
 
     let unsubscribeMembership = null
@@ -94,6 +101,7 @@ export const useAccountSessionStore = defineStore(
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
     let isHandlingDeviceDisconnect = false
+    const applicationLockCleanupHandlers = new Set()
 
     const employeeAuthStore = useEmployeeAuthStore()
 
@@ -103,6 +111,10 @@ export const useAccountSessionStore = defineStore(
     const isEmployeeMembership = computed(() => (
       currentMembership.value?.role === 'employee' &&
       Boolean(currentMembership.value?.employeeId)
+    ))
+    const pinLockDisplayName = computed(() => (
+      lockedEmployeeName.value ||
+      String(account.value?.displayName || '').trim()
     ))
     const needsEmailVerification = computed(() => (
       Boolean(authUser.value) && authUser.value.emailVerified !== true
@@ -154,6 +166,33 @@ export const useAccountSessionStore = defineStore(
       unsubscribeDeviceSession = null
     }
 
+    const registerApplicationLockCleanup = handler => {
+      if (typeof handler !== 'function') return () => {}
+      applicationLockCleanupHandlers.add(handler)
+      return () => applicationLockCleanupHandlers.delete(handler)
+    }
+
+    const runApplicationLockCleanup = () => {
+      applicationLockCleanupHandlers.forEach(handler => {
+        try {
+          handler()
+        } catch (caughtError) {
+          console.error(
+            'Nie udało się wyczyścić części danych podczas blokowania aplikacji:',
+            caughtError?.code || 'local-pin/cleanup-failed'
+          )
+        }
+      })
+    }
+
+    const getEmployeeDisplayName = employee => {
+      const fullName = [employee?.imie, employee?.nazwisko]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ')
+      return fullName || String(employee?.name || '').trim()
+    }
+
     const clearSensitiveContext = () => {
       stopSensitiveListeners()
       isMembershipContextReady.value = false
@@ -165,6 +204,11 @@ export const useAccountSessionStore = defineStore(
       permissions.value = {}
       currentDeviceSession.value = null
       deviceApprovalRequired.value = false
+      localPinConfigured.value = false
+      isPinLocked.value = false
+      pinAccessFailure.value = null
+      deviceAccessState.value = 'unknown'
+      lockedEmployeeName.value = ''
       requiresRestaurantSelection.value = false
       employeeAuthStore.clearAuthenticatedRestaurantContext()
     }
@@ -185,6 +229,7 @@ export const useAccountSessionStore = defineStore(
     }
 
     const handleAccessRevoked = message => {
+      runApplicationLockCleanup()
       stopSensitiveListeners()
       isMembershipContextReady.value = false
       accessRevoked.value = true
@@ -195,44 +240,42 @@ export const useAccountSessionStore = defineStore(
       error.value = message
     }
 
-    const handleDeviceDisconnected = async () => {
+    const handleDeviceDisconnected = () => {
       if (isHandlingDeviceDisconnect) return
       isHandlingDeviceDisconnect = true
       const authUid = authUser.value?.uid
       const restaurantId = currentRestaurantId.value
       const deviceId = currentDeviceSession.value?.deviceId
+      const status = currentDeviceSession.value?.status || 'missing'
+      const isSuspended = status === 'suspended'
 
-      if (authUid && deviceId) clearLocalPin({ authUid, deviceId })
-      if (authUid && restaurantId) {
+      if (!isSuspended && authUid && deviceId) {
+        clearLocalPin({ authUid, deviceId })
+      }
+      if (!isSuspended && authUid && restaurantId) {
         clearLocalApprovedDevice({ authUid, restaurantId })
       }
 
-      handleAccessRevoked(
-        'To urządzenie zostało odłączone. Poproś managera o nowe zaproszenie urządzenia.'
-      )
+      runApplicationLockCleanup()
+      stopSensitiveListeners()
+      isMembershipContextReady.value = false
+      currentRestaurant.value = null
+      currentEmployee.value = null
+      permissionProfile.value = null
+      permissions.value = {}
+      employeeAuthStore.clearAuthenticatedRestaurantContext()
+      accessRevoked.value = false
       deviceApprovalRequired.value = true
-      localPinConfigured.value = false
-      isPinLocked.value = false
-      try {
-        await signOut(auth)
-      } catch (caughtError) {
-        console.warn(
-          'Nie udało się zakończyć sesji Firebase po odłączeniu urządzenia:',
-          caughtError?.code || caughtError?.message
-        )
-      }
-      try {
-        await terminate(db)
-        await clearIndexedDbPersistence(db)
-      } catch (caughtError) {
-        console.warn(
-          'Nie udało się wyczyścić lokalnego cache po odłączeniu urządzenia:',
-          caughtError?.code || caughtError?.message
-        )
-      }
-      if (globalThis.location?.replace) {
-        globalThis.location.replace('/login')
-      }
+      deviceAccessState.value = status
+      pinAccessFailure.value = isSuspended
+        ? LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_SUSPENDED
+        : status === 'missing'
+          ? LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISSING
+          : LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_INACTIVE
+      error.value = getLocalPinAccessMessage(pinAccessFailure.value)
+      localPinConfigured.value = isSuspended && localPinConfigured.value
+      isPinLocked.value = isSuspended && localPinConfigured.value
+      isHandlingDeviceDisconnect = false
     }
 
     const startContextListeners = () => {
@@ -324,7 +367,10 @@ export const useAccountSessionStore = defineStore(
         )
         unsubscribeDeviceSession = onSnapshot(sessionRef, snapshot => {
           if (!snapshot.exists() || snapshot.data().status !== 'active') {
-            void handleDeviceDisconnected()
+            currentDeviceSession.value = snapshot.exists()
+              ? { sessionId: snapshot.id, ...snapshot.data() }
+              : { ...currentDeviceSession.value, status: 'missing' }
+            handleDeviceDisconnected()
             return
           }
           currentDeviceSession.value = {
@@ -452,32 +498,91 @@ export const useAccountSessionStore = defineStore(
         sessionId
       ))
 
-      if (
-        !sessionSnapshot.exists() ||
-        sessionSnapshot.data().status !== 'active' ||
-        sessionSnapshot.data().employeeId !== membership.employeeId
-      ) {
+      if (!sessionSnapshot.exists()) {
+        const approvedDevice = readLocalApprovedDevice({
+          authUid: authUser.value.uid,
+          restaurantId: membership.restaurantId
+        })
+        if (approvedDevice?.deviceId) {
+          clearLocalPin({
+            authUid: authUser.value.uid,
+            deviceId: approvedDevice.deviceId
+          })
+        }
+        clearLocalApprovedDevice({
+          authUid: authUser.value.uid,
+          restaurantId: membership.restaurantId
+        })
         currentDeviceSession.value = null
         deviceApprovalRequired.value = true
         localPinConfigured.value = false
         isPinLocked.value = false
+        deviceAccessState.value = 'missing'
+        pinAccessFailure.value =
+          LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISSING
+        error.value = getLocalPinAccessMessage(pinAccessFailure.value)
         return false
       }
 
-      currentDeviceSession.value = {
+      const session = {
         sessionId,
         ...sessionSnapshot.data()
       }
+      currentDeviceSession.value = {
+        ...session
+      }
+      localPinConfigured.value = hasLocalPin({
+        authUid: authUser.value.uid,
+        deviceId: session.deviceId
+      })
+
+      const accessFailure = getLocalPinAccessFailure({
+        firebaseAuthUid: authUser.value.uid,
+        membership,
+        deviceSession: session,
+        expectedRestaurantId: membership.restaurantId,
+        expectedEmployeeId: membership.employeeId,
+        expectedSessionId: sessionId,
+        // Brak lokalnego PIN-u w tym miejscu oznacza pierwszy etap konfiguracji,
+        // a nie brak zatwierdzenia istniejącej sesji urządzenia.
+        localPinConfigured: true
+      })
+
+      if (accessFailure) {
+        pinAccessFailure.value = accessFailure
+        deviceAccessState.value = session.status || 'invalid'
+        deviceApprovalRequired.value = true
+        isPinLocked.value =
+          accessFailure === LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_SUSPENDED &&
+          localPinConfigured.value
+        error.value = getLocalPinAccessMessage(accessFailure)
+        if (
+          accessFailure !== LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_SUSPENDED
+        ) {
+          if (session.deviceId) {
+            clearLocalPin({
+              authUid: authUser.value.uid,
+              deviceId: session.deviceId
+            })
+          }
+          clearLocalApprovedDevice({
+            authUid: authUser.value.uid,
+            restaurantId: membership.restaurantId
+          })
+          localPinConfigured.value = false
+        }
+        return false
+      }
+
       deviceApprovalRequired.value = false
+      deviceAccessState.value = 'active'
+      pinAccessFailure.value = null
+      error.value = ''
       saveLocalApprovedDevice({
         authUid: authUser.value.uid,
         restaurantId: membership.restaurantId,
-        deviceId: sessionSnapshot.data().deviceId,
+        deviceId: session.deviceId,
         sessionId
-      })
-      localPinConfigured.value = hasLocalPin({
-        authUid: authUser.value.uid,
-        deviceId: sessionSnapshot.data().deviceId
       })
 
       if (!localPinConfigured.value) {
@@ -1174,6 +1279,9 @@ export const useAccountSessionStore = defineStore(
       await setLocalPin({ authUid: authUser.value.uid, deviceId, pin })
       localPinConfigured.value = true
       isPinLocked.value = false
+      pinAccessFailure.value = null
+      deviceAccessState.value = 'active'
+      lockedEmployeeName.value = ''
       await loadMembershipContext(currentMembership.value, {
         pinUnlocked: true
       })
@@ -1181,35 +1289,154 @@ export const useAccountSessionStore = defineStore(
     }
 
     const unlockWithLocalPin = async pin => {
-      const deviceId = currentDeviceSession.value?.deviceId
-      if (!authUser.value?.uid || !deviceId || !currentMembership.value) {
-        return { ok: false, missing: true }
-      }
-
-      const result = await verifyLocalPin({
-        authUid: authUser.value.uid,
-        deviceId,
-        pin
-      })
-
-      if (!result.ok) return result
-
-      isPinLocked.value = false
       isLoading.value = true
       try {
-        await loadMembershipContext(currentMembership.value, {
+        const user = auth.currentUser
+        const restaurantId = currentRestaurantId.value
+        const expectedMembership = currentMembership.value
+        const expectedEmployeeId = expectedMembership?.employeeId
+
+        if (!user || user.uid !== authUser.value?.uid) {
+          pinAccessFailure.value =
+            LOCAL_PIN_ACCESS_FAILURES.NO_FIREBASE_SESSION
+          error.value = getLocalPinAccessMessage(pinAccessFailure.value)
+          isPinLocked.value = false
+          return { ok: false, reason: pinAccessFailure.value }
+        }
+
+        if (!restaurantId || !expectedMembership) {
+          pinAccessFailure.value =
+            LOCAL_PIN_ACCESS_FAILURES.MEMBERSHIP_MISSING
+          error.value = getLocalPinAccessMessage(pinAccessFailure.value)
+          isPinLocked.value = false
+          return { ok: false, reason: pinAccessFailure.value }
+        }
+
+        const membershipSnapshot = await getDoc(doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'members',
+          user.uid
+        ))
+        const membership = membershipSnapshot.exists()
+          ? { id: membershipSnapshot.id, ...membershipSnapshot.data() }
+          : null
+        const authTime = await getFirebaseAuthTime(user)
+        const sessionId = getDeviceSessionId(authTime)
+        const sessionSnapshot = await getDoc(doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'members',
+          user.uid,
+          'deviceSessions',
+          sessionId
+        ))
+        const deviceSession = sessionSnapshot.exists()
+          ? { sessionId: sessionSnapshot.id, ...sessionSnapshot.data() }
+          : null
+        const deviceId = deviceSession?.deviceId
+        const localPinMatchesSession = hasLocalPin({
+          authUid: user.uid,
+          deviceId
+        })
+        const accessFailure = getLocalPinAccessFailure({
+          firebaseAuthUid: user.uid,
+          membership,
+          deviceSession,
+          expectedRestaurantId: restaurantId,
+          expectedEmployeeId,
+          expectedSessionId: sessionId,
+          localPinConfigured: localPinMatchesSession
+        })
+
+        if (accessFailure) {
+          pinAccessFailure.value = accessFailure
+          error.value = getLocalPinAccessMessage(accessFailure)
+          currentMembership.value = membership || expectedMembership
+          currentDeviceSession.value = deviceSession
+          deviceAccessState.value = deviceSession?.status || 'missing'
+          deviceApprovalRequired.value = [
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISSING,
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_SUSPENDED,
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_INACTIVE,
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISMATCH
+          ].includes(accessFailure)
+          accessRevoked.value = [
+            LOCAL_PIN_ACCESS_FAILURES.MEMBERSHIP_MISSING,
+            LOCAL_PIN_ACCESS_FAILURES.MEMBERSHIP_INACTIVE,
+            LOCAL_PIN_ACCESS_FAILURES.MEMBERSHIP_MISMATCH
+          ].includes(accessFailure)
+          isPinLocked.value =
+            accessFailure ===
+              LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_SUSPENDED &&
+            localPinMatchesSession
+          localPinConfigured.value = localPinMatchesSession
+          if ([
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISSING,
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_INACTIVE,
+            LOCAL_PIN_ACCESS_FAILURES.DEVICE_SESSION_MISMATCH
+          ].includes(accessFailure)) {
+            const approvedDevice = readLocalApprovedDevice({
+              authUid: user.uid,
+              restaurantId
+            })
+            const staleDeviceId =
+              deviceSession?.deviceId ||
+              currentDeviceSession.value?.deviceId ||
+              approvedDevice?.deviceId
+            if (staleDeviceId) {
+              clearLocalPin({ authUid: user.uid, deviceId: staleDeviceId })
+            }
+            clearLocalApprovedDevice({
+              authUid: user.uid,
+              restaurantId
+            })
+            localPinConfigured.value = false
+            isPinLocked.value = false
+          }
+          return { ok: false, reason: accessFailure }
+        }
+
+        const result = await verifyLocalPin({
+          authUid: user.uid,
+          deviceId,
+          pin
+        })
+        if (!result.ok) return result
+
+        pinAccessFailure.value = null
+        deviceAccessState.value = 'active'
+        deviceApprovalRequired.value = false
+        accessRevoked.value = false
+        currentMembership.value = membership
+        currentDeviceSession.value = deviceSession
+        isPinLocked.value = false
+        await loadMembershipContext(membership, {
           pinUnlocked: true
         })
+        lockedEmployeeName.value = ''
+        return result
       } finally {
         isLoading.value = false
       }
-
-      return result
     }
 
     const lockApplication = () => {
-      if (!authUser.value?.uid || !localPinConfigured.value) return
+      const canLock = Boolean(
+        auth.currentUser?.uid &&
+        auth.currentUser.uid === authUser.value?.uid &&
+        isEmployeeMembership.value &&
+        currentMembership.value?.status === 'active' &&
+        currentDeviceSession.value?.status === 'active' &&
+        currentDeviceSession.value?.deviceId &&
+        localPinConfigured.value
+      )
+      if (!canLock) return { locked: false }
 
+      lockedEmployeeName.value = getEmployeeDisplayName(currentEmployee.value)
+      runApplicationLockCleanup()
       stopSensitiveListeners()
       isMembershipContextReady.value = false
       currentRestaurant.value = null
@@ -1218,7 +1445,10 @@ export const useAccountSessionStore = defineStore(
       permissions.value = {}
       employeeAuthStore.clearAuthenticatedRestaurantContext()
       accessRevoked.value = false
+      deviceApprovalRequired.value = false
+      pinAccessFailure.value = null
       isPinLocked.value = true
+      return { locked: true }
     }
 
     const logoutCurrentDevice = async () => {
@@ -1231,6 +1461,7 @@ export const useAccountSessionStore = defineStore(
         clearLocalApprovedDevice({ authUid, restaurantId })
       }
 
+      runApplicationLockCleanup()
       clearSensitiveContext()
       localStorage.removeItem(ACTIVE_RESTAURANT_KEY)
       localStorage.removeItem('gm_emp_id')
@@ -1238,6 +1469,9 @@ export const useAccountSessionStore = defineStore(
       localStorage.removeItem('gm_saved_rest_id')
       localPinConfigured.value = false
       isPinLocked.value = false
+      pinAccessFailure.value = null
+      deviceAccessState.value = 'unknown'
+      lockedEmployeeName.value = ''
       authUser.value = null
       account.value = null
       memberships.value = []
@@ -1271,6 +1505,9 @@ export const useAccountSessionStore = defineStore(
       currentDeviceSession,
       localPinConfigured,
       isPinLocked,
+      pinAccessFailure,
+      deviceAccessState,
+      pinLockDisplayName,
       requiresRestaurantSelection,
       isOwner,
       isEmployeeMembership,
@@ -1294,6 +1531,7 @@ export const useAccountSessionStore = defineStore(
       configureLocalPin,
       unlockWithLocalPin,
       lockApplication,
+      registerApplicationLockCleanup,
       logoutCurrentDevice,
       hasPermission,
       clearSensitiveContext

@@ -1427,6 +1427,13 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
 
       
 
+    const clearSensitiveData = () => {
+      stopPeriodsListener()
+      periods.value = []
+      isLoading.value = false
+      isSaving.value = false
+    }
+
     return {
       periods,
       isLoading,
@@ -1441,7 +1448,8 @@ export const useScheduleAvailabilityPeriodsStore = defineStore(
       openPeriod,
       closePeriod,
       extendPeriodDeadline,
-      reopenPeriod
+      reopenPeriod,
+      clearSensitiveData
     }
 
 

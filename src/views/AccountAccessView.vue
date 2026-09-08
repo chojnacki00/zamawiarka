@@ -19,14 +19,8 @@
       </template>
 
       <template v-else-if="sessionStore.deviceApprovalRequired">
-        <p>To urządzenie nie zostało zatwierdzone dla wybranej restauracji.</p>
+        <p>{{ sessionStore.error || 'To urządzenie nie zostało zatwierdzone dla wybranej restauracji.' }}</p>
         <p class="hint">Poproś managera o link lub kod QR „Dodaj urządzenie”, a następnie otwórz go na tym urządzeniu.</p>
-      </template>
-
-      <template v-else-if="sessionStore.isPinLocked">
-        <p>Sesja Firebase jest aktywna. Podaj lokalny PIN tego urządzenia, aby odblokować aplikację.</p>
-        <input v-model="pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Lokalny PIN">
-        <button class="primary-button" type="button" :disabled="isBusy || pin.length !== 4" @click="unlock">Odblokuj</button>
       </template>
 
       <template v-else-if="sessionStore.requiresRestaurantSelection">
@@ -122,7 +116,6 @@ const emailChangeForm = ref({
 const heading = computed(() => {
   if (sessionStore.needsEmailVerification) return 'Potwierdź e-mail'
   if (sessionStore.deviceApprovalRequired) return 'Urządzenie niezatwierdzone'
-  if (sessionStore.isPinLocked) return 'Aplikacja zablokowana'
   if (sessionStore.needsLocalPinSetup) return 'Ustaw lokalny PIN'
   if (sessionStore.requiresRestaurantSelection) return 'Wybierz restaurację'
   if (sessionStore.accessRevoked) return 'Dostęp zablokowany'
@@ -219,27 +212,23 @@ const configurePin = () => runAction(async () => {
   await router.replace('/')
 })
 
-const unlock = () => runAction(async () => {
-  const result = await sessionStore.unlockWithLocalPin(pin.value)
-  if (!result.ok) {
-    errorMessage.value = result.blocked
-      ? `Spróbuj ponownie za ${Math.ceil(result.retryAfterMs / 1000)} s.`
-      : 'Nieprawidłowy PIN.'
-    pin.value = ''
-    return
-  }
-  pin.value = ''
-  await router.replace('/')
-})
-
 const continueToApp = () => router.replace('/')
 const logoutDevice = () => runAction(async () => {
+  const confirmed = window.confirm(
+    'Odłączyć to urządzenie? Lokalny PIN zostanie usunięty i kolejne użycie będzie wymagało ponownego zatwierdzenia urządzenia.'
+  )
+  if (!confirmed) return
   await sessionStore.logoutCurrentDevice()
   await router.replace('/login')
 })
 
 onMounted(async () => {
   if (!auth.currentUser) return
+
+  if (sessionStore.isPinLocked) {
+    await router.replace('/pin')
+    return
+  }
 
   if (
     auth.currentUser.emailVerified === false ||

@@ -974,11 +974,14 @@ import { useAuthorizationStore } from './stores/authorizationStore.js'
 import {
   hasStoredLegacyPinSession,
   isPublicActivationRoute,
+  LOCAL_PIN_LOCK_PATH,
   resolveAppAuthenticationRedirect,
+  resolveAccountActionPath,
   resolveRouteAuthenticationRedirect,
   shouldDeferAccountBootstrapForActivation
 } from './utils/routeAccess.js'
 import { accessContextCanOpenRoute } from './utils/accessControl.js'
+import { clearPiniaBusinessSessionData } from './utils/businessSessionCleanup.js'
 import {
   buildRestaurantHydrationDiagnostic,
   isRestaurantContextCurrent,
@@ -1194,6 +1197,20 @@ const handleLogin = async () => {
 }
 
 const handleLogout = async () => {
+  // Zatwierdzony pracownik Firebase nie kończy sesji konta. Główny przycisk
+  // uruchamia dokładnie tę samą lokalną blokadę co timeout bezczynności.
+  if (
+    auth.currentUser &&
+    accountSessionStore.isEmployeeMembership &&
+    accountSessionStore.localPinConfigured
+  ) {
+    const result = accountSessionStore.lockApplication()
+    if (result.locked) {
+      await router.replace(LOCAL_PIN_LOCK_PATH)
+      return
+    }
+  }
+
   // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
   const employeeAuthStore = useEmployeeAuthStore()
   if (
@@ -1218,7 +1235,8 @@ const handleLogout = async () => {
     return // PRZERYWAMY
   }
 
-  // === SCENARIUSZ 2: WYLOGOWUJE SIĘ MANAGER (Twój nienaruszony kod) ===
+  // Właściciel nie ma obecnie lokalnego PIN-u. Zachowujemy dla niego oraz dla
+  // niekompletnej sesji pracownika dotychczasowe pełne wylogowanie Firebase.
   // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
   stopCompanyDataListeners()
 
@@ -1263,10 +1281,8 @@ const resetInactivityTimer = () => {
         auth.currentUser &&
         accountSessionStore.localPinConfigured
       ) {
-        accountSessionStore.lockApplication()
-        stopCompanyDataListeners()
-        resetCompanyDataState()
-        router.replace('/konto')
+        const result = accountSessionStore.lockApplication()
+        if (result.locked) router.replace(LOCAL_PIN_LOCK_PATH)
         return
       }
 
@@ -1280,9 +1296,16 @@ const resetInactivityTimer = () => {
 watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
   resetInactivityTimer()
 
-  // Sesja pracownika została zakończona:
-  // ręcznie, po bezczynności albo zdalnie przez Managera.
+  // Firebase PIN korzysta z centralnego czyszczenia zarejestrowanego poniżej.
+  // Ten watcher zachowuje oddzielną obsługę sesji legacy oraz odebrania dostępu.
   if (oldEmployee && !newEmployee) {
+    if (auth.currentUser && accountSessionStore.isPinLocked) {
+      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
+        router.replace(LOCAL_PIN_LOCK_PATH)
+      }
+      return
+    }
+
     console.log('Sesja pracownika zakończona. Czyszczę dane aplikacji...')
 
     stopCompanyDataListeners()
@@ -1292,7 +1315,11 @@ watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
       isLoggedIn.value = false
     }
 
-    const targetPath = auth.currentUser ? '/konto' : '/logowanie'
+    const targetPath = auth.currentUser
+      ? resolveAccountActionPath({
+          isPinLocked: accountSessionStore.isPinLocked
+        })
+      : '/logowanie'
     if (router.currentRoute.value.path !== targetPath) {
       router.replace(targetPath)
     }
@@ -2025,10 +2052,19 @@ if (backupData.collections) {
     // =========================
     // STRAŻNIK ŚCIEŻEK (ROUTE GUARD) - Blokada przycisku Wstecz
     // =========================
-    watch(() => [route.name, route.path, route.matched.length, isLoggedIn.value, employeeAuthStore.currentEmployee, isAppReady.value], () => {
+    watch(() => [route.name, route.path, route.matched.length, isLoggedIn.value, employeeAuthStore.currentEmployee, accountSessionStore.isPinLocked, isAppReady.value], () => {
       // 1. KLUCZOWE: Jeśli Firebase jeszcze sprawdza sesję (aplikacja ładuje dane), 
       // NIE WYKONUJEMY ŻADNYCH RUCHÓW. Czekamy.
       if (!isAppReady.value) return
+
+      if (
+        auth.currentUser &&
+        accountSessionStore.isPinLocked &&
+        route.path !== LOCAL_PIN_LOCK_PATH
+      ) {
+        router.replace(LOCAL_PIN_LOCK_PATH)
+        return
+      }
       
       const authenticationRedirect = resolveAppAuthenticationRedirect({
         route,
@@ -5660,6 +5696,21 @@ const stopCompanyDataListeners = () => {
   if (unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null }
 }
 
+const unregisterApplicationLockCleanup =
+  accountSessionStore.registerApplicationLockCleanup(() => {
+    activatedLegacyRestaurantId = null
+    activatedRestaurantId = null
+    activatedBusinessDataAccess = false
+    stopCompanyDataListeners()
+    resetCompanyDataState()
+    clearPiniaBusinessSessionData()
+    currentCompany.value = null
+    authStore.isLoggedIn = false
+    authStore.currentCompany = null
+    isDataLoaded.value = true
+    isLoggedIn.value = false
+  })
+
 let activatedRestaurantId = null
 let activatedBusinessDataAccess = false
 
@@ -5759,6 +5810,19 @@ watch(
   async ([initialized, contextReady, hasAccess, , , , contextLoading]) => {
     if (!auth.currentUser || !initialized) return
 
+    if (accountSessionStore.isPinLocked) {
+      activatedRestaurantId = null
+      activatedBusinessDataAccess = false
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = false
+      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
+        await router.replace(LOCAL_PIN_LOCK_PATH)
+      }
+      return
+    }
+
     if (!hasAccess) {
       if (
         accountSessionStore.currentMembership?.status === 'active' &&
@@ -5794,6 +5858,14 @@ watch(
 watch(
   () => [authorizationStore.context, route.path],
   async ([accessContext, currentPath]) => {
+    if (
+      auth.currentUser &&
+      accountSessionStore.isPinLocked &&
+      currentPath !== LOCAL_PIN_LOCK_PATH
+    ) {
+      await router.replace(LOCAL_PIN_LOCK_PATH)
+      return
+    }
     if (
       isAppReady.value &&
       !accessContextCanOpenRoute(accessContext, currentPath)
@@ -5882,7 +5954,15 @@ onMounted(() => {
 
     await accountSessionStore.initializeForUser(user)
 
-    if (accountSessionStore.hasActiveContext) {
+    if (accountSessionStore.isPinLocked) {
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = false
+      if (router.currentRoute.value.path !== LOCAL_PIN_LOCK_PATH) {
+        await router.replace(LOCAL_PIN_LOCK_PATH)
+      }
+    } else if (accountSessionStore.hasActiveContext) {
       await activateAccountRestaurant()
     } else {
       isDataLoaded.value = true
@@ -5908,6 +5988,7 @@ onUnmounted(() => {
     unsubscribeAuth()
   }
 
+  unregisterApplicationLockCleanup()
   stopCompanyDataListeners()
 })
 

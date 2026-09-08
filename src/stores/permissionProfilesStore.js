@@ -108,6 +108,15 @@ export const usePermissionProfilesStore = defineStore('permissionProfiles', () =
     } catch (error) { throw error }
   }
 
+  const clearSensitiveData = () => {
+    if (unsubscribeProfiles) unsubscribeProfiles()
+    unsubscribeProfiles = null
+    listenerUid = null
+    listenerReadyPromise = null
+    profiles.value = []
+    isLoading.value = false
+  }
+
   // ZMIANA 3: Udostępniamy nowe, adekwatne nazwy zmiennych i funkcji
-  return { profiles, isLoading, fetchProfiles, addProfile, updateProfile, deleteProfile }
+  return { profiles, isLoading, fetchProfiles, addProfile, updateProfile, deleteProfile, clearSensitiveData }
 })

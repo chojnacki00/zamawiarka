@@ -7,6 +7,8 @@ import {
 } from 'vue-router'
 import {
   hasStoredLegacyPinSession,
+  LOCAL_PIN_LOCK_PATH,
+  resolveAccountActionPath,
   resolveAppAuthenticationRedirect,
   resolveAuthenticationRedirect,
   resolveRouteAuthenticationRedirect,
@@ -27,6 +29,15 @@ test('niezalogowany użytkownik może otworzyć logowanie Firebase', () => {
 
 test('konto bez sesji wraca do logowania Firebase, a nie do PIN-u', () => {
   assert.equal(redirectFor('/konto'), '/login')
+})
+
+test('lokalna blokada Firebase korzysta z osobnej trasy PIN', () => {
+  assert.equal(LOCAL_PIN_LOCK_PATH, '/pin')
+  assert.equal(resolveAccountActionPath({ isPinLocked: true }), '/pin')
+  assert.equal(resolveAccountActionPath({ isPinLocked: false }), '/konto')
+  assert.equal(redirectFor('/pin'), '/login')
+  assert.equal(redirectFor('/pin', { hasFirebaseSession: true }), null)
+  assert.equal(redirectFor('/pin', { hasLegacyPinSession: true }), '/login')
 })
 
 test('aktywacja z tokenem pozostaje publiczna', () => {
