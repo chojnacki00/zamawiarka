@@ -27,6 +27,7 @@ import {
 } from '../utils/employeeIdentity.js'
 import { completeLegacyOwnerBootstrap } from '../services/legacyOwnerBootstrap.js'
 import {
+  assertDeviceEnrollmentTargetMembership,
   assertPrivateInvitationForAccount,
   createIdentityInvitationBundle,
   hashIdentityValue,
@@ -938,17 +939,19 @@ export const useAccountSessionStore = defineStore(
         throw new Error('Nie masz uprawnienia do zapraszania pracowników.')
       }
 
-      void cleanupExpiredInvitations({ db, restaurantId }).then(result => {
-        if (!result.completed) {
-          console.warn('Nie udało się wyczyścić wygasłych zaproszeń.')
-          if (import.meta.env.DEV) {
-            console.warn(
-              'Szczegóły czyszczenia zaproszeń:',
-              getCleanupFailureDetails({ invitations: result })
-            )
-          }
-        }
+      const invitationCleanup = await cleanupExpiredInvitations({
+        db,
+        restaurantId
       })
+      if (!invitationCleanup.completed) {
+        console.warn('Nie udało się wyczyścić wygasłych zaproszeń.')
+        if (import.meta.env.DEV) {
+          console.warn(
+            'Szczegóły czyszczenia zaproszeń:',
+            getCleanupFailureDetails({ invitations: invitationCleanup })
+          )
+        }
+      }
 
       const employeeSnapshot = await getDoc(doc(
         db,
@@ -997,17 +1000,32 @@ export const useAccountSessionStore = defineStore(
         expiresAt
       })
 
-      const memberSnapshot = await getDocs(query(
-        collection(db, 'restaurants', restaurantId, 'members'),
-        where('employeeId', '==', employee.id)
-      ))
-      if (
-        purpose === INVITATION_PURPOSES.ACCOUNT_ACTIVATION &&
-        !memberSnapshot.empty
-      ) {
-        throw new Error(
-          'Ten pracownik ma już członkostwo w tej restauracji.'
-        )
+      if (purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
+        const targetMembershipSnapshot = await getDoc(doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'members',
+          String(targetAuthUid).trim()
+        ))
+        assertDeviceEnrollmentTargetMembership({
+          membership: targetMembershipSnapshot.exists()
+            ? targetMembershipSnapshot.data()
+            : null,
+          restaurantId,
+          employeeId: employee.id,
+          targetAuthUid
+        })
+      } else {
+        const memberSnapshot = await getDocs(query(
+          collection(db, 'restaurants', restaurantId, 'members'),
+          where('employeeId', '==', employee.id)
+        ))
+        if (!memberSnapshot.empty) {
+          throw new Error(
+            'Ten pracownik ma już członkostwo w tej restauracji.'
+          )
+        }
       }
 
       const privateRef = doc(db, 'identityInvitations', bundle.tokenHash)

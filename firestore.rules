@@ -171,6 +171,22 @@ service cloud.firestore {
         invitation.emailNormalized == request.auth.token.get('email', null);
     }
 
+    function activeDeviceInvitationTargetMatches(
+      restaurantId,
+      employeeId,
+      targetAuthUid
+    ) {
+      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(targetAuthUid);
+      let member = get(memberPath);
+      return targetAuthUid is string &&
+        exists(memberPath) &&
+        member.data.authUid == targetAuthUid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.employeeId == employeeId &&
+        member.data.role == 'employee' &&
+        member.data.status == 'active';
+    }
+
     function pendingInvitationIsValid(invitation, invitationId) {
       return invitation.id == invitationId &&
         invitation.tokenHash == invitationId &&
@@ -605,9 +621,11 @@ service cloud.firestore {
           (
             request.resource.data.purpose == 'DEVICE_ENROLLMENT' &&
             request.resource.data.targetAuthUid is string &&
-            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.authUid == request.resource.data.targetAuthUid &&
-            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.employeeId == request.resource.data.employeeId &&
-            get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/members/$(request.resource.data.targetAuthUid)).data.status == 'active'
+            activeDeviceInvitationTargetMatches(
+              request.resource.data.restaurantId,
+              request.resource.data.employeeId,
+              request.resource.data.targetAuthUid
+            )
           )
         ) &&
         getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.tokenHash == invitationId &&

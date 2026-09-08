@@ -500,6 +500,203 @@ test('właściciel atomowo tworzy prywatne, publiczne i indeksowane zaproszenie'
   await assertSucceeds(writeIdentityInvitation({ db }))
 })
 
+test('właściciel tworzy zaproszenie urządzenia po odłączeniu wszystkich sesji pracownika', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+  const memberRef = doc(db, 'restaurants/restaurant-a/members/employee-auth')
+  const sessionRef = doc(
+    db,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )
+  const membershipBefore = (await getDoc(memberRef)).data()
+
+  await assertSucceeds(updateDoc(sessionRef, {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'owner-auth'
+  }))
+  await assertSucceeds(writeIdentityInvitation({
+    db,
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+
+  const membershipAfter = (await getDoc(memberRef)).data()
+  assert.deepEqual(membershipAfter, membershipBefore)
+  assert.equal(membershipAfter.status, 'active')
+  assert.equal(membershipAfter.authUid, 'employee-auth')
+})
+
+test('manager zespołu tworzy zaproszenie urządzenia dla aktywnego członka bez aktywnej sesji', async () => {
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seedEmployeeAccess()
+  const managerDb = context({
+    uid: 'manager-auth',
+    email: 'manager@example.com'
+  }).firestore()
+  const targetMemberRef = doc(
+    managerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const membershipBefore = (await getDoc(targetMemberRef)).data()
+
+  await assertSucceeds(updateDoc(doc(
+    managerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ), {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'manager-auth'
+  }))
+  await assertSucceeds(writeIdentityInvitation({
+    db: managerDb,
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth',
+      createdByAuthUid: 'manager-auth'
+    }
+  }))
+
+  assert.deepEqual((await getDoc(targetMemberRef)).data(), membershipBefore)
+})
+
+test('zwykły pracownik nie tworzy zaproszenia urządzenia dla innego członka', async () => {
+  await seedEmployeeAccess()
+  await seedEmployeeAccess({
+    uid: 'target-auth',
+    employeeId: 'target-employee',
+    profileId: 'target-profile'
+  })
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertFails(writeIdentityInvitation({
+    db,
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      employeeId: 'target-employee',
+      profileId: 'target-profile',
+      targetAuthUid: 'target-auth',
+      createdByAuthUid: 'employee-auth'
+    }
+  }))
+})
+
+test('zaproszenie urządzenia odrzuca niezgodne lub nieaktywne członkostwo celu', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed([['users/restaurant-a/employees/employee-other', {
+    aktywny: true,
+    permissionProfileId: 'profile-1'
+  }]])
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+
+  await assertFails(writeIdentityInvitation({
+    db: ownerDb,
+    options: {
+      employeeId: 'employee-other',
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    await updateDoc(doc(
+      adminContext.firestore(),
+      'restaurants/restaurant-a/members/employee-auth'
+    ), { status: 'blocked' })
+  })
+  await assertFails(writeIdentityInvitation({
+    db: ownerDb,
+    options: {
+      tokenHash: 'b'.repeat(64),
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+})
+
+test('nowe zaproszenie urządzenia zastępuje poprzedni token po odłączeniu sesji', async () => {
+  const oldTokenHash = 'a'.repeat(64)
+  const newTokenHash = 'b'.repeat(64)
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed(identityInvitationDocuments({
+    tokenHash: oldTokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth'
+  }))
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+  await assertSucceeds(updateDoc(doc(
+    db,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ), {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'owner-auth'
+  }))
+
+  const batch = writeBatch(db)
+  batch.delete(doc(db, `identityInvitations/${oldTokenHash}`))
+  batch.delete(doc(db, `activationInvitations/${oldTokenHash}`))
+  identityInvitationDocuments({
+    tokenHash: newTokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth'
+  }).forEach(([path, data]) => batch.set(doc(db, path), data))
+  await assertSucceeds(batch.commit())
+})
+
+test('czyszczenie starego slotu kończy się przed utworzeniem nowego zaproszenia urządzenia', async () => {
+  const oldTokenHash = 'a'.repeat(64)
+  const newTokenHash = 'b'.repeat(64)
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed(identityInvitationDocuments({
+    tokenHash: oldTokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth',
+    expiresAt: past()
+  }))
+  const db = context({ uid: 'owner-auth', email: 'owner@example.com' }).firestore()
+  await assertSucceeds(updateDoc(doc(
+    db,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ), {
+    status: 'disconnected',
+    disconnectedAt: now(),
+    disconnectedByAuthUid: 'owner-auth'
+  }))
+
+  const cleanup = await cleanupExpiredInvitations({
+    db,
+    restaurantId: 'restaurant-a'
+  })
+  assert.equal(cleanup.completed, true)
+  assert.equal(cleanup.deletedCount, 1)
+  await assertSucceeds(writeIdentityInvitation({
+    db,
+    options: {
+      tokenHash: newTokenHash,
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+})
+
 test('reguły nie pozwalają przesunąć siedmiodniowej ważności zaproszenia w przyszłość', async () => {
   await seedOwner()
   await seed([

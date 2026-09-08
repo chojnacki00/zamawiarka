@@ -12,6 +12,32 @@ export const normalizeIdentityEmail = value => (
   normalizeText(value).toLowerCase()
 )
 
+export const assertDeviceEnrollmentTargetMembership = ({
+  membership,
+  restaurantId,
+  employeeId,
+  targetAuthUid
+} = {}) => {
+  const normalizedRestaurantId = normalizeText(restaurantId)
+  const normalizedEmployeeId = normalizeText(employeeId)
+  const normalizedTargetAuthUid = normalizeText(targetAuthUid)
+
+  if (
+    !membership ||
+    normalizeText(membership.authUid) !== normalizedTargetAuthUid ||
+    normalizeText(membership.restaurantId) !== normalizedRestaurantId ||
+    normalizeText(membership.employeeId) !== normalizedEmployeeId ||
+    membership.role !== 'employee' ||
+    membership.status !== 'active'
+  ) {
+    throw new Error(
+      'Nie można dodać urządzenia. Konto pracownika nie ma aktywnego członkostwa w tej restauracji.'
+    )
+  }
+
+  return true
+}
+
 const bytesToBase64Url = bytes => {
   let binary = ''
   bytes.forEach(byte => { binary += String.fromCharCode(byte) })
