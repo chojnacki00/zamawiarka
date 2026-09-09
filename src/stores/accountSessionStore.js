@@ -37,6 +37,7 @@ import {
 } from '../utils/identityInvitations.js'
 import {
   buildDeviceSessionDocument,
+  buildReactivatedDeviceSessionDocument,
   clearLocalApprovedDevice,
   getDeviceSessionId,
   getFirebaseAuthTime,
@@ -863,7 +864,10 @@ export const useAccountSessionStore = defineStore(
         if (!slotSnapshot.exists() || slotSnapshot.data().tokenHash !== tokenHash) {
           throw new Error('To zaproszenie zostało zastąpione nowszym.')
         }
-        if (sessionSnapshot.exists()) {
+        if (
+          sessionSnapshot.exists() &&
+          sessionSnapshot.data().status !== 'disconnected'
+        ) {
           throw new Error('Ta sesja urządzenia została już zatwierdzona.')
         }
 
@@ -888,7 +892,8 @@ export const useAccountSessionStore = defineStore(
           throw new Error('Zaproszenie urządzenia nie pasuje do tego konta.')
         }
 
-        createdDevice = buildDeviceSessionDocument({
+        const approvalTimestamp = serverTimestamp()
+        const deviceData = {
           authUid: user.uid,
           restaurantId: invitation.restaurantId,
           employeeId: invitation.employeeId,
@@ -896,10 +901,25 @@ export const useAccountSessionStore = defineStore(
           platform: getPlatformDescription(),
           authTime,
           approvedByAuthUid: invitation.createdByAuthUid,
-          invitationId: tokenHash,
-          createdAt: serverTimestamp()
-        })
-        transaction.set(sessionRef, createdDevice)
+          invitationId: tokenHash
+        }
+        if (sessionSnapshot.exists()) {
+          if (invitation.purpose !== INVITATION_PURPOSES.DEVICE_ENROLLMENT) {
+            throw new Error('Ta sesja urządzenia nie może zostać ponownie zatwierdzona.')
+          }
+          createdDevice = buildReactivatedDeviceSessionDocument({
+            ...deviceData,
+            existingSession: sessionSnapshot.data(),
+            reactivatedAt: approvalTimestamp
+          })
+          transaction.update(sessionRef, createdDevice)
+        } else {
+          createdDevice = buildDeviceSessionDocument({
+            ...deviceData,
+            createdAt: approvalTimestamp
+          })
+          transaction.set(sessionRef, createdDevice)
+        }
         transaction.delete(invitationRef)
         transaction.delete(publicInvitationRef)
         transaction.delete(slotRef)

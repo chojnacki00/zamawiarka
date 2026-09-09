@@ -66,6 +66,48 @@ export const buildDeviceSessionDocument = ({
   disconnectedByAuthUid: null
 })
 
+export const buildReactivatedDeviceSessionDocument = ({
+  existingSession,
+  authUid,
+  restaurantId,
+  employeeId,
+  deviceName,
+  platform,
+  authTime,
+  approvedByAuthUid,
+  invitationId,
+  reactivatedAt
+} = {}) => {
+  if (
+    !existingSession ||
+    existingSession.status !== 'disconnected' ||
+    existingSession.authUid !== String(authUid || '').trim() ||
+    existingSession.restaurantId !== String(restaurantId || '').trim() ||
+    existingSession.employeeId !== String(employeeId || '').trim() ||
+    existingSession.authTime !== Number(authTime)
+  ) {
+    throw new Error('Nie można ponownie zatwierdzić tej sesji urządzenia.')
+  }
+
+  return {
+    deviceId: existingSession.deviceId,
+    restaurantId: existingSession.restaurantId,
+    employeeId: existingSession.employeeId,
+    authUid: existingSession.authUid,
+    deviceName: String(deviceName || '').trim(),
+    platform: String(platform || '').trim(),
+    authTime: existingSession.authTime,
+    status: 'active',
+    addedAt: existingSession.addedAt,
+    lastActiveAt: reactivatedAt,
+    approvedAt: reactivatedAt,
+    approvedByAuthUid: String(approvedByAuthUid || '').trim(),
+    invitationId: String(invitationId || '').trim(),
+    disconnectedAt: null,
+    disconnectedByAuthUid: null
+  }
+}
+
 export const saveLocalApprovedDevice = ({
   authUid,
   restaurantId,
