@@ -53,3 +53,41 @@ test('aktywacja pozwala wybrać istniejące konto i przypomnieć hasło bez nazw
     /Konto z tym adresem już istnieje\. Zaloguj się lub skorzystaj z przypomnienia hasła\./
   )
 })
+
+test('prawidłowe nazwanie urządzenia nie proponuje zmiany konta', async () => {
+  const source = await readSource('src/views/ActivationView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+  const deviceStep = template.slice(
+    template.indexOf(`step === 'device'`),
+    template.indexOf('</template>', template.indexOf(`step === 'device'`))
+  )
+
+  assert.match(deviceStep, /Zatwierdź urządzenie/)
+  assert.doesNotMatch(deviceStep, /Użyj innego konta/)
+})
+
+test('niezgodne konto ma osobny stan i bezpieczną zmianę logowania', async () => {
+  const source = await readSource('src/views/ActivationView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+  const mismatchStep = template.slice(
+    template.indexOf(`step === 'account-mismatch'`),
+    template.indexOf('</template>', template.indexOf(`step === 'account-mismatch'`))
+  )
+
+  assert.match(
+    mismatchStep,
+    /To zaproszenie jest przypisane do innego konta\./
+  )
+  assert.match(
+    mismatchStep,
+    /Wyloguj i zaloguj właściwe konto/
+  )
+  assert.match(
+    source,
+    /error\?\.code === 'activation\/account-mismatch'/
+  )
+  assert.match(
+    source,
+    /getDoc\(doc\(db, 'identityInvitations', tokenHash\)\)/
+  )
+})

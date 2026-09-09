@@ -290,6 +290,12 @@ export const assertPrivateInvitationForAccount = ({
   purpose,
   now = Date.now()
 } = {}) => {
+  const throwAccountMismatch = () => {
+    const error = new Error('To zaproszenie jest przypisane do innego konta.')
+    error.code = 'activation/account-mismatch'
+    throw error
+  }
+
   if (!authUser?.emailVerified) {
     throw new Error('Najpierw potwierdź swój adres e-mail.')
   }
@@ -297,7 +303,7 @@ export const assertPrivateInvitationForAccount = ({
     normalizeIdentityEmail(authUser.email) !==
     normalizeIdentityEmail(invitation?.emailNormalized)
   ) {
-    throw new Error('Zaproszenie jest przypisane do innego adresu e-mail.')
+    throwAccountMismatch()
   }
   if (invitation?.purpose !== purpose) {
     throw new Error('Zaproszenie ma inny cel.')
@@ -312,7 +318,7 @@ export const assertPrivateInvitationForAccount = ({
     purpose === INVITATION_PURPOSES.DEVICE_ENROLLMENT &&
     invitation.targetAuthUid !== authUser.uid
   ) {
-    throw new Error('Zalogowano inne konto niż wskazane w zaproszeniu urządzenia.')
+    throwAccountMismatch()
   }
   return true
 }

@@ -400,6 +400,65 @@ service cloud.firestore {
         );
     }
 
+    function isValidDisconnectedDeviceSessionReactivation(
+      restaurantId,
+      memberId
+    ) {
+      let incoming = request.resource.data;
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
+      let memberAfter = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(memberId));
+      return hasVerifiedEmail() &&
+        memberId == request.auth.uid &&
+        resource.data.status == 'disconnected' &&
+        resource.data.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.keys().hasOnly([
+          'deviceId',
+          'restaurantId',
+          'employeeId',
+          'authUid',
+          'deviceName',
+          'platform',
+          'authTime',
+          'status',
+          'addedAt',
+          'lastActiveAt',
+          'approvedAt',
+          'approvedByAuthUid',
+          'invitationId',
+          'disconnectedAt',
+          'disconnectedByAuthUid'
+        ]) &&
+        incoming.deviceId == resource.data.deviceId &&
+        incoming.restaurantId == resource.data.restaurantId &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == resource.data.employeeId &&
+        incoming.authUid == resource.data.authUid &&
+        incoming.authUid == request.auth.uid &&
+        incoming.authTime == resource.data.authTime &&
+        incoming.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.addedAt == resource.data.addedAt &&
+        incoming.deviceName is string &&
+        incoming.deviceName.size() > 0 &&
+        incoming.deviceName.size() <= 80 &&
+        incoming.platform is string &&
+        incoming.status == 'active' &&
+        incoming.lastActiveAt is timestamp &&
+        incoming.approvedAt is timestamp &&
+        incoming.approvedByAuthUid == invitation.data.createdByAuthUid &&
+        incoming.invitationId is string &&
+        incoming.disconnectedAt == null &&
+        incoming.disconnectedByAuthUid == null &&
+        invitation.data.purpose == 'DEVICE_ENROLLMENT' &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.employeeId == incoming.employeeId &&
+        invitation.data.targetAuthUid == request.auth.uid &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        memberAfter.data.authUid == request.auth.uid &&
+        memberAfter.data.restaurantId == restaurantId &&
+        memberAfter.data.employeeId == incoming.employeeId &&
+        memberAfter.data.status == 'active';
+    }
+
     function deviceIdentityIsUnchanged() {
       return request.resource.data.deviceId == resource.data.deviceId &&
         request.resource.data.restaurantId == resource.data.restaurantId &&
@@ -488,28 +547,33 @@ service cloud.firestore {
           ) || canManageEmployees(restaurantId);
           allow list: if canManageEmployees(restaurantId);
           allow create: if isValidDeviceSessionCreate(restaurantId, memberId);
-          allow update: if deviceIdentityIsUnchanged() && (
-            (
-              canManageEmployees(restaurantId) &&
-              memberId != request.auth.uid &&
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                'status',
-                'disconnectedAt',
-                'disconnectedByAuthUid'
-              ]) &&
-              request.resource.data.status == 'disconnected' &&
-              request.resource.data.disconnectedAt is timestamp &&
-              request.resource.data.disconnectedByAuthUid == request.auth.uid
-            ) ||
-            (
-              memberId == request.auth.uid &&
-              resource.data.status == 'active' &&
-              resource.data.authTime == request.auth.token.get('auth_time', 0) &&
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                'lastActiveAt'
-              ]) &&
-              request.resource.data.lastActiveAt is timestamp
+          allow update: if (
+            deviceIdentityIsUnchanged() && (
+              (
+                canManageEmployees(restaurantId) &&
+                memberId != request.auth.uid &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status',
+                  'disconnectedAt',
+                  'disconnectedByAuthUid'
+                ]) &&
+                request.resource.data.status == 'disconnected' &&
+                request.resource.data.disconnectedAt is timestamp &&
+                request.resource.data.disconnectedByAuthUid == request.auth.uid
+              ) ||
+              (
+                memberId == request.auth.uid &&
+                resource.data.status == 'active' &&
+                resource.data.authTime == request.auth.token.get('auth_time', 0) &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'lastActiveAt'
+                ]) &&
+                request.resource.data.lastActiveAt is timestamp
+              )
             )
+          ) || isValidDisconnectedDeviceSessionReactivation(
+            restaurantId,
+            memberId
           );
           allow delete: if canManageEmployees(restaurantId) &&
             resource.data.status == 'disconnected';

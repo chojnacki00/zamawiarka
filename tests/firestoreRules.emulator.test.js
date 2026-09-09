@@ -324,6 +324,46 @@ const acceptIdentityInvitation = async ({
   await batch.commit()
 }
 
+const reactivateIdentityInvitation = async ({
+  db,
+  tokenHash = 'b'.repeat(64),
+  restaurantId = 'restaurant-a',
+  employeeId = 'employee-1',
+  uid = 'employee-auth',
+  authTime = AUTH_TIME,
+  deviceName = 'Telefon ponownie zatwierdzony'
+}) => {
+  const slotId = `${restaurantId}__${employeeId}`
+  const sessionRef = doc(
+    db,
+    `restaurants/${restaurantId}/members/${uid}/deviceSessions/${authTime}`
+  )
+
+  await runTransaction(db, async transaction => {
+    const sessionSnapshot = await transaction.get(sessionRef)
+    const existing = sessionSnapshot.data()
+    const approvedAt = now()
+    transaction.update(sessionRef, {
+      ...existing,
+      deviceName,
+      platform: 'Emulator po reaktywacji',
+      status: 'active',
+      lastActiveAt: approvedAt,
+      approvedAt,
+      approvedByAuthUid: 'owner-auth',
+      invitationId: tokenHash,
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    })
+    transaction.delete(doc(db, `identityInvitations/${tokenHash}`))
+    transaction.delete(doc(db, `activationInvitations/${tokenHash}`))
+    transaction.delete(doc(
+      db,
+      `restaurants/${restaurantId}/identityInvitationSlots/${slotId}`
+    ))
+  })
+}
+
 const publicHeader = ({ id = 'schedule-1' } = {}) => ({
   id,
   scheduleId: id,
@@ -1216,6 +1256,190 @@ test('blokada odłącza sesje i zaproszenie, a przywrócenie tworzy wyłącznie 
       `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
     ))
     assert.equal(oldSession.data().status, 'disconnected')
+  })
+})
+
+test('przywrócenie dostępu reaktywuje atomowo tylko bieżącą odłączoną sesję z tym samym auth_time', async () => {
+  const tokenHash = 'c'.repeat(64)
+  const otherAuthTime = AUTH_TIME + 100
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed([[
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${otherAuthTime}`,
+    deviceSessionData({ authTime: otherAuthTime })
+  ]])
+
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const memberRef = doc(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const currentSessionRef = doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )
+  const otherSessionRef = doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${otherAuthTime}`
+  )
+  const originalSession = (await getDoc(currentSessionRef)).data()
+  const blockBatch = writeBatch(ownerDb)
+  blockBatch.update(memberRef, { status: 'blocked' })
+  for (const sessionRef of [currentSessionRef, otherSessionRef]) {
+    blockBatch.update(sessionRef, {
+      status: 'disconnected',
+      disconnectedAt: now(),
+      disconnectedByAuthUid: 'owner-auth'
+    })
+  }
+  await assertSucceeds(blockBatch.commit())
+
+  await assertSucceeds(replaceIdentityInvitation({
+    db: ownerDb,
+    restoreMembershipAuthUid: 'employee-auth',
+    options: {
+      tokenHash,
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+  assert.equal((await getDoc(memberRef)).data().status, 'active')
+  assert.equal((await getDoc(currentSessionRef)).data().status, 'disconnected')
+
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com',
+    authTime: AUTH_TIME
+  }).firestore()
+  await assertSucceeds(reactivateIdentityInvitation({
+    db: employeeDb,
+    tokenHash
+  }))
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    const currentSession = (await getDoc(doc(
+      adminDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))).data()
+    const otherSession = (await getDoc(doc(
+      adminDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${otherAuthTime}`
+    ))).data()
+
+    assert.equal(currentSession.status, 'active')
+    assert.equal(currentSession.authTime, AUTH_TIME)
+    assert.equal(currentSession.deviceId, originalSession.deviceId)
+    assert.equal(currentSession.addedAt.toMillis(), originalSession.addedAt.toMillis())
+    assert.equal(currentSession.deviceName, 'Telefon ponownie zatwierdzony')
+    assert.equal(currentSession.invitationId, tokenHash)
+    assert.equal(currentSession.disconnectedAt, null)
+    assert.equal(currentSession.disconnectedByAuthUid, null)
+    assert.equal(otherSession.status, 'disconnected')
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${tokenHash}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `activationInvitations/${tokenHash}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+    ))).exists(), false)
+  })
+
+  await assertFails(reactivateIdentityInvitation({
+    db: employeeDb,
+    tokenHash
+  }))
+  assert.equal((await getDoc(doc(
+    employeeDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ))).data().status, 'active')
+})
+
+test('odłączonej sesji nie można reaktywować bez ważnego zaproszenia', async () => {
+  await seedEmployeeAccess()
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    await updateDoc(doc(
+      adminContext.firestore(),
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ), {
+      status: 'disconnected',
+      disconnectedAt: now(),
+      disconnectedByAuthUid: 'owner-auth'
+    })
+  })
+
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com',
+    authTime: AUTH_TIME
+  }).firestore()
+  await assertFails(reactivateIdentityInvitation({
+    db: employeeDb,
+    tokenHash: 'd'.repeat(64)
+  }))
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const session = await getDoc(doc(
+      adminContext.firestore(),
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))
+    assert.equal(session.data().status, 'disconnected')
+  })
+})
+
+test('inne konto nie może reaktywować bieżącej sesji pracownika', async () => {
+  const tokenHash = 'e'.repeat(64)
+  await seedEmployeeAccess()
+  await seed(identityInvitationDocuments({
+    tokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth'
+  }))
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    await updateDoc(doc(
+      adminContext.firestore(),
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ), {
+      status: 'disconnected',
+      disconnectedAt: now(),
+      disconnectedByAuthUid: 'owner-auth'
+    })
+  })
+
+  const otherDb = context({
+    uid: 'other-auth',
+    email: 'employee@example.com',
+    authTime: AUTH_TIME
+  }).firestore()
+  await assertFails(reactivateIdentityInvitation({
+    db: otherDb,
+    tokenHash
+  }))
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))).data().status, 'disconnected')
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${tokenHash}`
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `activationInvitations/${tokenHash}`
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+    ))).exists(), true)
   })
 })
 

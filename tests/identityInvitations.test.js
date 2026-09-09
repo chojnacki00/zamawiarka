@@ -17,6 +17,7 @@ import {
 } from '../src/utils/identityInvitations.js'
 import {
   buildDeviceSessionDocument,
+  buildReactivatedDeviceSessionDocument,
   getDeviceSessionId
 } from '../src/utils/deviceAccess.js'
 import {
@@ -143,7 +144,10 @@ test('ostateczna akceptacja wymaga zweryfikowanego zgodnego konta', async () => 
     authUser: { uid: 'auth-1', email: 'inna@example.com', emailVerified: true },
     purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
     now: new Date('2026-09-01T10:00:00Z')
-  }), /innego adresu/)
+  }), error => (
+    error.code === 'activation/account-mismatch' &&
+    error.message === 'To zaproszenie jest przypisane do innego konta.'
+  ))
 })
 
 test('zmiana e-maila konta nie pozwala przyjąć zaproszenia przypisanego do starego adresu', async () => {
@@ -157,7 +161,10 @@ test('zmiana e-maila konta nie pozwala przyjąć zaproszenia przypisanego do sta
     },
     purpose: INVITATION_PURPOSES.ACCOUNT_ACTIVATION,
     now: new Date('2026-09-01T10:00:00Z')
-  }), /innego adresu/)
+  }), error => (
+    error.code === 'activation/account-mismatch' &&
+    error.message === 'To zaproszenie jest przypisane do innego konta.'
+  ))
 })
 
 test('zaproszenie urządzenia jest związane z właściwym authUid', async () => {
@@ -167,7 +174,10 @@ test('zaproszenie urządzenia jest związane z właściwym authUid', async () =>
     authUser: { uid: 'auth-2', email: 'jan@example.com', emailVerified: true },
     purpose: INVITATION_PURPOSES.DEVICE_ENROLLMENT,
     now: new Date('2026-09-01T10:00:00Z')
-  }), /inne konto/)
+  }), error => (
+    error.code === 'activation/account-mismatch' &&
+    error.message === 'To zaproszenie jest przypisane do innego konta.'
+  ))
 })
 
 test('nowe urządzenie wymaga aktywnego członkostwa właściwego pracownika', () => {
@@ -230,6 +240,77 @@ test('rejestr urządzenia nie zawiera PIN-u, hasła ani surowego sekretu', () =>
   assert.equal('pin' in document, false)
   assert.equal('password' in document, false)
   assert.equal('secret' in document, false)
+})
+
+test('reaktywacja zachowuje tożsamość sesji i odświeża dane zatwierdzenia', () => {
+  const addedAt = new Date('2026-08-01T10:00:00Z')
+  const reactivatedAt = new Date('2026-09-10T10:00:00Z')
+  const document = buildReactivatedDeviceSessionDocument({
+    existingSession: {
+      deviceId: 'device-unique-123456',
+      restaurantId: 'restaurant-a',
+      employeeId: 'employee-1',
+      authUid: 'auth-1',
+      deviceName: 'Stara nazwa',
+      platform: 'Stara platforma',
+      authTime: 1700000000,
+      status: 'disconnected',
+      addedAt,
+      lastActiveAt: addedAt,
+      approvedAt: addedAt,
+      approvedByAuthUid: 'manager-old',
+      invitationId: 'a'.repeat(64),
+      disconnectedAt: addedAt,
+      disconnectedByAuthUid: 'manager-old'
+    },
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    deviceName: 'Telefon Julii',
+    platform: 'Android',
+    authTime: 1700000000,
+    approvedByAuthUid: 'manager-new',
+    invitationId: 'b'.repeat(64),
+    reactivatedAt
+  })
+
+  assert.equal(document.deviceId, 'device-unique-123456')
+  assert.equal(document.addedAt, addedAt)
+  assert.equal(document.deviceName, 'Telefon Julii')
+  assert.equal(document.platform, 'Android')
+  assert.equal(document.status, 'active')
+  assert.equal(document.approvedAt, reactivatedAt)
+  assert.equal(document.approvedByAuthUid, 'manager-new')
+  assert.equal(document.invitationId, 'b'.repeat(64))
+  assert.equal(document.disconnectedAt, null)
+  assert.equal(document.disconnectedByAuthUid, null)
+})
+
+test('reaktywacja odrzuca aktywną albo obcą sesję', () => {
+  const session = {
+    deviceId: 'device-unique-123456',
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    authUid: 'auth-1',
+    authTime: 1700000000,
+    status: 'disconnected'
+  }
+  const options = {
+    existingSession: session,
+    authUid: 'auth-1',
+    restaurantId: 'restaurant-a',
+    employeeId: 'employee-1',
+    authTime: 1700000000
+  }
+
+  assert.throws(() => buildReactivatedDeviceSessionDocument({
+    ...options,
+    existingSession: { ...session, status: 'active' }
+  }), /ponownie zatwierdzić/)
+  assert.throws(() => buildReactivatedDeviceSessionDocument({
+    ...options,
+    authUid: 'auth-2'
+  }), /ponownie zatwierdzić/)
 })
 
 test('ten sam PIN na dwóch urządzeniach ma osobne sole i blokady', async () => {

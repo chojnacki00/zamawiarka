@@ -52,15 +52,14 @@
         </template>
 
         <template v-else-if="step === 'account-mismatch'">
-          <p>Zalogowane konto ma inny adres e-mail niż ten przypisany do zaproszenia.</p>
-          <button class="secondary-button" type="button" :disabled="isBusy" @click="changeAccount">Wyloguj i wróć</button>
+          <p>To zaproszenie jest przypisane do innego konta.</p>
+          <button class="secondary-button" type="button" :disabled="isBusy" @click="changeAccount">Wyloguj i zaloguj właściwe konto</button>
         </template>
 
         <template v-else-if="step === 'device'">
           <p>Nazwij urządzenie, które ma otrzymać dostęp do tej restauracji.</p>
           <label><span>Nazwa urządzenia</span><input v-model="deviceName" type="text" autocomplete="off" maxlength="80"></label>
           <button class="primary-button" type="button" :disabled="isBusy || !deviceName.trim()" @click="activate">Zatwierdź urządzenie</button>
-          <button class="secondary-button" type="button" :disabled="isBusy" @click="changeAccount">Użyj innego konta</button>
         </template>
       </template>
 
@@ -100,6 +99,7 @@ import {
 } from '../utils/activationFlow.js'
 import {
   assertEmailMatchesPublicInvitation,
+  assertPrivateInvitationForAccount,
   buildSafePublicInvitationPreview,
   hashIdentityValue,
   INVITATION_PURPOSES
@@ -211,7 +211,27 @@ const checkEmail = () => runAction(async () => {
 const afterAuthentication = async user => {
   await user.reload()
   step.value = resolveActivationStepForUser(user)
-  if (step.value === 'device') await user.getIdToken(true)
+  if (step.value !== 'device') return
+
+  await user.getIdToken(true)
+  const tokenHash = await hashIdentityValue(token)
+  const snapshot = await getDoc(doc(db, 'identityInvitations', tokenHash))
+  if (!snapshot.exists()) {
+    throw createActivationFlowError('activation/invitation-not-found')
+  }
+  try {
+    assertPrivateInvitationForAccount({
+      invitation: snapshot.data(),
+      authUser: user,
+      purpose: invitation.value.purpose
+    })
+  } catch (error) {
+    if (error?.code === 'activation/account-mismatch') {
+      step.value = 'account-mismatch'
+      return
+    }
+    throw error
+  }
 }
 
 const register = () => {
