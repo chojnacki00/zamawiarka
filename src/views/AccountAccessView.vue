@@ -4,7 +4,11 @@
       <div class="brand-mark">GM</div>
       <h1>{{ heading }}</h1>
 
-      <div v-if="sessionStore.isLoading" class="status-copy">Sprawdzanie dostępu…</div>
+      <template v-if="sessionStore.deviceAccessRemoved">
+        <p>{{ DEVICE_ACCESS_REMOVED_MESSAGE }}</p>
+      </template>
+
+      <div v-else-if="sessionStore.isLoading" class="status-copy">Sprawdzanie dostępu…</div>
 
       <template v-else-if="sessionStore.needsEmailVerification">
         <p>Potwierdź adres <strong>{{ sessionStore.authUser?.email }}</strong>, a następnie wróć tutaj.</p>
@@ -57,7 +61,7 @@
 
       <p v-if="message" class="success-message">{{ message }}</p>
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-      <button class="logout-button" type="button" :disabled="isBusy" @click="logoutDevice">Wyloguj to urządzenie</button>
+      <button v-if="!sessionStore.deviceAccessRemoved" class="logout-button" type="button" :disabled="isBusy" @click="logoutDevice">Wyloguj to urządzenie</button>
     </section>
 
     <div v-if="isEmailChangeModalOpen" class="dialog-overlay" role="presentation" @click.self="closeEmailChangeModal">
@@ -97,6 +101,10 @@ import {
   getAccountEmailChangeErrorMessage,
   requestVerifiedAccountEmailChange
 } from '../utils/accountEmailChange.js'
+import {
+  DEVICE_ACCESS_REMOVED_HEADING,
+  DEVICE_ACCESS_REMOVED_MESSAGE
+} from '../utils/deviceRemovalReaction.js'
 
 const router = useRouter()
 const sessionStore = useAccountSessionStore()
@@ -114,6 +122,7 @@ const emailChangeForm = ref({
 })
 
 const heading = computed(() => {
+  if (sessionStore.deviceAccessRemoved) return DEVICE_ACCESS_REMOVED_HEADING
   if (sessionStore.needsEmailVerification) return 'Potwierdź e-mail'
   if (sessionStore.deviceApprovalRequired) return 'Urządzenie niezatwierdzone'
   if (sessionStore.needsLocalPinSetup) return 'Ustaw lokalny PIN'
