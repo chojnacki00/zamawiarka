@@ -2356,3 +2356,271 @@ test('zmiana profilu uprawnień działa w tej samej sesji Firebase', async () =>
     suppliers: [{ id: 'supplier-1', name: 'Po zmianie' }]
   }))
 })
+
+test('nowe zaproszenie urządzenia nie usuwa już aktywnego urządzenia', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const sessionPath =
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+
+  await assertSucceeds(writeIdentityInvitation({
+    db: ownerDb,
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+
+  const session = await assertSucceeds(getDoc(doc(ownerDb, sessionPath)))
+  assert.equal(session.exists(), true)
+  assert.equal(session.data().status, 'active')
+})
+
+test('usunięcie jednego urządzenia nie zmienia członkostwa ani drugiego urządzenia', async () => {
+  const secondAuthTime = AUTH_TIME + 100
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed([[
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`,
+    deviceSessionData({ authTime: secondAuthTime })
+  ]])
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const memberRef = doc(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const membershipBefore = (await getDoc(memberRef)).data()
+
+  await assertSucceeds(deleteDoc(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )))
+
+  assert.deepEqual((await getDoc(memberRef)).data(), membershipBefore)
+  assert.equal((await getDoc(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`
+  ))).data().status, 'active')
+  await assertFails(getDoc(doc(
+    context({ uid: 'employee-auth', email: 'employee@example.com' }).firestore(),
+    'restaurants/restaurant-a'
+  )))
+  await assertSucceeds(getDoc(doc(
+    context({
+      uid: 'employee-auth',
+      email: 'employee@example.com',
+      authTime: secondAuthTime
+    }).firestore(),
+    'restaurants/restaurant-a'
+  )))
+})
+
+test('urządzenie usuwa właściciel lub manager zespołu, ale nie zwykły pracownik', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seedEmployeeAccess({
+    uid: 'manager-auth',
+    employeeId: 'manager-employee',
+    profileId: 'manager-profile',
+    permissions: { can_manage_employees: true }
+  })
+  await seedEmployeeAccess({
+    uid: 'limited-auth',
+    employeeId: 'limited-employee',
+    profileId: 'limited-profile',
+    permissions: { can_view_schedule: true }
+  })
+  const sessionPath =
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+
+  await assertFails(deleteDoc(doc(
+    context({ uid: 'limited-auth', email: 'limited@example.com' }).firestore(),
+    sessionPath
+  )))
+  await assertFails(deleteDoc(doc(
+    context({ uid: 'employee-auth', email: 'employee@example.com' }).firestore(),
+    sessionPath
+  )))
+  await assertSucceeds(deleteDoc(doc(
+    context({ uid: 'manager-auth', email: 'manager@example.com' }).firestore(),
+    sessionPath
+  )))
+})
+
+test('wyłączenie konta odcina dostęp przed usunięciem urządzeń i zaproszeń', async () => {
+  const tokenHash = 'f'.repeat(64)
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed(identityInvitationDocuments({
+    tokenHash,
+    purpose: 'DEVICE_ENROLLMENT',
+    targetAuthUid: 'employee-auth'
+  }))
+  await seed([
+    ['users/restaurant-a/grafiki/schedule-1', {
+      id: 'schedule-1',
+      employeeNameSnapshot: 'Jan Testowy'
+    }],
+    ['users/restaurant-a/grafik_dyspozycyjnosc/availability-1', {
+      employeeId: 'employee-1',
+      date: '2026-09-10'
+    }]
+  ])
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const employeeRef = doc(ownerDb, 'users/restaurant-a/employees/employee-1')
+  const memberRef = doc(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const accessBatch = writeBatch(ownerDb)
+  accessBatch.update(employeeRef, { aktywny: false })
+  accessBatch.update(memberRef, { status: 'blocked' })
+  await assertSucceeds(accessBatch.commit())
+
+  await assertFails(getDoc(doc(
+    context({ uid: 'employee-auth', email: 'employee@example.com' }).firestore(),
+    'restaurants/restaurant-a'
+  )))
+
+  const cleanupBatch = writeBatch(ownerDb)
+  cleanupBatch.delete(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ))
+  cleanupBatch.delete(doc(ownerDb, `identityInvitations/${tokenHash}`))
+  cleanupBatch.delete(doc(ownerDb, `activationInvitations/${tokenHash}`))
+  cleanupBatch.delete(doc(
+    ownerDb,
+    'restaurants/restaurant-a/identityInvitationSlots/restaurant-a__employee-1'
+  ))
+  await assertSucceeds(cleanupBatch.commit())
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      `identityInvitations/${tokenHash}`
+    ))).exists(), false)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/employees/employee-1'
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/grafiki/schedule-1'
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/grafik_dyspozycyjnosc/availability-1'
+    ))).exists(), true)
+  })
+})
+
+test('ponowne włączenie konta nie przywraca urządzeń i pozwala utworzyć nowe zaproszenie', async () => {
+  await seedOwner()
+  await seedEmployeeAccess({ status: 'blocked' })
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    await updateDoc(doc(
+      adminDb,
+      'users/restaurant-a/employees/employee-1'
+    ), { aktywny: false })
+    await deleteDoc(doc(
+      adminDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    ))
+  })
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const activationBatch = writeBatch(ownerDb)
+  activationBatch.update(
+    doc(ownerDb, 'users/restaurant-a/employees/employee-1'),
+    { aktywny: true }
+  )
+  activationBatch.update(
+    doc(ownerDb, 'restaurants/restaurant-a/members/employee-auth'),
+    { status: 'active' }
+  )
+  await assertSucceeds(activationBatch.commit())
+
+  await assertFails(getDoc(doc(
+    context({ uid: 'employee-auth', email: 'employee@example.com' }).firestore(),
+    'restaurants/restaurant-a'
+  )))
+  await assertSucceeds(writeIdentityInvitation({
+    db: ownerDb,
+    options: {
+      purpose: 'DEVICE_ENROLLMENT',
+      targetAuthUid: 'employee-auth'
+    }
+  }))
+})
+
+test('archiwizacja zachowuje dokument pracownika i historię, ale usuwa dostęp', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed([
+    ['users/restaurant-a/grafiki/schedule-history', {
+      id: 'schedule-history',
+      employeeId: 'employee-1',
+      employeeNameSnapshot: 'Jan Testowy'
+    }],
+    ['users/restaurant-a/orders/order-history', {
+      id: 'order-history',
+      createdByEmployeeId: 'employee-1'
+    }]
+  ])
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const archiveBatch = writeBatch(ownerDb)
+  archiveBatch.update(
+    doc(ownerDb, 'users/restaurant-a/employees/employee-1'),
+    { aktywny: false, archived: true, archivedAt: now() }
+  )
+  archiveBatch.update(
+    doc(ownerDb, 'restaurants/restaurant-a/members/employee-auth'),
+    { status: 'blocked' }
+  )
+  await assertSucceeds(archiveBatch.commit())
+  await assertSucceeds(deleteDoc(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )))
+
+  await testEnv.withSecurityRulesDisabled(async adminContext => {
+    const adminDb = adminContext.firestore()
+    const employee = await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/employees/employee-1'
+    ))
+    assert.equal(employee.exists(), true)
+    assert.equal(employee.data().aktywny, false)
+    assert.equal(employee.data().archived, true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/grafiki/schedule-history'
+    ))).exists(), true)
+    assert.equal((await getDoc(doc(
+      adminDb,
+      'users/restaurant-a/orders/order-history'
+    ))).exists(), true)
+  })
+})
