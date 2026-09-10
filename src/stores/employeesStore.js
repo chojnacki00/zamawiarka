@@ -8,7 +8,6 @@ import {
   normalizeCompensation,
   normalizePositionAssignments
 } from '../utils/employeeAssignments.js'
-import { cleanupEmployeeReferences } from '../utils/employeeDataCleanup.js'
 
 const normalizeEmployee = (employee, id = null) => ({
   id: id || employee?.id || null,
@@ -18,6 +17,8 @@ const normalizeEmployee = (employee, id = null) => ({
   email: String(employee?.email || '').trim(),
   pin: String(employee?.pin || '').trim(),
   aktywny: employee?.aktywny !== false,
+  archived: employee?.archived === true,
+  archivedAt: employee?.archivedAt || null,
   employmentProfileId: employee?.employmentProfileId || null,
   employmentPercentage: Math.min(200, Math.max(5, Number(employee?.employmentPercentage) || 100)),
   employeeGroupIds: [...new Set(
@@ -116,6 +117,14 @@ export const useEmployeesStore = defineStore('employees', () => {
       const employeeRef = doc(db, 'users', uid, 'employees', empId)
       const currentSnapshot = await getDoc(employeeRef)
       const normalizedEmployee = normalizeEmployee(updatedData, empId)
+      const wasActive = currentSnapshot.data()?.aktywny !== false
+      if (wasActive !== normalizedEmployee.aktywny) {
+        const { useAccountSessionStore } = await import('./accountSessionStore.js')
+        await useAccountSessionStore().setEmployeeAccountActive({
+          employeeId: empId,
+          active: normalizedEmployee.aktywny
+        })
+      }
       await setDoc(employeeRef, {
         ...normalizedEmployee,
         id: empId,
@@ -131,12 +140,8 @@ export const useEmployeesStore = defineStore('employees', () => {
 
   const deleteEmployee = async (empId) => {
     useAuthorizationStore().requirePermission('can_manage_employees')
-    const uid = await getUid()
-    if (!uid) return
-    try {
-      await cleanupEmployeeReferences(uid, [empId])
-      if (!unsubscribeEmployees) employees.value = employees.value.filter(e => e.id !== empId)
-    } catch (error) { throw error }
+    const { useAccountSessionStore } = await import('./accountSessionStore.js')
+    return useAccountSessionStore().archiveEmployeeFromTeam(empId)
   }
 
   const clearSensitiveData = () => {

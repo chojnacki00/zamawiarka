@@ -30,7 +30,7 @@
                 <small v-if="employee.employeeGroupIds.length">{{ employee.employeeGroupIds.length }} grup</small>
               </span>
             </button>
-            <button class="delete-icon" type="button" aria-label="Usuń pracownika" @click="employeeToDelete = employee">
+            <button class="delete-icon" type="button" aria-label="Usuń z zespołu" @click="employeeToDelete = employee">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -45,7 +45,7 @@
       <form v-else class="employee-form floating-actions-content" @submit.prevent="saveEmployee">
         <section class="form-status-card">
           <span><strong>Konto aktywne</strong><small>Wyłączenie blokuje logowanie pracownika.</small></span>
-          <input v-model="form.aktywny" type="checkbox">
+          <input :checked="form.aktywny" type="checkbox" :disabled="isAccountActionPending" @click.prevent="requestEmployeeActiveChange">
         </section>
 
         <article :ref="element => setSectionElement('basic', element)" class="accordion-card" :class="{ open: openSections.basic }">
@@ -118,18 +118,9 @@
               <strong>Dostęp pracownika</strong>
               <p v-if="!canUseAccountAccess" class="field-note">Zarządzanie dostępem wymaga zalogowanego konta z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
               <template v-else>
-                <template v-if="accountAccess?.status === 'blocked'">
-                  <p class="account-access-status blocked">Dostęp zablokowany</p>
-                  <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="restoreEmployeeAccess">{{ isAccountActionPending ? 'Przywracanie…' : 'Przywróć dostęp' }}</button>
-                  <small>Przywrócenie nie uruchomi starych urządzeń. Pracownik otrzyma nowe zaproszenie.</small>
-                </template>
-                <template v-else>
-                  <div class="access-actions">
-                    <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Utwórz zaproszenie' }}</button>
-                    <button v-if="accountAccess?.accessType === 'membership'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="requestBlockEmployeeAccess">Zablokuj dostęp</button>
-                  </div>
-                  <small>Nowe zaproszenie zastąpi poprzednie.</small>
-                </template>
+                <button class="invite-button" type="button" :disabled="isAccountActionPending || !form.aktywny" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Dodaj urządzenie' }}</button>
+                <small v-if="form.aktywny">Nowe zaproszenie unieważni poprzedni niewykorzystany link. Dodane urządzenia pozostaną bez zmian.</small>
+                <small v-else>Włącz „Konto aktywne”, aby dodać urządzenie.</small>
                 <section v-if="accountAccess?.accessType === 'membership'" class="devices-section">
                   <button class="devices-toggle" type="button" :aria-expanded="isDevicesOpen" @click="isDevicesOpen = !isDevicesOpen">
                     <span>Urządzenia ({{ employeeDevices.length }})</span>
@@ -137,10 +128,10 @@
                   </button>
                   <div v-if="isDevicesOpen" class="devices-list">
                     <p v-if="!employeeDevices.length" class="field-note">Brak urządzeń.</p>
-                    <article v-for="(device, index) in employeeDevices" :key="`${device.name}-${index}`" class="device-summary">
+                    <article v-for="device in employeeDevices" :key="device.sessionId" class="device-summary">
                       <strong>{{ device.name }}</strong>
-                      <span :class="{ active: device.statusLabel === 'Aktywne' }">{{ device.statusLabel }}</span>
                       <small>{{ formatDeviceDate(device.dateValue) }}</small>
+                      <button class="remove-device-button" type="button" :disabled="isAccountActionPending" @click="requestRemoveDevice(device)">Usuń urządzenie</button>
                     </article>
                   </div>
                 </section>
@@ -155,7 +146,7 @@
       </form>
     </div>
 
-    <div v-if="employeeToDelete" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Usunąć pracownika?</div><p>Usunięte zostaną również jego dyspozycje i przydziały wymagające tego pracownika.</p><strong>{{ employeeToDelete.imie }} {{ employeeToDelete.nazwisko }}</strong><div class="form-actions"><button class="cancel-button" type="button" @click="employeeToDelete = null">Anuluj</button><button class="danger-button" type="button" @click="executeDelete">Usuń</button></div></div></div>
+    <div v-if="employeeToDelete" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Czy usunąć pracownika z zespołu?</div><p>Pracownik utraci dostęp do tej restauracji i zostanie usunięty z list aktywnego zespołu. Jego urządzenia i niewykorzystane zaproszenia zostaną usunięte. Dotychczasowe grafiki i historia pozostaną zachowane.</p><strong>{{ employeeToDelete.imie }} {{ employeeToDelete.nazwisko }}</strong><div class="form-actions"><button class="cancel-button" type="button" :disabled="isAccountActionPending" @click="employeeToDelete = null">Anuluj</button><button class="danger-button" type="button" :disabled="isAccountActionPending" @click="executeDelete">{{ isAccountActionPending ? 'Usuwanie…' : 'Usuń z zespołu' }}</button></div></div></div>
     <div v-if="isPositionPickerOpen" class="app-dialog-overlay">
       <div class="app-dialog-card position-picker-card">
         <div class="app-dialog-title">Przypisz stanowiska</div>
@@ -169,13 +160,23 @@
         <div class="form-actions"><button class="cancel-button" type="button" @click="closePositionPicker">Anuluj</button><button class="save-button" type="button" @click="applyPositionSelection">Zastosuj</button></div>
       </div>
     </div>
-    <div v-if="isBlockConfirmationOpen" class="app-dialog-overlay" @click.self="closeBlockConfirmation">
-      <div class="app-dialog-card dialog-card" role="dialog" aria-modal="true" aria-labelledby="block-access-title">
-        <div id="block-access-title" class="app-dialog-title">Zablokować dostęp pracownika {{ form.imie }} {{ form.nazwisko }}?</div>
-        <p>Pracownik utraci dostęp do tej restauracji na wszystkich urządzeniach. Konto pracownika nie zostanie usunięte.</p>
+    <div v-if="isAccountDisableConfirmationOpen" class="app-dialog-overlay" @click.self="closeAccountDisableConfirmation">
+      <div class="app-dialog-card dialog-card" role="dialog" aria-modal="true" aria-labelledby="disable-account-title">
+        <div id="disable-account-title" class="app-dialog-title">Czy wyłączyć konto pracownika?</div>
+        <p>Spowoduje to zablokowanie dostępu do aplikacji, usunięcie wszystkich dodanych urządzeń i niewykorzystanych zaproszeń oraz pominięcie pracownika w nowych działaniach aplikacji. Dotychczasowe grafiki, historia i rozpoczęte dokumenty pozostaną zachowane.</p>
         <div class="form-actions">
-          <button class="cancel-button" type="button" :disabled="isAccountActionPending" @click="closeBlockConfirmation">Anuluj</button>
-          <button class="danger-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">{{ isAccountActionPending ? 'Blokowanie…' : 'Zablokuj dostęp' }}</button>
+          <button class="cancel-button" type="button" :disabled="isAccountActionPending" @click="closeAccountDisableConfirmation">Anuluj</button>
+          <button class="danger-button" type="button" :disabled="isAccountActionPending" @click="disableEmployeeAccount">{{ isAccountActionPending ? 'Wyłączanie…' : 'Wyłącz konto' }}</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="deviceToRemove" class="app-dialog-overlay" @click.self="closeRemoveDeviceConfirmation">
+      <div class="app-dialog-card dialog-card" role="dialog" aria-modal="true" aria-labelledby="remove-device-title">
+        <div id="remove-device-title" class="app-dialog-title">Czy usunąć urządzenie „{{ deviceToRemove.name }}”?</div>
+        <p>Urządzenie natychmiast utraci dostęp do aplikacji. Jego ponowne dodanie będzie wymagało nowego zaproszenia.</p>
+        <div class="form-actions">
+          <button class="cancel-button" type="button" :disabled="isAccountActionPending" @click="closeRemoveDeviceConfirmation">Anuluj</button>
+          <button class="danger-button" type="button" :disabled="isAccountActionPending" @click="removeSelectedDevice">{{ isAccountActionPending ? 'Usuwanie…' : 'Usuń urządzenie' }}</button>
         </div>
       </div>
     </div>
@@ -251,9 +252,10 @@ const accountAccess = ref(null)
 const identityInvitation = ref(null)
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
-const isBlockConfirmationOpen = ref(false)
+const isAccountDisableConfirmationOpen = ref(false)
 const isDevicesOpen = ref(false)
 const employeeDevices = ref([])
+const deviceToRemove = ref(null)
 const actionFeedback = ref('')
 const temporaryCleanupWarning = ref('')
 let actionFeedbackTimer = null
@@ -286,7 +288,10 @@ const employeeFormTitle = computed(() => {
 })
 const filteredEmployees = computed(() => {
   const search = searchQuery.value.trim().toLocaleLowerCase('pl')
-  return [...employeesStore.employees].filter(employee => !search || `${employee.imie} ${employee.nazwisko} ${employee.telefon}`.toLocaleLowerCase('pl').includes(search)).sort((first, second) => {
+  return [...employeesStore.employees].filter(employee => (
+    employee.archived !== true &&
+    (!search || `${employee.imie} ${employee.nazwisko} ${employee.telefon}`.toLocaleLowerCase('pl').includes(search))
+  )).sort((first, second) => {
     const activityDifference = Number(first.aktywny === false) - Number(second.aktywny === false)
     return activityDifference || `${first.nazwisko} ${first.imie}`.localeCompare(`${second.nazwisko} ${second.imie}`, 'pl')
   })
@@ -468,7 +473,8 @@ const openForm = (employee = null) => {
   accountAccess.value = null
   employeeDevices.value = []
   isDevicesOpen.value = false
-  isBlockConfirmationOpen.value = false
+  isAccountDisableConfirmationOpen.value = false
+  deviceToRemove.value = null
   identityInvitation.value = null
   accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
@@ -486,7 +492,8 @@ const cancelForm = () => {
   accountAccess.value = null
   employeeDevices.value = []
   isDevicesOpen.value = false
-  isBlockConfirmationOpen.value = false
+  isAccountDisableConfirmationOpen.value = false
+  deviceToRemove.value = null
   identityInvitation.value = null
   accountAccessMessage.value = ''
   nextTick(() => {
@@ -644,7 +651,10 @@ const loadEmployeeAccountAccess = async employeeId => {
     accountAccess.value = access
     employeeDevices.value = access?.authUid
       ? (await accountSessionStore.getEmployeeDevices(access.authUid))
-          .map(buildEmployeeDeviceSummary)
+          .map(device => ({
+            sessionId: device.sessionId,
+            ...buildEmployeeDeviceSummary(device)
+          }))
       : []
   } catch (error) {
     console.error('Błąd odczytu dostępu pracownika:', error)
@@ -751,56 +761,89 @@ const formatDeviceDate = value => {
     : `Dodano: ${date.toLocaleString('pl-PL')}`
 }
 
-const requestBlockEmployeeAccess = () => {
-  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
-  isBlockConfirmationOpen.value = true
-}
-
-const closeBlockConfirmation = () => {
+const requestEmployeeActiveChange = () => {
   if (isAccountActionPending.value) return
-  isBlockConfirmationOpen.value = false
+  if (!editingEmployeeId.value) {
+    form.value.aktywny = !form.value.aktywny
+    return
+  }
+  if (form.value.aktywny) {
+    isAccountDisableConfirmationOpen.value = true
+    return
+  }
+  void enableEmployeeAccount()
 }
 
-const blockEmployeeAccess = async () => {
-  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+const closeAccountDisableConfirmation = () => {
+  if (isAccountActionPending.value) return
+  isAccountDisableConfirmationOpen.value = false
+}
 
+const updateEmployeeAccountActive = async active => {
+  if (!editingEmployeeId.value || isAccountActionPending.value) return
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
   try {
-    await accountSessionStore.blockRestaurantAccess(
-      accountAccess.value.authUid
-    )
-    isBlockConfirmationOpen.value = false
+    await accountSessionStore.setEmployeeAccountActive({
+      employeeId: editingEmployeeId.value,
+      active
+    })
+    form.value.aktywny = active
+    isAccountDisableConfirmationOpen.value = false
     await loadEmployeeAccountAccess(editingEmployeeId.value)
-    accountAccessMessage.value =
-      'Dostęp został zablokowany, a dotychczasowe urządzenia odłączone.'
+    accountAccessMessage.value = active
+      ? 'Konto zostało włączone. Dodaj urządzenie, aby pracownik odzyskał dostęp.'
+      : 'Konto zostało wyłączone. Urządzenia i niewykorzystane zaproszenia usunięto.'
   } catch (error) {
-    accountAccessMessage.value =
-      'Nie udało się zablokować dostępu.'
+    if (error?.code === 'employee-access/cleanup-incomplete') {
+      form.value.aktywny = false
+      isAccountDisableConfirmationOpen.value = false
+    }
+    accountAccessMessage.value = getAccountActionError(
+      error,
+      active
+        ? 'Nie udało się włączyć konta.'
+        : 'Nie udało się wyłączyć konta.'
+    )
   } finally {
     isAccountActionPending.value = false
   }
 }
 
-const restoreEmployeeAccess = async () => {
-  if (!editingEmployeeId.value || isAccountActionPending.value) return
+const disableEmployeeAccount = () => updateEmployeeAccountActive(false)
+const enableEmployeeAccount = () => updateEmployeeAccountActive(true)
+
+const requestRemoveDevice = device => {
+  if (!device?.sessionId || isAccountActionPending.value) return
+  deviceToRemove.value = device
+}
+
+const closeRemoveDeviceConfirmation = () => {
+  if (isAccountActionPending.value) return
+  deviceToRemove.value = null
+}
+
+const removeSelectedDevice = async () => {
+  if (
+    !deviceToRemove.value?.sessionId ||
+    !accountAccess.value?.authUid ||
+    isAccountActionPending.value
+  ) return
   isAccountActionPending.value = true
   accountAccessMessage.value = ''
   try {
-    await showIdentityInvitation(
-      await accountSessionStore.createEmployeeAccessInvitation({
-        employee: { id: editingEmployeeId.value },
-        restoreBlocked: true
-      })
-    )
+    await accountSessionStore.removeEmployeeDevice({
+      authUid: accountAccess.value.authUid,
+      sessionId: deviceToRemove.value.sessionId
+    })
+    deviceToRemove.value = null
     await loadEmployeeAccountAccess(editingEmployeeId.value)
-    accountAccessMessage.value =
-      'Dostęp przywrócono. Przekaż pracownikowi nowe zaproszenie.'
-    showActionFeedback('Przywrócono dostęp i utworzono zaproszenie.')
+    accountAccessMessage.value = 'Urządzenie zostało usunięte.'
+    showActionFeedback('Usunięto urządzenie.')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,
-      'Nie udało się przywrócić dostępu.'
+      'Nie udało się usunąć urządzenia.'
     )
   } finally {
     isAccountActionPending.value = false
@@ -808,13 +851,20 @@ const restoreEmployeeAccess = async () => {
 }
 
 const executeDelete = async () => {
-  if (!employeeToDelete.value) return
-  try { await employeesStore.deleteEmployee(employeeToDelete.value.id); employeeToDelete.value = null }
+  if (!employeeToDelete.value || isAccountActionPending.value) return
+  isAccountActionPending.value = true
+  try {
+    await employeesStore.deleteEmployee(employeeToDelete.value.id)
+    employeeToDelete.value = null
+    showActionFeedback('Usunięto pracownika z zespołu.')
+  }
   catch (error) {
     alert(
       error?.message ||
-      'Nie udało się usunąć pracownika.'
+      'Nie udało się usunąć pracownika z zespołu.'
     )
+  } finally {
+    isAccountActionPending.value = false
   }
 }
 
@@ -886,11 +936,10 @@ const generatePairingCode = async () => {
 .devices-section { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 11px; background: #fff; }
 .devices-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; color: #334155; background: transparent; font-weight: 750; text-align: left; }
 .devices-list { display: grid; gap: 8px; padding: 0 10px 10px; border-top: 1px solid #f1f5f9; }
-.device-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 9px; padding: 9px 2px 2px; text-align: left; }
+.device-summary { display: grid; gap: 5px; padding: 10px 2px 3px; text-align: left; }
 .device-summary strong { overflow: hidden; color: #0f172a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.device-summary span { color: #b91c1c; font-size: 12px; font-weight: 750; }
-.device-summary span.active { color: #047857; }
-.device-summary small { grid-column: 1 / -1; color: #64748b; font-size: 11px; }
+.device-summary small { color: #64748b; font-size: 11px; }
+.remove-device-button { min-height: 40px; margin-top: 3px; border: 1px solid #fecaca; border-radius: 10px; color: #b91c1c; background: #fff7f7; font-weight: 750; }
 .invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
 .invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
 .action-feedback { position: fixed; z-index: 10050; top: calc(18px + env(safe-area-inset-top)); left: 50%; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(15, 23, 42, .94); box-shadow: 0 8px 24px rgba(15, 23, 42, .24); font-size: 14px; font-weight: 750; text-align: center; }

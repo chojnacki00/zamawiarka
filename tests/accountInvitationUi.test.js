@@ -29,11 +29,11 @@ test('formularz pracownika pokazuje jeden prosty przepływ dostępu', async () =
   const source = await readSource('src/views/UstawieniaZespoluView.vue')
   const template = source.slice(0, source.indexOf('<script setup>'))
 
-  assert.match(template, /Utwórz zaproszenie/)
-  assert.match(template, /Zablokuj dostęp/)
-  assert.match(template, /Przywróć dostęp/)
-  assert.match(template, /Dostęp zablokowany/)
-  assert.doesNotMatch(template, />Dodaj urządzenie</)
+  assert.match(template, /Dodaj urządzenie/)
+  assert.match(template, /Usuń urządzenie/)
+  assert.doesNotMatch(template, /Zablokuj dostęp/)
+  assert.doesNotMatch(template, /Przywróć dostęp/)
+  assert.doesNotMatch(template, /Dostęp zablokowany/)
   assert.doesNotMatch(template, />Odłącz wszystkie urządzenia</)
   assert.doesNotMatch(template, /Brak aktywnych urządzeń/)
   assert.doesNotMatch(template, /Aktywne członkostwo/)
@@ -41,21 +41,20 @@ test('formularz pracownika pokazuje jeden prosty przepływ dostępu', async () =
   assert.doesNotMatch(template, /Paruj urządzenie/)
 })
 
-test('blokada dostępu wymaga potwierdzenia i chroni przed podwójnym zapisem', async () => {
+test('wyłączenie konta wymaga potwierdzenia i chroni historię', async () => {
   const source = await readSource('src/views/UstawieniaZespoluView.vue')
   const template = source.slice(0, source.indexOf('<script setup>'))
   const cancelHandler = source.slice(
-    source.indexOf('const closeBlockConfirmation'),
-    source.indexOf('const blockEmployeeAccess')
+    source.indexOf('const closeAccountDisableConfirmation'),
+    source.indexOf('const updateEmployeeAccountActive')
   )
 
-  assert.match(template, /@click="requestBlockEmployeeAccess"/)
-  assert.match(template, /Zablokować dostęp pracownika/)
-  assert.match(template, /Konto pracownika nie zostanie usunięte\./)
-  assert.match(template, /@click="blockEmployeeAccess"/)
-  assert.doesNotMatch(cancelHandler, /blockRestaurantAccess/)
-  assert.match(source, /await accountSessionStore\.blockRestaurantAccess/)
-  assert.match(source, /if \(!accountAccess\.value\?\.authUid \|\| isAccountActionPending\.value\) return/)
+  assert.match(template, /Czy wyłączyć konto pracownika\?/)
+  assert.match(template, /Dotychczasowe grafiki, historia i rozpoczęte dokumenty pozostaną zachowane\./)
+  assert.match(template, /@click="disableEmployeeAccount"/)
+  assert.doesNotMatch(cancelHandler, /setEmployeeAccountActive/)
+  assert.match(source, /await accountSessionStore\.setEmployeeAccountActive/)
+  assert.match(source, /if \(!editingEmployeeId\.value \|\| isAccountActionPending\.value\) return/)
 })
 
 test('lista urządzeń pokazuje wyłącznie opis użytkowy', async () => {
@@ -68,9 +67,36 @@ test('lista urządzeń pokazuje wyłącznie opis użytkowy', async () => {
 
   assert.match(devices, /Urządzenia \(\{\{ employeeDevices\.length \}\}\)/)
   assert.match(devices, /device\.name/)
-  assert.match(devices, /device\.statusLabel/)
   assert.match(devices, /formatDeviceDate\(device\.dateValue\)/)
-  assert.doesNotMatch(devices, /authUid|authTime|deviceId|sessionId/)
+  assert.match(devices, /Usuń urządzenie/)
+  assert.doesNotMatch(devices, /authUid|authTime|deviceId|statusLabel/)
+})
+
+test('dodanie urządzenia wyjaśnia wpływ nowego zaproszenia', async () => {
+  const source = await readSource('src/views/UstawieniaZespoluView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+
+  assert.match(
+    template,
+    /Nowe zaproszenie unieważni poprzedni niewykorzystany link\. Dodane urządzenia pozostaną bez zmian\./
+  )
+})
+
+test('usunięcie urządzenia i pracownika wymaga opisanych potwierdzeń', async () => {
+  const source = await readSource('src/views/UstawieniaZespoluView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+  const cancelDeviceHandler = source.slice(
+    source.indexOf('const closeRemoveDeviceConfirmation'),
+    source.indexOf('const removeSelectedDevice')
+  )
+
+  assert.match(template, /Czy usunąć urządzenie „\{\{ deviceToRemove\.name \}\}”\?/)
+  assert.match(template, /Jego ponowne dodanie będzie wymagało nowego zaproszenia\./)
+  assert.match(cancelDeviceHandler, /deviceToRemove\.value = null/)
+  assert.doesNotMatch(cancelDeviceHandler, /removeEmployeeDevice|delete/)
+  assert.match(template, /Czy usunąć pracownika z zespołu\?/)
+  assert.match(template, /Dotychczasowe grafiki i historia pozostaną zachowane\./)
+  assert.match(template, />\{\{ isAccountActionPending \? 'Usuwanie…' : 'Usuń z zespołu' \}\}</)
 })
 
 test('modal zaproszenia ma tylko przekazanie, kopiowanie i anulowanie', async () => {

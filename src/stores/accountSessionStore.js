@@ -1445,21 +1445,22 @@ export const useAccountSessionStore = defineStore(
           sessionId: deviceSnapshot.id,
           ...deviceSnapshot.data()
         }))
+        .filter(device => device.status === 'active')
         .sort((left, right) => (
-          (right.createdAt?.toMillis?.() || 0) -
-          (left.createdAt?.toMillis?.() || 0)
+          (right.addedAt?.toMillis?.() || 0) -
+          (left.addedAt?.toMillis?.() || 0)
         ))
     }
 
-    const disconnectDevice = async ({ authUid, sessionId }) => {
+    const removeEmployeeDevice = async ({ authUid, sessionId }) => {
       if (!currentRestaurantId.value || !authUid || !sessionId) {
-        throw new Error('Brak danych urządzenia do odłączenia.')
+        throw new Error('Brak danych urządzenia do usunięcia.')
       }
       if (!hasPermission('can_manage_employees')) {
-        throw new Error('Nie masz uprawnienia do odłączania urządzeń.')
+        throw new Error('Nie masz uprawnienia do usuwania urządzeń.')
       }
 
-      await updateDoc(doc(
+      const sessionRef = doc(
         db,
         'restaurants',
         currentRestaurantId.value,
@@ -1467,37 +1468,49 @@ export const useAccountSessionStore = defineStore(
         authUid,
         'deviceSessions',
         sessionId
-      ), {
-        status: 'disconnected',
-        disconnectedAt: serverTimestamp(),
-        disconnectedByAuthUid: auth.currentUser.uid
-      })
+      )
+      const snapshot = await getDoc(sessionRef)
+      if (!snapshot.exists()) return false
+      if (
+        snapshot.data().restaurantId !== currentRestaurantId.value ||
+        snapshot.data().authUid !== authUid
+      ) {
+        throw new Error('Urządzenie nie należy do tego pracownika.')
+      }
+
+      const batch = writeBatch(db)
+      batch.delete(sessionRef)
+      await batch.commit()
+      return true
     }
 
-    const disconnectAllDevices = async authUid => {
-      const devices = await getEmployeeDevices(authUid)
-      const activeDevices = devices.filter(device => device.status === 'active')
-      for (let offset = 0; offset < activeDevices.length; offset += 450) {
+    const removeAllEmployeeDevices = async authUid => {
+      if (!currentRestaurantId.value || !authUid) return 0
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do usuwania urządzeń.')
+      }
+
+      const snapshot = await getDocs(collection(
+        db,
+        'restaurants',
+        currentRestaurantId.value,
+        'members',
+        authUid,
+        'deviceSessions'
+      ))
+      for (let offset = 0; offset < snapshot.docs.length; offset += 450) {
         const batch = writeBatch(db)
-        activeDevices.slice(offset, offset + 450).forEach(device => {
-          batch.update(doc(
-            db,
-            'restaurants',
-            currentRestaurantId.value,
-            'members',
-            authUid,
-            'deviceSessions',
-            device.sessionId
-          ), {
-            status: 'disconnected',
-            disconnectedAt: serverTimestamp(),
-            disconnectedByAuthUid: auth.currentUser.uid
-          })
+        snapshot.docs.slice(offset, offset + 450).forEach(device => {
+          batch.delete(device.ref)
         })
         await batch.commit()
       }
-      return activeDevices.length
+      return snapshot.size
     }
+
+    // Zachowane wyłącznie dla zgodności starszego kodu produkcyjnego.
+    const disconnectDevice = removeEmployeeDevice
+    const disconnectAllDevices = removeAllEmployeeDevices
 
     const cleanupCurrentRestaurantTemporaryData = async () => {
       const restaurantId = currentRestaurantId.value
@@ -1540,109 +1553,162 @@ export const useAccountSessionStore = defineStore(
       )))
     }
 
+    const getEmployeeMembershipSnapshot = async employeeId => {
+      const snapshot = await getDocs(query(
+        collection(
+          db,
+          'restaurants',
+          currentRestaurantId.value,
+          'members'
+        ),
+        where('employeeId', '==', employeeId)
+      ))
+      if (snapshot.size > 1) {
+        throw new Error('Pracownik ma niespójne dane dostępu do restauracji.')
+      }
+      return snapshot.empty ? null : snapshot.docs[0]
+    }
+
+    const removeEmployeeInvitations = async employeeId => {
+      const snapshot = await getDocs(query(
+        collection(db, 'identityInvitations'),
+        where('restaurantId', '==', currentRestaurantId.value),
+        where('employeeId', '==', employeeId)
+      ))
+      for (const invitationSnapshot of snapshot.docs) {
+        await cancelInvitation({
+          invitationId: invitationSnapshot.id,
+          employeeId
+        })
+      }
+      return snapshot.size
+    }
+
+    const removeEmployeeAccessArtifacts = async ({
+      employeeId,
+      authUid = null
+    }) => {
+      const removedDevices = authUid
+        ? await removeAllEmployeeDevices(authUid)
+        : 0
+      const removedInvitations = await removeEmployeeInvitations(employeeId)
+      return { removedDevices, removedInvitations }
+    }
+
+    const setEmployeeAccountActive = async ({
+      employeeId,
+      active,
+      archive = false
+    }) => {
+      if (!currentRestaurantId.value || !employeeId) {
+        throw new Error('Brak danych pracownika lub restauracji.')
+      }
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do zmiany dostępu pracownika.')
+      }
+
+      const restaurantId = currentRestaurantId.value
+      const employeeRef = doc(
+        db,
+        'users',
+        restaurantId,
+        'employees',
+        employeeId
+      )
+      const [employeeSnapshot, memberSnapshot] = await Promise.all([
+        getDoc(employeeRef),
+        getEmployeeMembershipSnapshot(employeeId)
+      ])
+      if (!employeeSnapshot.exists()) {
+        throw new Error('Nie znaleziono danych pracownika.')
+      }
+
+      const member = memberSnapshot?.data() || null
+      if (member && (
+        member.restaurantId !== restaurantId ||
+        member.employeeId !== employeeId ||
+        member.role !== 'employee'
+      )) {
+        throw new Error('Nie można zmienić dostępu tego pracownika.')
+      }
+
+      const batch = writeBatch(db)
+      const employeeUpdate = {
+        aktywny: active === true,
+        updatedAt: serverTimestamp()
+      }
+      if (archive) {
+        employeeUpdate.archived = true
+        employeeUpdate.archivedAt = serverTimestamp()
+      } else if (active === true) {
+        employeeUpdate.archived = false
+        employeeUpdate.archivedAt = null
+      }
+      batch.update(employeeRef, employeeUpdate)
+      if (memberSnapshot) {
+        batch.update(memberSnapshot.ref, {
+          status: active === true ? 'active' : 'blocked'
+        })
+      }
+      await batch.commit()
+
+      if (active === true) {
+        return {
+          active: true,
+          memberExists: Boolean(memberSnapshot),
+          removedDevices: 0,
+          removedInvitations: 0
+        }
+      }
+
+      try {
+        const cleanup = await removeEmployeeAccessArtifacts({
+          employeeId,
+          authUid: member?.authUid || null
+        })
+        return {
+          active: false,
+          memberExists: Boolean(memberSnapshot),
+          ...cleanup
+        }
+      } catch (cleanupError) {
+        const error = new Error(
+          'Konto zostało wyłączone, ale nie udało się usunąć wszystkich urządzeń lub zaproszeń. Ponów operację.'
+        )
+        error.code = 'employee-access/cleanup-incomplete'
+        error.cause = cleanupError
+        throw error
+      }
+    }
+
+    const archiveEmployeeFromTeam = employeeId => (
+      setEmployeeAccountActive({
+        employeeId,
+        active: false,
+        archive: true
+      })
+    )
+
     const blockRestaurantAccess = async authUid => {
       if (!currentRestaurantId.value || !authUid) return
       if (!hasPermission('can_manage_employees')) {
         throw new Error('Nie masz uprawnienia do blokowania dostępu.')
       }
 
-      const restaurantId = currentRestaurantId.value
-      const memberRef = doc(
+      const memberSnapshot = await getDoc(doc(
         db,
         'restaurants',
-        restaurantId,
+        currentRestaurantId.value,
         'members',
         authUid
-      )
-      const memberSnapshot = await getDoc(memberRef)
+      ))
       if (!memberSnapshot.exists()) {
         throw new Error('Pracownik nie ma dostępu do tej restauracji.')
       }
-      const member = memberSnapshot.data()
-      if (
-        member.restaurantId !== restaurantId ||
-        member.authUid !== authUid ||
-        member.role !== 'employee'
-      ) {
-        throw new Error('Nie można zmienić dostępu tego konta.')
-      }
-
-      const [deviceSnapshots, invitationSnapshots, slotSnapshots] =
-        await Promise.all([
-          getDocs(collection(
-            db,
-            'restaurants',
-            restaurantId,
-            'members',
-            authUid,
-            'deviceSessions'
-          )),
-          getDocs(query(
-            collection(db, 'identityInvitations'),
-            where('restaurantId', '==', restaurantId),
-            where('employeeId', '==', member.employeeId)
-          )),
-          getDocs(query(
-            collection(
-              db,
-              'restaurants',
-              restaurantId,
-              'identityInvitationSlots'
-            ),
-            where('employeeId', '==', member.employeeId)
-          ))
-        ])
-      const activeDevices = deviceSnapshots.docs.filter(
-        snapshot => snapshot.data().status === 'active'
-      )
-      const slotsById = new Map(slotSnapshots.docs.map(snapshot => [
-        snapshot.id,
-        snapshot
-      ]))
-      const invitationSlotIds = new Set(
-        invitationSnapshots.docs
-          .filter(snapshot => (
-            slotsById.get(snapshot.data().slotId)?.data().tokenHash ===
-            snapshot.id
-          ))
-          .map(snapshot => snapshot.data().slotId)
-      )
-      const operationCount = 1 + activeDevices.length +
-        (invitationSnapshots.size * 2) + invitationSlotIds.size
-      if (operationCount > 450) {
-        throw new Error(
-          'Nie można bezpiecznie zablokować dostępu. Skontaktuj się z administratorem.'
-        )
-      }
-
-      const batch = writeBatch(db)
-      batch.update(memberRef, { status: 'blocked' })
-      activeDevices.forEach(snapshot => {
-        batch.update(snapshot.ref, {
-          status: 'disconnected',
-          disconnectedAt: serverTimestamp(),
-          disconnectedByAuthUid: auth.currentUser.uid
-        })
+      return setEmployeeAccountActive({
+        employeeId: memberSnapshot.data().employeeId,
+        active: false
       })
-      invitationSnapshots.docs.forEach(snapshot => {
-        batch.delete(snapshot.ref)
-        batch.delete(doc(db, 'activationInvitations', snapshot.id))
-      })
-      invitationSlotIds.forEach(slotId => {
-        batch.delete(doc(
-          db,
-          'restaurants',
-          restaurantId,
-          'identityInvitationSlots',
-          slotId
-        ))
-      })
-      await batch.commit()
-
-      return {
-        disconnectedDevices: activeDevices.length,
-        cancelledInvitations: invitationSnapshots.size
-      }
     }
 
     const configureLocalPin = async pin => {
@@ -1898,12 +1964,16 @@ export const useAccountSessionStore = defineStore(
       createEmployeeAccessInvitation,
       cancelInvitation,
       getEmployeeDevices,
+      removeEmployeeDevice,
+      removeAllEmployeeDevices,
       disconnectDevice,
       disconnectAllDevices,
       cleanupCurrentRestaurantTemporaryData,
       getEmployeeAccountAccess,
       handleBusinessPermissionDenied,
       syncEmployeeMembershipProfile,
+      setEmployeeAccountActive,
+      archiveEmployeeFromTeam,
       blockRestaurantAccess,
       configureLocalPin,
       unlockWithLocalPin,

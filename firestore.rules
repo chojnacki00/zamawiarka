@@ -576,7 +576,7 @@ service cloud.firestore {
             memberId
           );
           allow delete: if canManageEmployees(restaurantId) &&
-            resource.data.status == 'disconnected';
+            memberId != request.auth.uid;
         }
       }
 
