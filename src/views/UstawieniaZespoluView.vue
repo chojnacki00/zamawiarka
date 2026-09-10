@@ -57,8 +57,6 @@
             </div>
             <label class="form-field"><span>Numer telefonu</span><input v-model="form.telefon" type="tel" inputmode="tel" autocomplete="tel" placeholder="Np. +48 500 000 000"></label>
             <label class="form-field"><span>Adres e-mail</span><input v-model="form.email" type="email" inputmode="email" autocomplete="email"></label>
-            <label class="form-field"><span>PIN starszego logowania *</span><div class="pin-row"><input v-model="form.pin" class="pin-input" type="text" inputmode="numeric" maxlength="4"><button class="dice-button" type="button" aria-label="Wylosuj PIN" title="Wylosuj PIN" @click="generateRandomPin">🎲</button><button type="button" :disabled="!editingEmployeeId" @click="generatePairingCode">Paruj urządzenie</button></div></label>
-            <p class="field-note">Mechanizm starszy pozostaje tymczasowo do czasu przetestowania kont Firebase pracowników.</p>
           </section>
         </article>
 
@@ -118,7 +116,7 @@
             <p class="field-note">Profil określa dostęp pracownika do modułów aplikacji i jest wymagany.</p>
             <div v-if="editingEmployeeId" class="account-access-card">
               <strong>Dostęp pracownika</strong>
-              <p v-if="!canUseFirebaseAccountAccess" class="field-note">Zarządzanie nowym dostępem wymaga zalogowania kontem Firebase z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
+              <p v-if="!canUseAccountAccess" class="field-note">Zarządzanie dostępem wymaga zalogowanego konta z uprawnieniem do zespołu. Starsza sesja PIN nie może tworzyć zaproszeń.</p>
               <template v-else>
                 <template v-if="accountAccess?.status === 'blocked'">
                   <p class="account-access-status blocked">Dostęp zablokowany</p>
@@ -128,10 +126,24 @@
                 <template v-else>
                   <div class="access-actions">
                     <button class="invite-button" type="button" :disabled="isAccountActionPending" @click="inviteEmployee">{{ isAccountActionPending ? 'Zapisywanie…' : 'Utwórz zaproszenie' }}</button>
-                    <button v-if="accountAccess?.accessType === 'membership'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">Zablokuj dostęp</button>
+                    <button v-if="accountAccess?.accessType === 'membership'" class="block-access-button" type="button" :disabled="isAccountActionPending" @click="requestBlockEmployeeAccess">Zablokuj dostęp</button>
                   </div>
-                  <small>Nowe zaproszenie zastąpi poprzednie. Aplikacja nie wysyła go automatycznie.</small>
+                  <small>Nowe zaproszenie zastąpi poprzednie.</small>
                 </template>
+                <section v-if="accountAccess?.accessType === 'membership'" class="devices-section">
+                  <button class="devices-toggle" type="button" :aria-expanded="isDevicesOpen" @click="isDevicesOpen = !isDevicesOpen">
+                    <span>Urządzenia ({{ employeeDevices.length }})</span>
+                    <span aria-hidden="true">{{ isDevicesOpen ? '−' : '+' }}</span>
+                  </button>
+                  <div v-if="isDevicesOpen" class="devices-list">
+                    <p v-if="!employeeDevices.length" class="field-note">Brak urządzeń.</p>
+                    <article v-for="(device, index) in employeeDevices" :key="`${device.name}-${index}`" class="device-summary">
+                      <strong>{{ device.name }}</strong>
+                      <span :class="{ active: device.statusLabel === 'Aktywne' }">{{ device.statusLabel }}</span>
+                      <small>{{ formatDeviceDate(device.dateValue) }}</small>
+                    </article>
+                  </div>
+                </section>
                 <p v-if="accountAccessMessage" class="account-access-message">{{ accountAccessMessage }}</p>
               </template>
             </div>
@@ -157,19 +169,26 @@
         <div class="form-actions"><button class="cancel-button" type="button" @click="closePositionPicker">Anuluj</button><button class="save-button" type="button" @click="applyPositionSelection">Zastosuj</button></div>
       </div>
     </div>
-    <div v-if="pairingCode" class="app-dialog-overlay"><div class="app-dialog-card dialog-card"><div class="app-dialog-title">Kod parowania</div><p>Wpisz kod na urządzeniu pracownika. Jest ważny przez 3 minuty.</p><div class="pairing-code">{{ pairingCode }}</div><button class="save-button full" type="button" @click="pairingCode = ''">Gotowe</button></div></div>
+    <div v-if="isBlockConfirmationOpen" class="app-dialog-overlay" @click.self="closeBlockConfirmation">
+      <div class="app-dialog-card dialog-card" role="dialog" aria-modal="true" aria-labelledby="block-access-title">
+        <div id="block-access-title" class="app-dialog-title">Zablokować dostęp pracownika {{ form.imie }} {{ form.nazwisko }}?</div>
+        <p>Pracownik utraci dostęp do tej restauracji na wszystkich urządzeniach. Konto pracownika nie zostanie usunięte.</p>
+        <div class="form-actions">
+          <button class="cancel-button" type="button" :disabled="isAccountActionPending" @click="closeBlockConfirmation">Anuluj</button>
+          <button class="danger-button" type="button" :disabled="isAccountActionPending" @click="blockEmployeeAccess">{{ isAccountActionPending ? 'Blokowanie…' : 'Zablokuj dostęp' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="identityInvitation" class="app-dialog-overlay">
       <div class="app-dialog-card invitation-dialog">
         <button class="dialog-close" type="button" aria-label="Zamknij" @click="closeIdentityInvitation">×</button>
         <div class="app-dialog-title">Zaproszenie dla pracownika</div>
-        <p>Zeskanuj kod na urządzeniu pracownika albo przekaż dokładnie ten sam link.</p>
+        <p>Przekaż pracownikowi link lub pokaż kod QR.</p>
         <img v-if="identityInvitation.qrDataUrl" class="invitation-qr" :src="identityInvitation.qrDataUrl" alt="Kod QR zaproszenia">
         <label class="form-field"><span>Link aktywacyjny</span><input :value="identityInvitation.link" type="text" readonly></label>
         <small>Ważne do: {{ formatInvitationDate(identityInvitation.expiresAt) }}</small>
         <button class="invite-button full" type="button" @click="copyActivationLink">Kopiuj link</button>
         <button class="block-access-button full" type="button" :disabled="isAccountActionPending" @click="cancelVisibleInvitation">Anuluj zaproszenie</button>
-        <button class="invite-button full" type="button" :disabled="isAccountActionPending" @click="replaceVisibleInvitation">Wygeneruj nowe zaproszenie</button>
-        <small>Aplikacja nie wysłała wiadomości e-mail. Link lub QR trzeba przekazać pracownikowi.</small>
       </div>
     </div>
     <div v-if="actionFeedback" class="action-feedback" role="status" aria-live="polite">{{ actionFeedback }}</div>
@@ -193,6 +212,7 @@ import { useSchedulePositionsStore } from '../stores/schedulePositionsStore.js'
 import { cleanupExpiredPairingCodes } from '../services/temporaryDataCleanup.js'
 import { buildActivationUrl } from '../config/publicAppUrl.js'
 import { getCleanupFailureDetails } from '../utils/temporaryDataCleanup.js'
+import { buildEmployeeDeviceSummary } from '../utils/accountAccessUx.js'
 import {
   COMPENSATION_TYPES,
   getEffectiveHourlyRate,
@@ -231,6 +251,9 @@ const accountAccess = ref(null)
 const identityInvitation = ref(null)
 const accountAccessMessage = ref('')
 const isAccountActionPending = ref(false)
+const isBlockConfirmationOpen = ref(false)
+const isDevicesOpen = ref(false)
+const employeeDevices = ref([])
 const actionFeedback = ref('')
 const temporaryCleanupWarning = ref('')
 let actionFeedbackTimer = null
@@ -278,7 +301,7 @@ const isHourlyCompensation = computed(() => (
   form.value.compensation.type ===
   COMPENSATION_TYPES.HOURLY
 ))
-const canUseFirebaseAccountAccess = computed(() => Boolean(
+const canUseAccountAccess = computed(() => Boolean(
   accountSessionStore.authUser &&
   accountSessionStore.currentRestaurantId
 ))
@@ -443,12 +466,15 @@ const openForm = (employee = null) => {
   openSections.value = closedSections()
   formError.value = ''
   accountAccess.value = null
+  employeeDevices.value = []
+  isDevicesOpen.value = false
+  isBlockConfirmationOpen.value = false
   identityInvitation.value = null
   accountAccessMessage.value = ''
   isPositionPickerOpen.value = false
   positionPickerSelection.value = []
   isFormOpen.value = true
-  if (employee?.id && canUseFirebaseAccountAccess.value) {
+  if (employee?.id && canUseAccountAccess.value) {
     loadEmployeeAccountAccess(employee.id)
   }
 }
@@ -458,6 +484,9 @@ const cancelForm = () => {
   editingEmployeeId.value = null
   formError.value = ''
   accountAccess.value = null
+  employeeDevices.value = []
+  isDevicesOpen.value = false
+  isBlockConfirmationOpen.value = false
   identityInvitation.value = null
   accountAccessMessage.value = ''
   nextTick(() => {
@@ -611,12 +640,17 @@ const loadEmployeeAccountAccess = async employeeId => {
   if (!employeeId) return
 
   try {
-    accountAccess.value = await accountSessionStore
-      .getEmployeeAccountAccess(employeeId)
+    const access = await accountSessionStore.getEmployeeAccountAccess(employeeId)
+    accountAccess.value = access
+    employeeDevices.value = access?.authUid
+      ? (await accountSessionStore.getEmployeeDevices(access.authUid))
+          .map(buildEmployeeDeviceSummary)
+      : []
   } catch (error) {
     console.error('Błąd odczytu dostępu pracownika:', error)
     accountAccessMessage.value =
       'Nie udało się sprawdzić dostępu do konta.'
+    employeeDevices.value = []
   }
 }
 
@@ -637,8 +671,8 @@ const inviteEmployee = async () => {
     )
     await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
-      'Zaproszenie zapisano. Przekaż pracownikowi link aktywacyjny — aplikacja nie wysłała wiadomości z zaproszeniem.'
-    showActionFeedback('Utworzono zaproszenie.')
+      'Zaproszenie utworzono. Przekaż pracownikowi link lub kod QR.'
+    showActionFeedback('Zaproszenie utworzono.')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,
@@ -681,11 +715,6 @@ const closeIdentityInvitation = () => {
   identityInvitation.value = null
 }
 
-const replaceVisibleInvitation = async () => {
-  if (!identityInvitation.value) return
-  await inviteEmployee()
-}
-
 const cancelVisibleInvitation = async () => {
   const invitationId = identityInvitation.value?.id
   if (!invitationId || isAccountActionPending.value) return
@@ -714,6 +743,24 @@ const formatInvitationDate = value => {
   return Number.isNaN(date.getTime()) ? 'brak danych' : date.toLocaleString('pl-PL')
 }
 
+const formatDeviceDate = value => {
+  if (!value) return 'Data dodania: brak danych'
+  const date = value?.toDate?.() || (value instanceof Date ? value : new Date(value))
+  return Number.isNaN(date.getTime())
+    ? 'Data dodania: brak danych'
+    : `Dodano: ${date.toLocaleString('pl-PL')}`
+}
+
+const requestBlockEmployeeAccess = () => {
+  if (!accountAccess.value?.authUid || isAccountActionPending.value) return
+  isBlockConfirmationOpen.value = true
+}
+
+const closeBlockConfirmation = () => {
+  if (isAccountActionPending.value) return
+  isBlockConfirmationOpen.value = false
+}
+
 const blockEmployeeAccess = async () => {
   if (!accountAccess.value?.authUid || isAccountActionPending.value) return
 
@@ -723,6 +770,7 @@ const blockEmployeeAccess = async () => {
     await accountSessionStore.blockRestaurantAccess(
       accountAccess.value.authUid
     )
+    isBlockConfirmationOpen.value = false
     await loadEmployeeAccountAccess(editingEmployeeId.value)
     accountAccessMessage.value =
       'Dostęp został zablokowany, a dotychczasowe urządzenia odłączone.'
@@ -770,6 +818,8 @@ const executeDelete = async () => {
   }
 }
 
+// Kod starszego parowania pozostaje na czas zgodności z używaną wersją
+// produkcyjną, ale nie jest już udostępniany w nowym formularzu pracownika.
 const generatePairingCode = async () => {
   if (!editingEmployeeId.value) return
   let restaurantId
@@ -794,10 +844,19 @@ const generatePairingCode = async () => {
       }
     }
     const code = String(Math.floor(100000 + Math.random() * 900000))
-    await setDoc(doc(db, 'pairing_codes', code), { companyUid: restaurantId, employeeId: editingEmployeeId.value, employeeName: form.value.imie, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + 3 * 60 * 1000) })
+    await setDoc(doc(db, 'pairing_codes', code), {
+      companyUid: restaurantId,
+      employeeId: editingEmployeeId.value,
+      employeeName: form.value.imie,
+      createdAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + 3 * 60 * 1000)
+    })
     pairingCode.value = code
-  } catch (error) { alert('Nie udało się utworzyć kodu parowania.') }
+  } catch (error) {
+    alert('Nie udało się utworzyć kodu parowania.')
+  }
 }
+
 </script>
 
 <style scoped>
@@ -824,6 +883,14 @@ const generatePairingCode = async () => {
 .invite-button:disabled, .block-access-button:disabled { opacity: .55; }
 .account-access-message { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
 .access-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.devices-section { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 11px; background: #fff; }
+.devices-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; color: #334155; background: transparent; font-weight: 750; text-align: left; }
+.devices-list { display: grid; gap: 8px; padding: 0 10px 10px; border-top: 1px solid #f1f5f9; }
+.device-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 9px; padding: 9px 2px 2px; text-align: left; }
+.device-summary strong { overflow: hidden; color: #0f172a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.device-summary span { color: #b91c1c; font-size: 12px; font-weight: 750; }
+.device-summary span.active { color: #047857; }
+.device-summary small { grid-column: 1 / -1; color: #64748b; font-size: 11px; }
 .invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
 .invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
 .action-feedback { position: fixed; z-index: 10050; top: calc(18px + env(safe-area-inset-top)); left: 50%; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(15, 23, 42, .94); box-shadow: 0 8px 24px rgba(15, 23, 42, .24); font-size: 14px; font-weight: 750; text-align: center; }

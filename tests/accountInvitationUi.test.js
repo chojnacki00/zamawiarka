@@ -21,7 +21,7 @@ test('akcje zaproszenia mają efekt naciśnięcia i widoczne potwierdzenia', asy
   assert.match(source, /:active:not\(:disabled\)/)
   assert.match(source, /Skopiowano link\./)
   assert.match(source, /Anulowano zaproszenie\./)
-  assert.match(source, /Utworzono zaproszenie\./)
+  assert.match(source, /Zaproszenie utworzono\./)
   assert.match(source, /role="status"/)
 })
 
@@ -37,6 +37,77 @@ test('formularz pracownika pokazuje jeden prosty przepływ dostępu', async () =
   assert.doesNotMatch(template, />Odłącz wszystkie urządzenia</)
   assert.doesNotMatch(template, /Brak aktywnych urządzeń/)
   assert.doesNotMatch(template, /Aktywne członkostwo/)
+  assert.doesNotMatch(template, /PIN starszego logowania/)
+  assert.doesNotMatch(template, /Paruj urządzenie/)
+})
+
+test('blokada dostępu wymaga potwierdzenia i chroni przed podwójnym zapisem', async () => {
+  const source = await readSource('src/views/UstawieniaZespoluView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+  const cancelHandler = source.slice(
+    source.indexOf('const closeBlockConfirmation'),
+    source.indexOf('const blockEmployeeAccess')
+  )
+
+  assert.match(template, /@click="requestBlockEmployeeAccess"/)
+  assert.match(template, /Zablokować dostęp pracownika/)
+  assert.match(template, /Konto pracownika nie zostanie usunięte\./)
+  assert.match(template, /@click="blockEmployeeAccess"/)
+  assert.doesNotMatch(cancelHandler, /blockRestaurantAccess/)
+  assert.match(source, /await accountSessionStore\.blockRestaurantAccess/)
+  assert.match(source, /if \(!accountAccess\.value\?\.authUid \|\| isAccountActionPending\.value\) return/)
+})
+
+test('lista urządzeń pokazuje wyłącznie opis użytkowy', async () => {
+  const source = await readSource('src/views/UstawieniaZespoluView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+  const devices = template.slice(
+    template.indexOf('class="devices-section"'),
+    template.indexOf('accountAccessMessage', template.indexOf('class="devices-section"'))
+  )
+
+  assert.match(devices, /Urządzenia \(\{\{ employeeDevices\.length \}\}\)/)
+  assert.match(devices, /device\.name/)
+  assert.match(devices, /device\.statusLabel/)
+  assert.match(devices, /formatDeviceDate\(device\.dateValue\)/)
+  assert.doesNotMatch(devices, /authUid|authTime|deviceId|sessionId/)
+})
+
+test('modal zaproszenia ma tylko przekazanie, kopiowanie i anulowanie', async () => {
+  const source = await readSource('src/views/UstawieniaZespoluView.vue')
+  const template = source.slice(0, source.indexOf('<script setup>'))
+
+  assert.match(template, /Przekaż pracownikowi link lub pokaż kod QR\./)
+  assert.match(template, /Kopiuj link/)
+  assert.match(template, /Anuluj zaproszenie/)
+  assert.doesNotMatch(template, /Wyślij ponownie|Wygeneruj nowe zaproszenie/)
+  assert.match(source, /Zaproszenie utworzono\. Przekaż pracownikowi link lub kod QR\./)
+})
+
+test('ekrany dostępu używają tekstów użytkowych i opisanych pól PIN', async () => {
+  const [accountSource, teamSource, loginSource, activationSource, pinSource] = await Promise.all([
+    readSource('src/views/AccountAccessView.vue'),
+    readSource('src/views/UstawieniaZespoluView.vue'),
+    readSource('src/views/LoginView.vue'),
+    readSource('src/views/ActivationView.vue'),
+    readSource('src/views/LocalPinLockView.vue')
+  ])
+  const accountTemplate = accountSource.slice(0, accountSource.indexOf('<script setup>'))
+  const teamTemplate = teamSource.slice(0, teamSource.indexOf('<script setup>'))
+
+  for (const source of [
+    accountTemplate,
+    teamTemplate,
+    loginSource.slice(0, loginSource.indexOf('<script setup>')),
+    activationSource.slice(0, activationSource.indexOf('<script setup>')),
+    pinSource.slice(0, pinSource.indexOf('<script setup>'))
+  ]) assert.doesNotMatch(source, />[^<]*Firebase/)
+  assert.match(accountTemplate, /Dostęp do tej restauracji został zablokowany\./)
+  assert.match(accountTemplate, /Skontaktuj się z managerem, aby ponownie uzyskać dostęp\./)
+  assert.match(accountTemplate, /<span>Wpisz PIN<\/span>/)
+  assert.match(accountTemplate, /<span>Powtórz PIN<\/span>/)
+  assert.match(accountTemplate, /PIN jest zapisany wyłącznie na tym urządzeniu\./)
+  assert.match(accountTemplate, /pin\.length !== 4 \|\| pin !== pinConfirmation/)
 })
 
 test('aktywacja pozwala wybrać istniejące konto i przypomnieć hasło bez nazw technicznych', async () => {

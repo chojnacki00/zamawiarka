@@ -62,6 +62,10 @@ import {
   cleanupExpiredPairingCodes
 } from '../services/temporaryDataCleanup.js'
 import { getCleanupFailureDetails } from '../utils/temporaryDataCleanup.js'
+import {
+  isPermissionDeniedError,
+  shouldTreatBusinessPermissionDeniedAsBlocked
+} from '../utils/accountAccessUx.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -104,6 +108,7 @@ export const useAccountSessionStore = defineStore(
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
     let isHandlingDeviceDisconnect = false
+    let businessAccessValidationPromise = null
     const applicationLockCleanupHandlers = new Set()
 
     const employeeAuthStore = useEmployeeAuthStore()
@@ -231,16 +236,89 @@ export const useAccountSessionStore = defineStore(
       })
     }
 
-    const handleAccessRevoked = message => {
+    const handleAccessRevoked = (message, membership = null) => {
       runApplicationLockCleanup()
       stopSensitiveListeners()
       isMembershipContextReady.value = false
+      isLoading.value = false
       accessRevoked.value = true
+      currentRestaurant.value = null
+      if (membership) currentMembership.value = membership
       currentEmployee.value = null
       permissionProfile.value = null
       permissions.value = {}
       employeeAuthStore.clearAuthenticatedRestaurantContext()
       error.value = message
+    }
+
+    const handleBusinessPermissionDenied = async ({
+      error: caughtError,
+      restaurantId
+    } = {}) => {
+      const expectedRestaurantId = String(restaurantId || '').trim()
+      const expectedAuthUid = authUser.value?.uid
+
+      if (
+        !isPermissionDeniedError(caughtError) ||
+        !expectedRestaurantId ||
+        expectedRestaurantId !== currentRestaurantId.value ||
+        !expectedAuthUid ||
+        expectedAuthUid !== auth.currentUser?.uid
+      ) return false
+
+      if (accessRevoked.value) return true
+      if (businessAccessValidationPromise) {
+        return businessAccessValidationPromise
+      }
+
+      businessAccessValidationPromise = (async () => {
+        try {
+          const snapshot = await getDoc(doc(
+            db,
+            'restaurants',
+            expectedRestaurantId,
+            'members',
+            expectedAuthUid
+          ))
+          if (
+            expectedRestaurantId !== currentRestaurantId.value ||
+            expectedAuthUid !== authUser.value?.uid ||
+            expectedAuthUid !== auth.currentUser?.uid
+          ) return false
+
+          const membership = snapshot.exists()
+            ? { id: snapshot.id, ...snapshot.data() }
+            : null
+          const accessWasRevoked =
+            shouldTreatBusinessPermissionDeniedAsBlocked({
+              error: caughtError,
+              expectedRestaurantId,
+              currentRestaurantId: currentRestaurantId.value,
+              expectedAuthUid,
+              currentAuthUid: auth.currentUser?.uid,
+              membershipExists: snapshot.exists(),
+              membershipStatus: membership?.status
+            })
+
+          if (!accessWasRevoked) return false
+
+          handleAccessRevoked(
+            'Dostęp do tej restauracji został zablokowany.',
+            membership
+          )
+          return true
+        } catch (validationError) {
+          console.error(
+            'Nie udało się potwierdzić stanu członkostwa po utracie dostępu:',
+            validationError?.code || 'account/membership-check-failed'
+          )
+          return false
+        } finally {
+          businessAccessValidationPromise = null
+        }
+      })()
+
+      return businessAccessValidationPromise
     }
 
     const handleDeviceDisconnected = () => {
@@ -294,6 +372,25 @@ export const useAccountSessionStore = defineStore(
         'members',
         authUser.value.uid
       )
+      const handleContextListenerError = (source, listenerError) => {
+        void handleBusinessPermissionDenied({
+          error: listenerError,
+          restaurantId
+        }).then(accessWasRevoked => {
+          if (
+            accessWasRevoked ||
+            restaurantId !== currentRestaurantId.value
+          ) return
+
+          isLoading.value = false
+          console.error(
+            `Nie udało się obserwować ${source}:`,
+            listenerError?.code || 'account/context-listener-failed'
+          )
+          error.value =
+            'Nie udało się sprawdzić aktualnego stanu dostępu. Spróbuj ponownie.'
+        })
+      }
 
       let listenedPermissionProfileId =
         currentMembership.value?.permissionProfileId || null
@@ -329,13 +426,18 @@ export const useAccountSessionStore = defineStore(
             ? snapshot.data().uprawnienia || snapshot.data()
             : {}
           applyCompatibilityContext()
+        }, listenerError => {
+          handleContextListenerError('profilu uprawnień', listenerError)
         })
       }
 
       unsubscribeMembership = onSnapshot(memberRef, snapshot => {
         if (!snapshot.exists() || snapshot.data().status !== 'active') {
           handleAccessRevoked(
-            'Dostęp do tej restauracji został zablokowany.'
+            'Dostęp do tej restauracji został zablokowany.',
+            snapshot.exists()
+              ? { id: snapshot.id, ...snapshot.data() }
+              : null
           )
           return
         }
@@ -354,6 +456,14 @@ export const useAccountSessionStore = defineStore(
             currentMembership.value.permissionProfileId
           )
         }
+      }, listenerError => {
+        isLoading.value = false
+        console.error(
+          'Nie udało się obserwować stanu członkostwa:',
+          listenerError?.code || 'account/membership-listener-failed'
+        )
+        error.value =
+          'Nie udało się sprawdzić aktualnego stanu dostępu. Spróbuj ponownie.'
       })
 
       if (!isEmployeeMembership.value) return
@@ -380,6 +490,8 @@ export const useAccountSessionStore = defineStore(
             sessionId: snapshot.id,
             ...snapshot.data()
           }
+        }, listenerError => {
+          handleContextListenerError('sesji urządzenia', listenerError)
         })
       }
 
@@ -401,6 +513,8 @@ export const useAccountSessionStore = defineStore(
 
         currentEmployee.value = { id: snapshot.id, ...snapshot.data() }
         applyCompatibilityContext()
+      }, listenerError => {
+        handleContextListenerError('danych pracownika', listenerError)
       })
 
       startPermissionProfileListener(
@@ -1788,6 +1902,7 @@ export const useAccountSessionStore = defineStore(
       disconnectAllDevices,
       cleanupCurrentRestaurantTemporaryData,
       getEmployeeAccountAccess,
+      handleBusinessPermissionDenied,
       syncEmployeeMembershipProfile,
       blockRestaurantAccess,
       configureLocalPin,

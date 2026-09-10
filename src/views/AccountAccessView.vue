@@ -14,8 +14,8 @@
       </template>
 
       <template v-else-if="sessionStore.accessRevoked">
-        <p>{{ sessionStore.error || 'Dostęp do restauracji został zablokowany.' }}</p>
-        <p class="hint">Aktywna sesja Firebase nie daje dostępu do danych zablokowanej restauracji.</p>
+        <p>Dostęp do tej restauracji został zablokowany.</p>
+        <p class="hint">Skontaktuj się z managerem, aby ponownie uzyskać dostęp.</p>
       </template>
 
       <template v-else-if="sessionStore.deviceApprovalRequired">
@@ -37,9 +37,9 @@
       </template>
 
       <template v-else-if="sessionStore.needsLocalPinSetup">
-        <p>Ustaw czterocyfrowy PIN tylko dla tego urządzenia. PIN nie zostanie wysłany do Firebase.</p>
-        <input v-model="pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" aria-label="Nowy lokalny PIN">
-        <input v-model="pinConfirmation" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" aria-label="Powtórz lokalny PIN">
+        <p>Ustaw czterocyfrowy PIN dla tego urządzenia. PIN jest zapisany wyłącznie na tym urządzeniu.</p>
+        <label class="pin-field"><span>Wpisz PIN</span><input v-model="pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"></label>
+        <label class="pin-field"><span>Powtórz PIN</span><input v-model="pinConfirmation" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"></label>
         <button class="primary-button" type="button" :disabled="isBusy || pin.length !== 4 || pin !== pinConfirmation" @click="configurePin">Zapisz PIN na tym urządzeniu</button>
       </template>
 
@@ -256,6 +256,7 @@ onMounted(async () => {
 .restaurant-button small { color: #64748b; }
 .logout-button { margin-top: 6px; border: 0; color: #dc2626; background: transparent; }
 button:disabled { opacity: .48; }
+.pin-field { display: grid; gap: 7px; color: #475569; font-size: 13px; font-weight: 800; }
 .pin-input { width: 100%; min-height: 54px; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 13px; color: #111827; background: #fff; font-size: 25px; font-weight: 800; letter-spacing: .3em; text-align: center; }
 .pin-input:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; caret-color: #007aff; }
 .success-message { color: #166534 !important; }
