@@ -2119,7 +2119,8 @@ if (backupData.collections) {
         route,
         isAppReady: isAppReady.value,
         hasFirebaseSession: Boolean(auth.currentUser),
-        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee)
+        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee),
+        deviceAccessRemoved: accountSessionStore.deviceAccessRemoved
       })
 
       if (authenticationRedirect) {
@@ -5940,6 +5941,15 @@ onMounted(() => {
       authStore.currentCompany = null
       
       resetCompanyDataState()
+
+      if (accountSessionStore.deviceAccessRemoved) {
+        if (router.currentRoute.value.path !== '/konto') {
+          await router.replace('/konto')
+        }
+        isDataLoaded.value = true
+        isAppReady.value = true
+        return
+      }
       
       // === NOWA WSPÓŁPRACA STRAŻNIKÓW (WOLNOŚĆ DLA PRACOWNIKA) ===
       const currentPath = window.location.pathname

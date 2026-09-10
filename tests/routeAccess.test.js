@@ -31,6 +31,11 @@ test('konto bez sesji wraca do logowania Firebase, a nie do PIN-u', () => {
   assert.equal(redirectFor('/konto'), '/login')
 })
 
+test('końcowy komunikat usunięcia urządzenia pozostaje widoczny po automatycznym wylogowaniu', () => {
+  assert.equal(redirectFor('/konto', { deviceAccessRemoved: true }), null)
+  assert.equal(redirectFor('/ustawienia', { deviceAccessRemoved: true }), '/login')
+})
+
 test('lokalna blokada Firebase korzysta z osobnej trasy PIN', () => {
   assert.equal(LOCAL_PIN_LOCK_PATH, '/pin')
   assert.equal(resolveAccountActionPath({ isPinLocked: true }), '/pin')

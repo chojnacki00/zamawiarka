@@ -17,6 +17,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   runTransaction,
   setDoc,
   Timestamp,
@@ -2420,6 +2421,71 @@ test('usunięcie jednego urządzenia nie zmienia członkostwa ani drugiego urzą
     }).firestore(),
     'restaurants/restaurant-a'
   )))
+})
+
+test('aktywny klient wykrywa na żywo usunięcie dokładnie własnej sesji urządzenia', async () => {
+  const secondAuthTime = AUTH_TIME + 100
+  await seedOwner()
+  await seedEmployeeAccess()
+  await seed([[
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`,
+    deviceSessionData({ authTime: secondAuthTime })
+  ]])
+
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const employeeSessionRef = doc(
+    employeeDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  )
+
+  let initialSnapshotResolve
+  const initialSnapshot = new Promise(resolve => {
+    initialSnapshotResolve = resolve
+  })
+  let removalResolve
+  let removalReject
+  const removalSnapshot = new Promise((resolve, reject) => {
+    removalResolve = resolve
+    removalReject = reject
+  })
+  const timeout = setTimeout(() => {
+    removalReject(new Error('Klient nie otrzymał informacji o usunięciu sesji.'))
+  }, 5000)
+  const unsubscribe = onSnapshot(employeeSessionRef, snapshot => {
+    if (snapshot.exists()) {
+      initialSnapshotResolve()
+      return
+    }
+    removalResolve()
+  }, removalReject)
+
+  try {
+    await initialSnapshot
+    await assertSucceeds(deleteDoc(doc(
+      ownerDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    )))
+    await removalSnapshot
+  } finally {
+    clearTimeout(timeout)
+    unsubscribe()
+  }
+
+  assert.equal((await getDoc(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  ))).exists(), false)
+  assert.equal((await getDoc(doc(
+    ownerDb,
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`
+  ))).data().status, 'active')
 })
 
 test('urządzenie usuwa właściciel lub manager zespołu, ale nie zwykły pracownik', async () => {

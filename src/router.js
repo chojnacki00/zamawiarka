@@ -147,7 +147,8 @@ router.beforeEach(async (to, from, next) => {
   const authenticationRedirect = resolveRouteAuthenticationRedirect({
     route: to,
     hasFirebaseSession: Boolean(firebaseUser),
-    hasLegacyPinSession: hasEmployeeSession
+    hasLegacyPinSession: hasEmployeeSession,
+    deviceAccessRemoved: accountSessionStore.deviceAccessRemoved
   })
 
   if (authenticationRedirect) {

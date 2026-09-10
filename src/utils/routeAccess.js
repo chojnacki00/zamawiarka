@@ -86,12 +86,13 @@ export const hasStoredLegacyPinSession = storage => Boolean(
 export const resolveAuthenticationRedirect = ({
   path,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false
+  hasLegacyPinSession = false,
+  deviceAccessRemoved = false
 } = {}) => {
   const normalizedPath = normalizeRoutePath(path)
 
   if (normalizedPath === '/konto') {
-    return hasFirebaseSession ? null : '/login'
+    return hasFirebaseSession || deviceAccessRemoved ? null : '/login'
   }
 
   // Nowy ekran lokalnego PIN-u należy wyłącznie do kont Firebase.
@@ -109,14 +110,16 @@ export const resolveAuthenticationRedirect = ({
 export const resolveRouteAuthenticationRedirect = ({
   route,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false
+  hasLegacyPinSession = false,
+  deviceAccessRemoved = false
 } = {}) => {
   if (isPublicActivationRoute(route)) return null
 
   return resolveAuthenticationRedirect({
     path: route?.path,
     hasFirebaseSession,
-    hasLegacyPinSession
+    hasLegacyPinSession,
+    deviceAccessRemoved
   })
 }
 
@@ -124,7 +127,8 @@ export const resolveAppAuthenticationRedirect = ({
   route,
   isAppReady = false,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false
+  hasLegacyPinSession = false,
+  deviceAccessRemoved = false
 } = {}) => {
   if (!isAppReady) return null
 
@@ -136,6 +140,7 @@ export const resolveAppAuthenticationRedirect = ({
   return resolveRouteAuthenticationRedirect({
     route,
     hasFirebaseSession,
-    hasLegacyPinSession
+    hasLegacyPinSession,
+    deviceAccessRemoved
   })
 }
