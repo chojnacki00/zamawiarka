@@ -1456,6 +1456,35 @@ const logRestaurantHydration = ({
 let unsubscribeCartItems = null
 let unsubscribeUserState = null
 
+const handleBusinessListenerError = async ({ error, restaurantId, source }) => {
+  if (!isRestaurantContextCurrent(
+    restaurantId,
+    authorizationStore.restaurantId
+  )) return
+
+  const accessWasRevoked = await accountSessionStore
+    .handleBusinessPermissionDenied({ error, restaurantId })
+  if (accessWasRevoked) return
+  if (!isRestaurantContextCurrent(
+    restaurantId,
+    authorizationStore.restaurantId
+  )) return
+
+  console.error(`Błąd nasłuchiwania ${source}:`, error)
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+  restaurantDataLoadError.value =
+    'Utracono dostęp do danych restauracji. Odśwież widok albo spróbuj ponownie.'
+  loadedRestaurantDataId.value = null
+  isHydrating.value = false
+  isDataLoaded.value = true
+  logRestaurantHydration({
+    event: 'listener-error',
+    restaurantId,
+    status: RESTAURANT_DATA_STATUS.ERROR,
+    reason: error?.code || error?.name || 'firestore-listener-failed'
+  })
+}
+
 
 const subscribeUserState = (uid) => {
   if (unsubscribeUserState) {
@@ -1499,19 +1528,10 @@ const subscribeUserState = (uid) => {
       ordersRegister.value = data.ordersRegister
     }
   }, error => {
-    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
-
-    console.error('Błąd nasłuchiwania app/state:', error)
-    restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
-    restaurantDataLoadError.value =
-      'Utracono dostęp do danych restauracji. Odśwież widok albo spróbuj ponownie.'
-    loadedRestaurantDataId.value = null
-    isDataLoaded.value = true
-    logRestaurantHydration({
-      event: 'listener-error',
+    void handleBusinessListenerError({
+      error,
       restaurantId: uid,
-      status: RESTAURANT_DATA_STATUS.ERROR,
-      reason: error?.code || error?.name || 'firestore-listener-failed'
+      source: 'app/state'
     })
   })
 }
@@ -1560,6 +1580,12 @@ const subscribeCartItems = (uid) => {
 
   cart.value = nextCart
   customCartItems.value = nextCustomCartItems
+}, error => {
+  void handleBusinessListenerError({
+    error,
+    restaurantId: uid,
+    source: 'koszyka'
+  })
 })
 }
 
@@ -1582,6 +1608,12 @@ const subscribeOrders = (uid) => {
     })
     // Aktualizujemy listę i upewniamy się, że najnowsze są na górze
     ordersRegister.value = nextOrders.sort((a, b) => b.id - a.id)
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'zamówień'
+    })
   })
 }
 
@@ -1603,6 +1635,12 @@ const subscribeMenuItems = (uid) => {
       nextMenuItems.push(docSnap.data())
     })
     menuItems.value = nextMenuItems
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'menu'
+    })
   })
 }
 
@@ -1631,6 +1669,12 @@ const subscribeTowary = (uid) => {
 
     // Aktualizujemy listę na ekranie w czasie rzeczywistym
     towary.value = nextTowary
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'towarów'
+    })
   })
 }
 
@@ -1765,6 +1809,14 @@ const loadSelectedRestaurantData = async () => {
     return true
 
   } catch (error) {
+    if (
+      restaurantId &&
+      await accountSessionStore.handleBusinessPermissionDenied({
+        error,
+        restaurantId
+      })
+    ) return false
+
     console.error('Błąd ładowania z Firestore:', error)
     if (
       loadRevision === restaurantDataLoadRevision &&
