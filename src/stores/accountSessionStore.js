@@ -66,10 +66,7 @@ import {
   isPermissionDeniedError,
   shouldTreatBusinessPermissionDeniedAsBlocked
 } from '../utils/accountAccessUx.js'
-import {
-  DEVICE_ACCESS_REMOVED_MESSAGE,
-  runDeviceRemovalReaction
-} from '../utils/deviceRemovalReaction.js'
+import { runDeviceRemovalReaction } from '../utils/deviceRemovalReaction.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -104,7 +101,6 @@ export const useAccountSessionStore = defineStore(
     const isPinLocked = ref(false)
     const pinAccessFailure = ref(null)
     const deviceAccessState = ref('unknown')
-    const deviceAccessRemoved = ref(false)
     const lockedEmployeeName = ref('')
     const requiresRestaurantSelection = ref(false)
 
@@ -146,7 +142,6 @@ export const useAccountSessionStore = defineStore(
         currentMembership.value?.status === 'active' &&
         currentRestaurantId.value &&
         !accessRevoked.value &&
-        !deviceAccessRemoved.value &&
         !deviceApprovalRequired.value &&
         !requiresRestaurantSelection.value &&
         !isPinLocked.value &&
@@ -159,7 +154,6 @@ export const useAccountSessionStore = defineStore(
     const requiresAccountAction = computed(() => (
       Boolean(authUser.value) && (
         needsEmailVerification.value ||
-        deviceAccessRemoved.value ||
         isPinLocked.value ||
         needsLocalPinSetup.value ||
         pendingInvitations.value.length > 0 ||
@@ -380,18 +374,15 @@ export const useAccountSessionStore = defineStore(
         currentDeviceSession.value?.deviceId || approvedDevice?.deviceId
 
       deviceRemovalPromise = runDeviceRemovalReaction({
-        markAccessRemoved: () => {
-          deviceAccessRemoved.value = true
+        finishLoading: () => {
+          isLoading.value = false
+          isMembershipContextReady.value = false
           accessRevoked.value = false
           deviceApprovalRequired.value = false
           isPinLocked.value = false
           pinAccessFailure.value = null
-          deviceAccessState.value = 'removed'
-          error.value = DEVICE_ACCESS_REMOVED_MESSAGE
-        },
-        finishLoading: () => {
-          isLoading.value = false
-          isMembershipContextReady.value = false
+          deviceAccessState.value = 'unknown'
+          error.value = ''
         },
         cancelAndClearBusinessData: runApplicationLockCleanup,
         stopAccountListeners: stopSensitiveListeners,
@@ -955,15 +946,9 @@ export const useAccountSessionStore = defineStore(
         authUser.value?.uid === user?.uid
       ) return
 
-      const preserveDeviceRemovalNotice =
-        !user && deviceAccessRemoved.value
-      if (user) {
-        deviceAccessRemoved.value = false
-        deviceRemovalPromise = null
-      }
+      if (user) deviceRemovalPromise = null
 
       clearSensitiveContext()
-      deviceAccessRemoved.value = preserveDeviceRemovalNotice
       account.value = null
       memberships.value = []
       pendingInvitations.value = []
@@ -2004,7 +1989,6 @@ export const useAccountSessionStore = defineStore(
       const restaurantId = currentRestaurantId.value
       const deviceId = currentDeviceSession.value?.deviceId
 
-      deviceAccessRemoved.value = false
       deviceRemovalPromise = null
 
       if (authUid && deviceId) clearLocalPin({ authUid, deviceId })
@@ -2058,7 +2042,6 @@ export const useAccountSessionStore = defineStore(
       isPinLocked,
       pinAccessFailure,
       deviceAccessState,
-      deviceAccessRemoved,
       pinLockDisplayName,
       requiresRestaurantSelection,
       isOwner,

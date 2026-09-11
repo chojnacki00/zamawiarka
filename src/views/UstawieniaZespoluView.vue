@@ -398,11 +398,18 @@ onMounted(async () => {
 
 onUnmounted(() => clearTimeout(actionFeedbackTimer))
 
-const showActionFeedback = message => {
+const clearActionFeedback = () => {
   clearTimeout(actionFeedbackTimer)
+  actionFeedbackTimer = null
+  actionFeedback.value = ''
+}
+
+const showActionFeedback = message => {
+  clearActionFeedback()
   actionFeedback.value = message
   actionFeedbackTimer = setTimeout(() => {
     actionFeedback.value = ''
+    actionFeedbackTimer = null
   }, 2200)
 }
 
@@ -450,6 +457,7 @@ const syncAssignmentRateInputs = () => {
 }
 
 const openForm = (employee = null) => {
+  clearActionFeedback()
   editingEmployeeId.value = employee?.id || null
   form.value = employee
     ? {
@@ -486,6 +494,7 @@ const openForm = (employee = null) => {
 }
 
 const cancelForm = () => {
+  clearActionFeedback()
   isFormOpen.value = false
   editingEmployeeId.value = null
   formError.value = ''
@@ -838,8 +847,7 @@ const removeSelectedDevice = async () => {
     })
     deviceToRemove.value = null
     await loadEmployeeAccountAccess(editingEmployeeId.value)
-    accountAccessMessage.value = 'Urządzenie zostało usunięte.'
-    showActionFeedback('Usunięto urządzenie.')
+    showActionFeedback('Urządzenie zostało usunięte')
   } catch (error) {
     accountAccessMessage.value = getAccountActionError(
       error,

@@ -31,7 +31,7 @@
           <label><span>Powtórz hasło</span><input v-model="passwordConfirmation" type="password" autocomplete="new-password" @input="passwordError = ''"></label>
           <p v-if="passwordError" class="field-error">{{ passwordError }}</p>
           <button class="primary-button" type="button" :disabled="isBusy" @click="register">Utwórz konto</button>
-          <button class="secondary-button" type="button" :disabled="isBusy" @click="step = 'login'">Mam już konto</button>
+          <button class="back-button" type="button" :disabled="isBusy" @click="backToChoice">Wstecz</button>
         </template>
 
         <template v-else-if="step === 'login'">
@@ -44,11 +44,10 @@
 
         <template v-else-if="step === 'verify'">
           <h2>Potwierdź adres e-mail</h2>
-          <p>Potwierdź adres <strong>{{ email }}</strong> w otrzymanej wiadomości, a następnie wróć do tego linku.</p>
+          <p>Potwierdź adres <strong>{{ email }}</strong> w otrzymanej wiadomości, a następnie wróć do otwartej aplikacji.</p>
           <p v-if="useFirebaseEmulators" class="emulator-hint">W Emulatorze link weryfikacyjny znajdziesz w sekcji Authentication.</p>
           <button class="primary-button" type="button" :disabled="isBusy" @click="checkVerification">Sprawdź potwierdzenie</button>
-          <button class="secondary-button" type="button" :disabled="isBusy" @click="resendVerification">Wyślij wiadomość ponownie</button>
-          <button class="secondary-button" type="button" :disabled="isBusy" @click="changeAccount">Wyloguj i wróć</button>
+          <button class="secondary-button" type="button" :disabled="isBusy || resendCooldownSeconds > 0" @click="resendVerification">{{ resendVerificationLabel }}</button>
         </template>
 
         <template v-else-if="step === 'account-mismatch'">
@@ -77,7 +76,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   createUserWithEmailAndPassword,
@@ -105,6 +104,10 @@ import {
   INVITATION_PURPOSES
 } from '../utils/identityInvitations.js'
 import { suggestDeviceName } from '../utils/deviceAccess.js'
+import {
+  EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
+  getVerificationResendSeconds
+} from '../utils/emailVerificationAction.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,6 +127,33 @@ const passwordConfirmation = ref('')
 const passwordError = ref('')
 const deviceName = ref(suggestDeviceName())
 const step = ref('email')
+const resendAvailableAt = ref(0)
+const resendCooldownSeconds = ref(0)
+let resendCooldownTimer = null
+
+const resendVerificationLabel = computed(() => (
+  resendCooldownSeconds.value > 0
+    ? `Wyślij wiadomość ponownie (${resendCooldownSeconds.value} s)`
+    : 'Wyślij wiadomość ponownie'
+))
+
+const updateResendCooldown = () => {
+  resendCooldownSeconds.value = getVerificationResendSeconds({
+    availableAt: resendAvailableAt.value
+  })
+  if (resendCooldownSeconds.value === 0 && resendCooldownTimer) {
+    clearInterval(resendCooldownTimer)
+    resendCooldownTimer = null
+  }
+}
+
+const startResendCooldown = () => {
+  clearInterval(resendCooldownTimer)
+  resendAvailableAt.value = Date.now() +
+    EMAIL_VERIFICATION_RESEND_COOLDOWN_MS
+  updateResendCooldown()
+  resendCooldownTimer = setInterval(updateResendCooldown, 1000)
+}
 
 const formatDate = value => {
   const date = value?.toDate?.() || new Date(value)
@@ -208,6 +238,15 @@ const checkEmail = () => runAction(async () => {
   step.value = 'choice'
 })
 
+const backToChoice = () => {
+  password.value = ''
+  passwordConfirmation.value = ''
+  passwordError.value = ''
+  errorMessage.value = ''
+  message.value = ''
+  step.value = 'choice'
+}
+
 const afterAuthentication = async user => {
   await user.reload()
   step.value = resolveActivationStepForUser(user)
@@ -253,15 +292,13 @@ const register = () => {
       password.value = ''
       passwordConfirmation.value = ''
       auth.languageCode = 'pl'
-      await sendEmailVerification(credential.user, {
-        url: buildActivationUrl({ token })
-      })
+      await sendEmailVerification(credential.user)
+      startResendCooldown()
       message.value = 'Wysłaliśmy wiadomość weryfikacyjną.'
     } catch (error) {
       if (error?.code === 'auth/email-already-in-use') {
-        step.value = 'login'
         throw new Error(
-          'Konto z tym adresem już istnieje. Zaloguj się lub skorzystaj z przypomnienia hasła.'
+          'Konto z tym adresem e-mail już istnieje. Wróć i wybierz „Mam już konto”.'
         )
       }
       throw error
@@ -286,14 +323,16 @@ const resetPassword = () => runAction(async () => {
     'Jeżeli konto istnieje, wysłaliśmy instrukcję zmiany hasła.'
 })
 
-const resendVerification = () => runAction(async () => {
-  if (!auth.currentUser) throw new Error('Najpierw zaloguj się ponownie.')
-  auth.languageCode = 'pl'
-  await sendEmailVerification(auth.currentUser, {
-    url: buildActivationUrl({ token })
+const resendVerification = () => {
+  if (resendCooldownSeconds.value > 0) return
+  startResendCooldown()
+  return runAction(async () => {
+    if (!auth.currentUser) throw new Error('Najpierw zaloguj się ponownie.')
+    auth.languageCode = 'pl'
+    await sendEmailVerification(auth.currentUser)
+    message.value = 'Wysłaliśmy wiadomość weryfikacyjną.'
   })
-  message.value = 'Wiadomość weryfikacyjna została wysłana ponownie.'
-})
+}
 
 const checkVerification = () => runAction(async () => {
   if (!auth.currentUser) throw new Error('Najpierw zaloguj się ponownie.')
@@ -374,6 +413,7 @@ const initializeActivation = async () => {
 }
 
 onMounted(initializeActivation)
+onUnmounted(() => clearInterval(resendCooldownTimer))
 </script>
 
 <style scoped>
@@ -383,6 +423,6 @@ onMounted(initializeActivation)
 h1, h2, p { margin: 0; } h1 { color: #111827; font-size: 25px; } h2 { color: #111827; font-size: 19px; } p { color: #475569; font-size: 14px; line-height: 1.5; }
 .invitation-summary { display: grid; gap: 5px; padding: 14px; border-radius: 14px; background: #f0f9ff; color: #475569; font-size: 13px; }.invitation-summary strong { color: #0f172a; font-size: 16px; }
 label { display: grid; gap: 7px; color: #64748b; font-size: 12px; font-weight: 750; text-transform: uppercase; } input { min-height: 48px; box-sizing: border-box; padding: 12px 13px; border: 1px solid #cbd5e1; border-radius: 12px; color: #111827; background: #fff; font-size: 16px; text-transform: none; } input:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; caret-color: #007aff; }
-.primary-button, .secondary-button { min-height: 49px; border-radius: 13px; font-size: 15px; font-weight: 800; }.primary-button { border: 0; color: #fff; background: #007aff; }.secondary-button { border: 1px solid #bfdbfe; color: #1d4ed8; background: #eff6ff; } button:disabled { opacity: .48; }
+.primary-button, .secondary-button, .back-button { min-height: 49px; border-radius: 13px; font-size: 15px; font-weight: 800; }.primary-button { border: 0; color: #fff; background: #007aff; }.secondary-button { border: 1px solid #bfdbfe; color: #1d4ed8; background: #eff6ff; }.back-button { border: 0; color: #64748b; background: transparent; } button:disabled { opacity: .48; }
 .error-message, .field-error { color: #b91c1c; }.field-error { font-size: 13px; }.success-message { color: #166534; }.status { padding: 24px 0; text-align: center; }.emulator-hint { padding: 10px 12px; border-radius: 11px; background: #fff7ed; color: #9a3412; }
 </style>

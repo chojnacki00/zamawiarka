@@ -4,16 +4,12 @@
       <div class="brand-mark">GM</div>
       <h1>{{ heading }}</h1>
 
-      <template v-if="sessionStore.deviceAccessRemoved">
-        <p>{{ DEVICE_ACCESS_REMOVED_MESSAGE }}</p>
-      </template>
-
-      <div v-else-if="sessionStore.isLoading" class="status-copy">Sprawdzanie dostępu…</div>
+      <div v-if="sessionStore.isLoading" class="status-copy">Sprawdzanie dostępu…</div>
 
       <template v-else-if="sessionStore.needsEmailVerification">
-        <p>Potwierdź adres <strong>{{ sessionStore.authUser?.email }}</strong>, a następnie wróć tutaj.</p>
+        <p>Potwierdź adres <strong>{{ sessionStore.authUser?.email }}</strong> w otrzymanej wiadomości, a następnie wróć do otwartej aplikacji.</p>
         <button class="primary-button" type="button" :disabled="isBusy" @click="checkVerification">Sprawdź potwierdzenie</button>
-        <button class="secondary-button" type="button" :disabled="isBusy" @click="sendVerification">Wyślij wiadomość ponownie</button>
+        <button class="secondary-button" type="button" :disabled="isBusy || resendCooldownSeconds > 0" @click="sendVerification">{{ resendVerificationLabel }}</button>
         <button class="secondary-button" type="button" :disabled="isBusy" @click="openEmailChangeModal">Zmień adres e-mail</button>
       </template>
 
@@ -23,8 +19,8 @@
       </template>
 
       <template v-else-if="sessionStore.deviceApprovalRequired">
-        <p>{{ sessionStore.error || 'To urządzenie nie zostało zatwierdzone dla wybranej restauracji.' }}</p>
-        <p class="hint">Poproś managera o link lub kod QR „Dodaj urządzenie”, a następnie otwórz go na tym urządzeniu.</p>
+        <p>To urządzenie nie ma dostępu do aplikacji. Poproś administratora o dostęp do aplikacji.</p>
+        <button class="secondary-button" type="button" :disabled="isBusy" @click="returnToLogin">Wróć</button>
       </template>
 
       <template v-else-if="sessionStore.requiresRestaurantSelection">
@@ -61,7 +57,7 @@
 
       <p v-if="message" class="success-message">{{ message }}</p>
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-      <button v-if="!sessionStore.deviceAccessRemoved" class="logout-button" type="button" :disabled="isBusy" @click="logoutDevice">Wyloguj to urządzenie</button>
+      <button v-if="showLogoutDeviceButton" class="logout-button" type="button" :disabled="isBusy" @click="logoutDevice">Wyloguj to urządzenie</button>
     </section>
 
     <div v-if="isEmailChangeModalOpen" class="dialog-overlay" role="presentation" @click.self="closeEmailChangeModal">
@@ -90,21 +86,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { sendEmailVerification } from 'firebase/auth'
 import { auth } from '../firebase.js'
 import { useAccountSessionStore } from '../stores/accountSessionStore.js'
-import { buildAccountReturnUrl } from '../config/publicAppUrl.js'
 import {
   buildEmailChangeActionCodeSettings,
   getAccountEmailChangeErrorMessage,
   requestVerifiedAccountEmailChange
 } from '../utils/accountEmailChange.js'
 import {
-  DEVICE_ACCESS_REMOVED_HEADING,
-  DEVICE_ACCESS_REMOVED_MESSAGE
-} from '../utils/deviceRemovalReaction.js'
+  EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
+  getVerificationResendSeconds
+} from '../utils/emailVerificationAction.js'
 
 const router = useRouter()
 const sessionStore = useAccountSessionStore()
@@ -120,9 +115,11 @@ const emailChangeForm = ref({
   newEmail: '',
   currentPassword: ''
 })
+const resendAvailableAt = ref(0)
+const resendCooldownSeconds = ref(0)
+let resendCooldownTimer = null
 
 const heading = computed(() => {
-  if (sessionStore.deviceAccessRemoved) return DEVICE_ACCESS_REMOVED_HEADING
   if (sessionStore.needsEmailVerification) return 'Potwierdź e-mail'
   if (sessionStore.deviceApprovalRequired) return 'Urządzenie niezatwierdzone'
   if (sessionStore.needsLocalPinSetup) return 'Ustaw lokalny PIN'
@@ -130,6 +127,16 @@ const heading = computed(() => {
   if (sessionStore.accessRevoked) return 'Dostęp zablokowany'
   return 'Dostęp do restauracji'
 })
+const showLogoutDeviceButton = computed(() => (
+  !sessionStore.needsEmailVerification &&
+  !sessionStore.deviceApprovalRequired &&
+  !sessionStore.needsLocalPinSetup
+))
+const resendVerificationLabel = computed(() => (
+  resendCooldownSeconds.value > 0
+    ? `Wyślij wiadomość ponownie (${resendCooldownSeconds.value} s)`
+    : 'Wyślij wiadomość ponownie'
+))
 const otherMemberships = computed(() => sessionStore.memberships.filter(
   membership => (
     membership.restaurantId !== sessionStore.currentRestaurantId
@@ -153,11 +160,34 @@ const runAction = async action => {
   }
 }
 
-const sendVerification = () => runAction(async () => {
-  if (!auth.currentUser) return
-  await sendEmailVerification(auth.currentUser, { url: buildAccountReturnUrl() })
-  message.value = 'Wiadomość weryfikacyjna została wysłana.'
-})
+const updateResendCooldown = () => {
+  resendCooldownSeconds.value = getVerificationResendSeconds({
+    availableAt: resendAvailableAt.value
+  })
+  if (resendCooldownSeconds.value === 0 && resendCooldownTimer) {
+    clearInterval(resendCooldownTimer)
+    resendCooldownTimer = null
+  }
+}
+
+const startResendCooldown = () => {
+  clearInterval(resendCooldownTimer)
+  resendAvailableAt.value = Date.now() +
+    EMAIL_VERIFICATION_RESEND_COOLDOWN_MS
+  updateResendCooldown()
+  resendCooldownTimer = setInterval(updateResendCooldown, 1000)
+}
+
+const sendVerification = () => {
+  if (resendCooldownSeconds.value > 0) return
+  startResendCooldown()
+  return runAction(async () => {
+    if (!auth.currentUser) return
+    auth.languageCode = 'pl'
+    await sendEmailVerification(auth.currentUser)
+    message.value = 'Wysłaliśmy wiadomość weryfikacyjną.'
+  })
+}
 
 const checkVerification = () => runAction(async () => {
   const verified = await sessionStore.refreshAfterEmailVerification()
@@ -222,6 +252,10 @@ const configurePin = () => runAction(async () => {
 })
 
 const continueToApp = () => router.replace('/')
+const returnToLogin = () => runAction(async () => {
+  await sessionStore.logoutCurrentDevice()
+  await router.replace('/login')
+})
 const logoutDevice = () => runAction(async () => {
   const confirmed = window.confirm(
     'Odłączyć to urządzenie? Lokalny PIN zostanie usunięty i kolejne użycie będzie wymagało ponownego zatwierdzenia urządzenia.'
@@ -249,6 +283,7 @@ onMounted(async () => {
     await sessionStore.initializeForUser(auth.currentUser)
   }
 })
+onUnmounted(() => clearInterval(resendCooldownTimer))
 </script>
 
 <style scoped>

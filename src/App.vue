@@ -16,7 +16,7 @@
     <!-- =========================
          ROUTER: WIDOK LOGOWANIA (Tylko gdy nikt nie jest zalogowany)
     ========================== -->
-    <router-view v-if="isActivationRoute || (!isLoggedIn && !employeeAuthStore?.currentEmployee)" />
+    <router-view v-if="isPublicAuthRoute || (!isLoggedIn && !employeeAuthStore?.currentEmployee)" />
 
     <!-- =========================
          APP / KONTENER GŁÓWNY (Dla Managera LUB Pracownika)
@@ -974,7 +974,7 @@ import { useAuthorizationStore } from './stores/authorizationStore.js'
 import {
   createLocalPinRedirector,
   hasStoredLegacyPinSession,
-  isPublicActivationRoute,
+  isPublicAuthFlowRoute,
   LOCAL_PIN_LOCK_PATH,
   resolveAppAuthenticationRedirect,
   resolveAccountActionPath,
@@ -1033,8 +1033,8 @@ export default {
     // LOGOWANIE - STAN SESJI
     // =========================
     const isLoggedIn = ref(false)
-    const isActivationRoute = computed(() => (
-      isPublicActivationRoute(route)
+    const isPublicAuthRoute = computed(() => (
+      isPublicAuthFlowRoute(route)
     ))
     const authError = ref('')
     const isLoggingIn = ref(false)
@@ -2119,8 +2119,7 @@ if (backupData.collections) {
         route,
         isAppReady: isAppReady.value,
         hasFirebaseSession: Boolean(auth.currentUser),
-        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee),
-        deviceAccessRemoved: accountSessionStore.deviceAccessRemoved
+        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee)
       })
 
       if (authenticationRedirect) {
@@ -5891,7 +5890,10 @@ watch(
       resetCompanyDataState()
       isDataLoaded.value = true
       isLoggedIn.value = true
-      if (!['/konto', '/aktywacja'].includes(router.currentRoute.value.path)) {
+      if (
+        router.currentRoute.value.path !== '/konto' &&
+        !isPublicAuthFlowRoute(router.currentRoute.value)
+      ) {
         await router.replace('/konto')
       }
       return
@@ -5942,15 +5944,6 @@ onMounted(() => {
       
       resetCompanyDataState()
 
-      if (accountSessionStore.deviceAccessRemoved) {
-        if (router.currentRoute.value.path !== '/konto') {
-          await router.replace('/konto')
-        }
-        isDataLoaded.value = true
-        isAppReady.value = true
-        return
-      }
-      
       // === NOWA WSPÓŁPRACA STRAŻNIKÓW (WOLNOŚĆ DLA PRACOWNIKA) ===
       const currentPath = window.location.pathname
       
@@ -6011,7 +6004,10 @@ onMounted(() => {
       await activateAccountRestaurant()
     } else {
       isDataLoaded.value = true
-      if (!['/konto', '/aktywacja'].includes(router.currentRoute.value.path)) {
+      if (
+        router.currentRoute.value.path !== '/konto' &&
+        !isPublicAuthFlowRoute(router.currentRoute.value)
+      ) {
         await router.replace('/konto')
       }
     }
@@ -6224,7 +6220,7 @@ const openZamawiarkaMenuFromHome = () => {
       wczytajBackup,
       recepturyView,
       isLoggedIn,
-      isActivationRoute,
+      isPublicAuthRoute,
       isLoggingIn,
       authForm,
       authError,
