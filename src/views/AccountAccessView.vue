@@ -16,6 +16,7 @@
       <template v-else-if="sessionStore.accessRevoked">
         <p>Dostęp do tej restauracji został zablokowany.</p>
         <p class="hint">Skontaktuj się z managerem, aby ponownie uzyskać dostęp.</p>
+        <button class="logout-button" type="button" :disabled="isBusy" @click="returnFromBlockedAccess">Wróć do logowania</button>
       </template>
 
       <template v-else-if="sessionStore.deviceApprovalRequired">
@@ -129,6 +130,7 @@ const heading = computed(() => {
 })
 const showLogoutDeviceButton = computed(() => (
   !sessionStore.needsEmailVerification &&
+  !sessionStore.accessRevoked &&
   !sessionStore.deviceApprovalRequired &&
   !sessionStore.needsLocalPinSetup
 ))
@@ -254,6 +256,10 @@ const configurePin = () => runAction(async () => {
 const continueToApp = () => router.replace('/')
 const returnToLogin = () => runAction(async () => {
   await sessionStore.logoutCurrentDevice()
+  await router.replace('/login')
+})
+const returnFromBlockedAccess = () => runAction(async () => {
+  await sessionStore.returnToLoginAfterAccessRevoked()
   await router.replace('/login')
 })
 const logoutDevice = () => runAction(async () => {

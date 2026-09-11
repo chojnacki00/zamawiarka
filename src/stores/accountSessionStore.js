@@ -1984,14 +1984,25 @@ export const useAccountSessionStore = defineStore(
       return { locked: true }
     }
 
-    const logoutCurrentDevice = async () => {
+    const clearLocalAccountAndSignOut = async () => {
       const authUid = auth.currentUser?.uid || authUser.value?.uid
-      const restaurantId = currentRestaurantId.value
-      const deviceId = currentDeviceSession.value?.deviceId
+      const restaurantId =
+        currentRestaurantId.value ||
+        currentMembership.value?.restaurantId ||
+        localStorage.getItem(ACTIVE_RESTAURANT_KEY)
+      const approvedDevice = authUid && restaurantId
+        ? readLocalApprovedDevice({ authUid, restaurantId })
+        : null
+      const deviceIds = new Set([
+        currentDeviceSession.value?.deviceId,
+        approvedDevice?.deviceId
+      ].filter(Boolean))
 
       deviceRemovalPromise = null
 
-      if (authUid && deviceId) clearLocalPin({ authUid, deviceId })
+      if (authUid) {
+        deviceIds.forEach(deviceId => clearLocalPin({ authUid, deviceId }))
+      }
       if (authUid && restaurantId) {
         clearLocalApprovedDevice({ authUid, restaurantId })
       }
@@ -2011,8 +2022,12 @@ export const useAccountSessionStore = defineStore(
       account.value = null
       memberships.value = []
       pendingInvitations.value = []
+      isLoading.value = false
       await signOut(auth)
     }
+
+    const logoutCurrentDevice = () => clearLocalAccountAndSignOut()
+    const returnToLoginAfterAccessRevoked = () => clearLocalAccountAndSignOut()
 
     const hasPermission = permissionKey => (
       hasActiveContext.value && (
@@ -2074,6 +2089,7 @@ export const useAccountSessionStore = defineStore(
       lockApplication,
       registerApplicationLockCleanup,
       logoutCurrentDevice,
+      returnToLoginAfterAccessRevoked,
       hasPermission,
       clearSensitiveContext
     }
