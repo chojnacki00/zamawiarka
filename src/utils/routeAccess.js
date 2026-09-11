@@ -2,14 +2,16 @@ const FIREBASE_PUBLIC_PATHS = new Set([
   '/login',
   '/rejestracja',
   '/aktywacja',
+  '/akcja-konta',
   '/potwierdz-email'
 ])
 
 export const LEGACY_PIN_LOGIN_PATH = '/logowanie'
 export const LOCAL_PIN_LOCK_PATH = '/pin'
 export const ACTIVATION_ROUTE_NAME = 'Aktywacja'
-export const EMAIL_VERIFICATION_PATH = '/potwierdz-email'
-export const EMAIL_VERIFICATION_ROUTE_NAME = 'PotwierdzenieEmail'
+export const EMAIL_ACTION_PATH = '/akcja-konta'
+export const EMAIL_ACTION_ROUTE_NAME = 'AkcjaKonta'
+export const EMAIL_VERIFICATION_ALIAS_PATH = '/potwierdz-email'
 
 export const resolveAccountActionPath = ({
   isPinLocked = false
@@ -67,15 +69,19 @@ export const isPublicActivationRoute = route => (
   String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
 )
 
-export const isPublicEmailVerificationRoute = route => (
-  route?.name === EMAIL_VERIFICATION_ROUTE_NAME ||
-  String(route?.path || '').split(/[?#]/, 1)[0] ===
-    EMAIL_VERIFICATION_PATH
+export const isPublicEmailActionRoute = route => (
+  route?.name === EMAIL_ACTION_ROUTE_NAME ||
+  [EMAIL_ACTION_PATH, EMAIL_VERIFICATION_ALIAS_PATH].includes(
+    String(route?.path || '').split(/[?#]/, 1)[0]
+  )
 )
+
+// Alias eksportu pozostaje przejściowo dla istniejących wywołań i testów.
+export const isPublicEmailVerificationRoute = isPublicEmailActionRoute
 
 export const isPublicAuthFlowRoute = route => (
   isPublicActivationRoute(route) ||
-  isPublicEmailVerificationRoute(route)
+  isPublicEmailActionRoute(route)
 )
 
 export const shouldDeferAccountBootstrapForActivation = ({

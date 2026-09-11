@@ -107,7 +107,7 @@ import { suggestDeviceName } from '../utils/deviceAccess.js'
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   getVerificationResendSeconds
-} from '../utils/emailVerificationAction.js'
+} from '../utils/emailActionHandler.js'
 
 const route = useRoute()
 const router = useRouter()

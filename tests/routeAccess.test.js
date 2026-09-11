@@ -7,7 +7,8 @@ import {
 } from 'vue-router'
 import {
   hasStoredLegacyPinSession,
-  EMAIL_VERIFICATION_PATH,
+  EMAIL_ACTION_PATH,
+  EMAIL_VERIFICATION_ALIAS_PATH,
   LOCAL_PIN_LOCK_PATH,
   resolveAccountActionPath,
   resolveAppAuthenticationRedirect,
@@ -46,8 +47,10 @@ test('aktywacja z tokenem pozostaje publiczna', () => {
   assert.equal(redirectFor('/aktywacja'), null)
 })
 
-test('potwierdzanie e-maila jest publiczne bez sesji Firebase', () => {
-  assert.equal(EMAIL_VERIFICATION_PATH, '/potwierdz-email')
+test('wspólna akcja konta i alias są publiczne bez sesji Firebase', () => {
+  assert.equal(EMAIL_ACTION_PATH, '/akcja-konta')
+  assert.equal(EMAIL_VERIFICATION_ALIAS_PATH, '/potwierdz-email')
+  assert.equal(redirectFor('/akcja-konta?mode=resetPassword'), null)
   assert.equal(redirectFor('/potwierdz-email?mode=verifyEmail'), null)
 })
 
@@ -58,7 +61,12 @@ test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', asy
       { path: '/login', name: 'Login', component: { template: '<div />' } },
       { path: '/konto', name: 'Konto', component: { template: '<div />' } },
       { path: '/aktywacja', name: 'Aktywacja', component: { template: '<div />' } },
-      { path: '/potwierdz-email', name: 'PotwierdzenieEmail', component: { template: '<div />' } },
+      {
+        path: '/akcja-konta',
+        alias: '/potwierdz-email',
+        name: 'AkcjaKonta',
+        component: { template: '<div />' }
+      },
       { path: '/ustawienia', name: 'Ustawienia', component: { template: '<div />' } }
     ]
   })
@@ -73,8 +81,13 @@ test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', asy
   assert.equal(testRouter.currentRoute.value.query.t, 'abc')
   assert.equal(testRouter.currentRoute.value.fullPath, '/aktywacja?t=abc')
 
+  await testRouter.push('/akcja-konta?mode=verifyEmail&oobCode=abc&apiKey=demo')
+  assert.equal(testRouter.currentRoute.value.path, '/akcja-konta')
+  assert.equal(testRouter.currentRoute.value.query.oobCode, 'abc')
+
   await testRouter.push('/potwierdz-email?mode=verifyEmail&oobCode=abc&apiKey=demo')
-  assert.equal(testRouter.currentRoute.value.path, '/potwierdz-email')
+  assert.equal(testRouter.currentRoute.value.path, '/akcja-konta')
+  assert.equal(testRouter.currentRoute.value.name, 'AkcjaKonta')
   assert.equal(testRouter.currentRoute.value.query.oobCode, 'abc')
 })
 

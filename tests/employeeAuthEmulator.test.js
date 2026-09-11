@@ -8,12 +8,14 @@ import {
 import { deleteApp, initializeApp } from 'firebase/app'
 import {
   applyActionCode,
+  ActionCodeOperation,
   connectAuthEmulator,
   createUserWithEmailAndPassword,
   EmailAuthProvider,
   getAuth,
   reauthenticateWithCredential,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   verifyBeforeUpdateEmail
@@ -41,9 +43,10 @@ import {
   serializeRestaurantList
 } from '../src/utils/restaurantDataContext.js'
 import {
-  confirmEmailVerification,
-  parseEmailVerificationAction
-} from '../src/utils/emailVerificationAction.js'
+  completeEmailAction,
+  EMAIL_ACTION_MODES,
+  inspectEmailAction
+} from '../src/utils/emailActionHandler.js'
 
 let rulesEnv
 let appCounter = 0
@@ -82,7 +85,7 @@ const clearAuthEmulator = async () => {
   assert.equal(response.ok, true)
 }
 
-const getVerificationCode = async email => {
+const getOobCode = async ({ requestType, email }) => {
   const response = await fetch(
     `http://${emulatorConfig.host}:${emulatorConfig.authPort}` +
       `/emulator/v1/projects/${emulatorConfig.projectId}/oobCodes`
@@ -90,25 +93,36 @@ const getVerificationCode = async email => {
   assert.equal(response.ok, true)
   const payload = await response.json()
   const record = payload.oobCodes.find(code => (
-    code.email === email && code.requestType === 'VERIFY_EMAIL'
+    code.requestType === requestType &&
+    (!email || [code.email, code.newEmail].includes(email))
   ))
   assert.ok(record?.oobCode)
-  return record.oobCode
+  return record
 }
 
-const getEmailChangeCode = async newEmail => {
+const getVerificationCode = async email => (
+  await getOobCode({ requestType: 'VERIFY_EMAIL', email })
+).oobCode
+
+const getEmailChangeCode = async newEmail => (
+  await getOobCode({ requestType: 'VERIFY_AND_CHANGE_EMAIL', email: newEmail })
+).oobCode
+
+const changeEmailThroughAuthEmulatorRest = async ({ auth, user, newEmail }) => {
+  const idToken = await user.getIdToken()
   const response = await fetch(
     `http://${emulatorConfig.host}:${emulatorConfig.authPort}` +
-      `/emulator/v1/projects/${emulatorConfig.projectId}/oobCodes`
+      '/identitytoolkit.googleapis.com/v1/accounts:update?key=demo-api-key',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, email: newEmail, returnSecureToken: true })
+    }
   )
   assert.equal(response.ok, true)
-  const payload = await response.json()
-  const record = payload.oobCodes.find(code => (
-    code.requestType === 'VERIFY_AND_CHANGE_EMAIL' &&
-    [code.email, code.newEmail].includes(newEmail)
-  ))
-  assert.ok(record?.oobCode)
-  return record.oobCode
+  await user.reload()
+  await user.getIdToken(true)
+  assert.equal(auth.currentUser?.email, newEmail)
 }
 
 const seed = async documents => {
@@ -212,7 +226,7 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
   assert.equal(token.claims.email_verified, true)
 })
 
-test('własny handler potwierdza prawdziwy kod verifyEmail w Auth Emulatorze', async () => {
+test('własny handler potwierdza kod verifyEmail i odrzuca ponowne użycie', async () => {
   const email = 'custom-handler@example.test'
   const { auth } = createEmulatedClient()
   const credential = await createUserWithEmailAndPassword(
@@ -222,7 +236,8 @@ test('własny handler potwierdza prawdziwy kod verifyEmail w Auth Emulatorze', a
   )
 
   await sendEmailVerification(credential.user)
-  const action = parseEmailVerificationAction({
+  const action = await inspectEmailAction({
+    authInstance: auth,
     query: {
       mode: 'verifyEmail',
       oobCode: await getVerificationCode(email),
@@ -232,15 +247,76 @@ test('własny handler potwierdza prawdziwy kod verifyEmail w Auth Emulatorze', a
   })
   const unchangedUid = credential.user.uid
 
-  await confirmEmailVerification({
+  await completeEmailAction({
     authInstance: auth,
-    oobCode: action.oobCode
+    action
   })
   await credential.user.reload()
   await credential.user.getIdToken(true)
 
   assert.equal(credential.user.emailVerified, true)
   assert.equal(credential.user.uid, unchangedUid)
+
+  await assert.rejects(inspectEmailAction({
+    authInstance: auth,
+    query: {
+      mode: EMAIL_ACTION_MODES.VERIFY_EMAIL,
+      oobCode: action.oobCode,
+      apiKey: 'demo-api-key'
+    },
+    expectedApiKey: auth.app.options.apiKey
+  }))
+})
+
+test('własny handler resetuje hasło dopiero po świadomym zatwierdzeniu', async () => {
+  const email = 'password-reset@example.test'
+  const oldPassword = 'Old-password-123'
+  const newPassword = 'New-password-456'
+  const { auth } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(auth, email, oldPassword)
+  const unchangedUid = credential.user.uid
+
+  await sendPasswordResetEmail(auth, email)
+  const resetCode = (await getOobCode({
+    requestType: 'PASSWORD_RESET',
+    email
+  })).oobCode
+  const action = await inspectEmailAction({
+    authInstance: auth,
+    query: {
+      mode: EMAIL_ACTION_MODES.RESET_PASSWORD,
+      oobCode: resetCode,
+      apiKey: 'demo-api-key',
+      continueUrl: 'https://attacker.invalid/'
+    },
+    expectedApiKey: auth.app.options.apiKey
+  })
+
+  await assert.rejects(completeEmailAction({
+    authInstance: auth,
+    action,
+    newPassword,
+    passwordConfirmation: 'Different-password-456'
+  }), error => error?.code === 'email-action/password-mismatch')
+
+  await signOut(auth)
+  const beforeConfirmation = await signInWithEmailAndPassword(auth, email, oldPassword)
+  assert.equal(beforeConfirmation.user.uid, unchangedUid)
+  await signOut(auth)
+
+  await completeEmailAction({
+    authInstance: auth,
+    action,
+    newPassword,
+    passwordConfirmation: newPassword
+  })
+
+  await assert.rejects(
+    signInWithEmailAndPassword(auth, email, oldPassword),
+    error => ['auth/invalid-credential', 'auth/wrong-password'].includes(error?.code)
+  )
+  const afterReset = await signInWithEmailAndPassword(auth, email, newPassword)
+  assert.equal(afterReset.user.uid, unchangedUid)
 })
 
 test('rzeczywisty bootstrap pracownika czyta i zmienia wspólny legacy app/state restauracji', async () => {
@@ -822,7 +898,19 @@ test('ponowne uwierzytelnienie wysyła zmianę e-maila, ale stosuje ją dopiero 
   assert.equal(credential.user.email, oldEmail)
   assert.equal(credential.user.emailVerified, false)
   const code = await getEmailChangeCode(newEmail)
-  await applyActionCode(auth, code)
+  const action = await inspectEmailAction({
+    authInstance: auth,
+    query: {
+      mode: EMAIL_ACTION_MODES.VERIFY_AND_CHANGE_EMAIL,
+      oobCode: code,
+      apiKey: 'demo-api-key'
+    },
+    expectedApiKey: auth.app.options.apiKey
+  })
+  assert.equal(action.operation, ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL)
+  assert.equal(credential.user.email, oldEmail)
+
+  await completeEmailAction({ authInstance: auth, action })
   await credential.user.reload()
   await credential.user.getIdToken(true)
 
@@ -839,6 +927,45 @@ test('ponowne uwierzytelnienie wysyła zmianę e-maila, ale stosuje ją dopiero 
 
   assert.equal((await getDoc(doc(db, `accounts/${unchangedUid}`))).data().email, newEmail)
   assert.equal((await getDoc(doc(db, `restaurants/${unchangedUid}`))).exists(), true)
+})
+
+test('recoverEmail nie działa automatycznie i świadomie przywraca adres bez zmiany UID', async () => {
+  const oldEmail = 'recover-old@example.test'
+  const newEmail = 'recover-new@example.test'
+  const { auth } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    oldEmail,
+    'Testowe-haslo-123'
+  )
+  const unchangedUid = credential.user.uid
+
+  // Emulator nie generuje RECOVER_EMAIL po VERIFY_AND_CHANGE_EMAIL. Jego
+  // wspierany endpoint zmiany adresu generuje jednak prawdziwy kod odzyskania,
+  // więc nadal testujemy handler rzeczywistym, jednorazowym oobCode Emulatora.
+  await changeEmailThroughAuthEmulatorRest({
+    auth,
+    user: credential.user,
+    newEmail
+  })
+  const recoverCode = (await getOobCode({ requestType: 'RECOVER_EMAIL' })).oobCode
+  const recoverAction = await inspectEmailAction({
+    authInstance: auth,
+    query: {
+      mode: EMAIL_ACTION_MODES.RECOVER_EMAIL,
+      oobCode: recoverCode,
+      apiKey: 'demo-api-key'
+    },
+    expectedApiKey: auth.app.options.apiKey
+  })
+
+  await credential.user.reload()
+  assert.equal(credential.user.email, newEmail)
+  await completeEmailAction({ authInstance: auth, action: recoverAction })
+  await credential.user.reload()
+  await credential.user.getIdToken(true)
+  assert.equal(credential.user.email, oldEmail)
+  assert.equal(credential.user.uid, unchangedUid)
 })
 
 test('złe obecne hasło nie wysyła kodu zmiany e-maila', async () => {

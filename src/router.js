@@ -12,7 +12,8 @@ import {
 } from './utils/accessControl.js'
 import {
   hasStoredLegacyPinSession,
-  EMAIL_VERIFICATION_PATH,
+  EMAIL_ACTION_PATH,
+  EMAIL_VERIFICATION_ALIAS_PATH,
   isPublicAuthFlowRoute,
   LOCAL_PIN_LOCK_PATH,
   resolveAccountActionPath,
@@ -29,7 +30,12 @@ const routes = [
   { path: '/login', name: 'Login', component: LoginView },
   { path: '/rejestracja', name: 'Rejestracja', component: () => import('./views/RegisterView.vue') },
   { path: '/aktywacja', name: 'Aktywacja', component: () => import('./views/ActivationView.vue') },
-  { path: EMAIL_VERIFICATION_PATH, name: 'PotwierdzenieEmail', component: () => import('./views/EmailVerificationView.vue') },
+  {
+    path: EMAIL_ACTION_PATH,
+    alias: EMAIL_VERIFICATION_ALIAS_PATH,
+    name: 'AkcjaKonta',
+    component: () => import('./views/EmailActionView.vue')
+  },
   { path: '/konto', name: 'KontoDostep', component: () => import('./views/AccountAccessView.vue') },
   { path: LOCAL_PIN_LOCK_PATH, name: 'BlokadaPIN', component: () => import('./views/LocalPinLockView.vue') },
   { path: '/', name: 'Home', component: HomeView },
