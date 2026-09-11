@@ -69,7 +69,14 @@ test('lista urządzeń pokazuje wyłącznie opis użytkowy', async () => {
   assert.match(devices, /device\.name/)
   assert.match(devices, /formatDeviceDate\(device\.dateValue\)/)
   assert.match(devices, /Usuń urządzenie/)
+  assert.match(devices, /class="delete-icon remove-device-button"/)
+  assert.match(devices, /<svg[^>]+stroke="currentColor"/)
   assert.doesNotMatch(devices, /authUid|authTime|deviceId|statusLabel/)
+
+  const styles = source.slice(source.indexOf('<style scoped>'))
+  assert.match(styles, /\.device-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/)
+  assert.match(styles, /\.device-summary strong\s*\{[^}]*text-overflow:\s*ellipsis/)
+  assert.match(styles, /\.remove-device-button\s*\{[^}]*grid-column:\s*2/)
 })
 
 test('dodanie urządzenia wyjaśnia wpływ nowego zaproszenia', async () => {

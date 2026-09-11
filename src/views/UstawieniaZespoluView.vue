@@ -129,9 +129,16 @@
                   <div v-if="isDevicesOpen" class="devices-list">
                     <p v-if="!employeeDevices.length" class="field-note">Brak urządzeń.</p>
                     <article v-for="device in employeeDevices" :key="device.sessionId" class="device-summary">
-                      <strong>{{ device.name }}</strong>
+                      <strong :title="device.name">{{ device.name }}</strong>
+                      <button class="delete-icon remove-device-button" type="button" :disabled="isAccountActionPending" aria-label="Usuń urządzenie" title="Usuń urządzenie" @click="requestRemoveDevice(device)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          <line x1="10" y1="11" x2="10" y2="17"></line>
+                          <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                      </button>
                       <small>{{ formatDeviceDate(device.dateValue) }}</small>
-                      <button class="remove-device-button" type="button" :disabled="isAccountActionPending" @click="requestRemoveDevice(device)">Usuń urządzenie</button>
                     </article>
                   </div>
                 </section>
@@ -944,10 +951,10 @@ const generatePairingCode = async () => {
 .devices-section { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 11px; background: #fff; }
 .devices-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; color: #334155; background: transparent; font-weight: 750; text-align: left; }
 .devices-list { display: grid; gap: 8px; padding: 0 10px 10px; border-top: 1px solid #f1f5f9; }
-.device-summary { display: grid; gap: 5px; padding: 10px 2px 3px; text-align: left; }
-.device-summary strong { overflow: hidden; color: #0f172a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.device-summary small { color: #64748b; font-size: 11px; }
-.remove-device-button { min-height: 40px; margin-top: 3px; border: 1px solid #fecaca; border-radius: 10px; color: #b91c1c; background: #fff7f7; font-weight: 750; }
+.device-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 10px; padding: 10px 2px 3px; text-align: left; }
+.device-summary strong { min-width: 0; overflow: hidden; color: #0f172a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.device-summary small { grid-column: 1; color: #64748b; font-size: 11px; }
+.remove-device-button { grid-column: 2; grid-row: 1; justify-self: end; }
 .invitation-dialog { position: relative; display: grid; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); box-sizing: border-box; gap: 11px; overflow: auto; text-align: center; }
 .invitation-dialog p, .invitation-dialog small { margin: 0; color: #64748b; line-height: 1.45; }.invitation-qr { width: min(256px, 75vw); height: auto; justify-self: center; border-radius: 12px; }.dialog-close { position: sticky; top: 0; z-index: 2; justify-self: end; width: 36px; height: 36px; margin-bottom: -38px; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 24px; line-height: 1; }
 .action-feedback { position: fixed; z-index: 10050; top: calc(18px + env(safe-area-inset-top)); left: 50%; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(15, 23, 42, .94); box-shadow: 0 8px 24px rgba(15, 23, 42, .24); font-size: 14px; font-weight: 750; text-align: center; }
