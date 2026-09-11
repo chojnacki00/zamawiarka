@@ -99,7 +99,7 @@ import {
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   getVerificationResendSeconds
-} from '../utils/emailVerificationAction.js'
+} from '../utils/emailActionHandler.js'
 
 const router = useRouter()
 const sessionStore = useAccountSessionStore()
