@@ -40,6 +40,10 @@ import {
   normalizeRestaurantList,
   serializeRestaurantList
 } from '../src/utils/restaurantDataContext.js'
+import {
+  confirmEmailVerification,
+  parseEmailVerificationAction
+} from '../src/utils/emailVerificationAction.js'
 
 let rulesEnv
 let appCounter = 0
@@ -206,6 +210,37 @@ test('weryfikacja e-maila z Emulatora zmienia token Auth', async () => {
 
   assert.equal(credential.user.emailVerified, true)
   assert.equal(token.claims.email_verified, true)
+})
+
+test('własny handler potwierdza prawdziwy kod verifyEmail w Auth Emulatorze', async () => {
+  const email = 'custom-handler@example.test'
+  const { auth } = createEmulatedClient()
+  const credential = await createUserWithEmailAndPassword(
+    auth,
+    email,
+    'Testowe-haslo-123'
+  )
+
+  await sendEmailVerification(credential.user)
+  const action = parseEmailVerificationAction({
+    query: {
+      mode: 'verifyEmail',
+      oobCode: await getVerificationCode(email),
+      apiKey: 'demo-api-key'
+    },
+    expectedApiKey: auth.app.options.apiKey
+  })
+  const unchangedUid = credential.user.uid
+
+  await confirmEmailVerification({
+    authInstance: auth,
+    oobCode: action.oobCode
+  })
+  await credential.user.reload()
+  await credential.user.getIdToken(true)
+
+  assert.equal(credential.user.emailVerified, true)
+  assert.equal(credential.user.uid, unchangedUid)
 })
 
 test('rzeczywisty bootstrap pracownika czyta i zmienia wspólny legacy app/state restauracji', async () => {

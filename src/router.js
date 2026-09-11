@@ -12,7 +12,8 @@ import {
 } from './utils/accessControl.js'
 import {
   hasStoredLegacyPinSession,
-  isPublicActivationRoute,
+  EMAIL_VERIFICATION_PATH,
+  isPublicAuthFlowRoute,
   LOCAL_PIN_LOCK_PATH,
   resolveAccountActionPath,
   resolveLocalPinGuardRedirect,
@@ -28,6 +29,7 @@ const routes = [
   { path: '/login', name: 'Login', component: LoginView },
   { path: '/rejestracja', name: 'Rejestracja', component: () => import('./views/RegisterView.vue') },
   { path: '/aktywacja', name: 'Aktywacja', component: () => import('./views/ActivationView.vue') },
+  { path: EMAIL_VERIFICATION_PATH, name: 'PotwierdzenieEmail', component: () => import('./views/EmailVerificationView.vue') },
   { path: '/konto', name: 'KontoDostep', component: () => import('./views/AccountAccessView.vue') },
   { path: LOCAL_PIN_LOCK_PATH, name: 'BlokadaPIN', component: () => import('./views/LocalPinLockView.vue') },
   { path: '/', name: 'Home', component: HomeView },
@@ -90,7 +92,7 @@ const getResolvedFirebaseUser = () => {
 router.beforeEach(async (to, from, next) => {
   // Publiczna aktywacja sama bezpiecznie sprawdza token. Nie uruchamiamy przed
   // nią bootstrapu konta ani strażników wymagających istniejącej sesji.
-  if (isPublicActivationRoute(to)) return next()
+  if (isPublicAuthFlowRoute(to)) return next()
 
     const employeeStore = useEmployeeAuthStore()
     const accountSessionStore = useAccountSessionStore()
@@ -147,8 +149,7 @@ router.beforeEach(async (to, from, next) => {
   const authenticationRedirect = resolveRouteAuthenticationRedirect({
     route: to,
     hasFirebaseSession: Boolean(firebaseUser),
-    hasLegacyPinSession: hasEmployeeSession,
-    deviceAccessRemoved: accountSessionStore.deviceAccessRemoved
+    hasLegacyPinSession: hasEmployeeSession
   })
 
   if (authenticationRedirect) {

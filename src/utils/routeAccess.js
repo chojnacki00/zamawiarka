@@ -1,12 +1,15 @@
 const FIREBASE_PUBLIC_PATHS = new Set([
   '/login',
   '/rejestracja',
-  '/aktywacja'
+  '/aktywacja',
+  '/potwierdz-email'
 ])
 
 export const LEGACY_PIN_LOGIN_PATH = '/logowanie'
 export const LOCAL_PIN_LOCK_PATH = '/pin'
 export const ACTIVATION_ROUTE_NAME = 'Aktywacja'
+export const EMAIL_VERIFICATION_PATH = '/potwierdz-email'
+export const EMAIL_VERIFICATION_ROUTE_NAME = 'PotwierdzenieEmail'
 
 export const resolveAccountActionPath = ({
   isPinLocked = false
@@ -64,6 +67,17 @@ export const isPublicActivationRoute = route => (
   String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
 )
 
+export const isPublicEmailVerificationRoute = route => (
+  route?.name === EMAIL_VERIFICATION_ROUTE_NAME ||
+  String(route?.path || '').split(/[?#]/, 1)[0] ===
+    EMAIL_VERIFICATION_PATH
+)
+
+export const isPublicAuthFlowRoute = route => (
+  isPublicActivationRoute(route) ||
+  isPublicEmailVerificationRoute(route)
+)
+
 export const shouldDeferAccountBootstrapForActivation = ({
   route,
   user
@@ -86,13 +100,12 @@ export const hasStoredLegacyPinSession = storage => Boolean(
 export const resolveAuthenticationRedirect = ({
   path,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false,
-  deviceAccessRemoved = false
+  hasLegacyPinSession = false
 } = {}) => {
   const normalizedPath = normalizeRoutePath(path)
 
   if (normalizedPath === '/konto') {
-    return hasFirebaseSession || deviceAccessRemoved ? null : '/login'
+    return hasFirebaseSession ? null : '/login'
   }
 
   // Nowy ekran lokalnego PIN-u należy wyłącznie do kont Firebase.
@@ -110,16 +123,14 @@ export const resolveAuthenticationRedirect = ({
 export const resolveRouteAuthenticationRedirect = ({
   route,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false,
-  deviceAccessRemoved = false
+  hasLegacyPinSession = false
 } = {}) => {
-  if (isPublicActivationRoute(route)) return null
+  if (isPublicAuthFlowRoute(route)) return null
 
   return resolveAuthenticationRedirect({
     path: route?.path,
     hasFirebaseSession,
-    hasLegacyPinSession,
-    deviceAccessRemoved
+    hasLegacyPinSession
   })
 }
 
@@ -127,8 +138,7 @@ export const resolveAppAuthenticationRedirect = ({
   route,
   isAppReady = false,
   hasFirebaseSession = false,
-  hasLegacyPinSession = false,
-  deviceAccessRemoved = false
+  hasLegacyPinSession = false
 } = {}) => {
   if (!isAppReady) return null
 
@@ -140,7 +150,6 @@ export const resolveAppAuthenticationRedirect = ({
   return resolveRouteAuthenticationRedirect({
     route,
     hasFirebaseSession,
-    hasLegacyPinSession,
-    deviceAccessRemoved
+    hasLegacyPinSession
   })
 }

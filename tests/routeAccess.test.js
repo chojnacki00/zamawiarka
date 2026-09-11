@@ -7,6 +7,7 @@ import {
 } from 'vue-router'
 import {
   hasStoredLegacyPinSession,
+  EMAIL_VERIFICATION_PATH,
   LOCAL_PIN_LOCK_PATH,
   resolveAccountActionPath,
   resolveAppAuthenticationRedirect,
@@ -31,11 +32,6 @@ test('konto bez sesji wraca do logowania Firebase, a nie do PIN-u', () => {
   assert.equal(redirectFor('/konto'), '/login')
 })
 
-test('końcowy komunikat usunięcia urządzenia pozostaje widoczny po automatycznym wylogowaniu', () => {
-  assert.equal(redirectFor('/konto', { deviceAccessRemoved: true }), null)
-  assert.equal(redirectFor('/ustawienia', { deviceAccessRemoved: true }), '/login')
-})
-
 test('lokalna blokada Firebase korzysta z osobnej trasy PIN', () => {
   assert.equal(LOCAL_PIN_LOCK_PATH, '/pin')
   assert.equal(resolveAccountActionPath({ isPinLocked: true }), '/pin')
@@ -50,6 +46,11 @@ test('aktywacja z tokenem pozostaje publiczna', () => {
   assert.equal(redirectFor('/aktywacja'), null)
 })
 
+test('potwierdzanie e-maila jest publiczne bez sesji Firebase', () => {
+  assert.equal(EMAIL_VERIFICATION_PATH, '/potwierdz-email')
+  assert.equal(redirectFor('/potwierdz-email?mode=verifyEmail'), null)
+})
+
 test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', async () => {
   const testRouter = createRouter({
     history: createMemoryHistory(),
@@ -57,6 +58,7 @@ test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', asy
       { path: '/login', name: 'Login', component: { template: '<div />' } },
       { path: '/konto', name: 'Konto', component: { template: '<div />' } },
       { path: '/aktywacja', name: 'Aktywacja', component: { template: '<div />' } },
+      { path: '/potwierdz-email', name: 'PotwierdzenieEmail', component: { template: '<div />' } },
       { path: '/ustawienia', name: 'Ustawienia', component: { template: '<div />' } }
     ]
   })
@@ -70,6 +72,10 @@ test('rzeczywisty router zachowuje publiczną aktywację i parametr tokenu', asy
   assert.equal(testRouter.currentRoute.value.path, '/aktywacja')
   assert.equal(testRouter.currentRoute.value.query.t, 'abc')
   assert.equal(testRouter.currentRoute.value.fullPath, '/aktywacja?t=abc')
+
+  await testRouter.push('/potwierdz-email?mode=verifyEmail&oobCode=abc&apiKey=demo')
+  assert.equal(testRouter.currentRoute.value.path, '/potwierdz-email')
+  assert.equal(testRouter.currentRoute.value.query.oobCode, 'abc')
 })
 
 test('rzeczywisty strażnik routera nadal chroni konto i widok biznesowy', async () => {

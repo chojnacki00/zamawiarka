@@ -147,7 +147,7 @@ test('aktywacja pozwala wybrać istniejące konto i przypomnieć hasło bez nazw
   assert.doesNotMatch(template, />[^<]*Firebase/)
   assert.match(
     source,
-    /Konto z tym adresem już istnieje\. Zaloguj się lub skorzystaj z przypomnienia hasła\./
+    /Konto z tym adresem e-mail już istnieje\. Wróć i wybierz „Mam już konto”\./
   )
 })
 

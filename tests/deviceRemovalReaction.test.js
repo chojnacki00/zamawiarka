@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import {
-  DEVICE_ACCESS_REMOVED_HEADING,
-  DEVICE_ACCESS_REMOVED_MESSAGE,
-  runDeviceRemovalReaction
-} from '../src/utils/deviceRemovalReaction.js'
+import { runDeviceRemovalReaction } from '../src/utils/deviceRemovalReaction.js'
 
 const readSource = relativePath => readFile(
   new URL(`../${relativePath}`, import.meta.url),
@@ -17,7 +13,6 @@ test('usunięcie urządzenia wykonuje czyszczenie w bezpiecznej kolejności', as
   const step = name => () => { calls.push(name) }
 
   await runDeviceRemovalReaction({
-    markAccessRemoved: step('removed'),
     finishLoading: step('loading-finished'),
     cancelAndClearBusinessData: step('business-cleared'),
     stopAccountListeners: step('account-listeners-stopped'),
@@ -28,7 +23,6 @@ test('usunięcie urządzenia wykonuje czyszczenie w bezpiecznej kolejności', as
   })
 
   assert.deepEqual(calls, [
-    'removed',
     'loading-finished',
     'business-cleared',
     'account-listeners-stopped',
@@ -39,18 +33,18 @@ test('usunięcie urządzenia wykonuje czyszczenie w bezpiecznej kolejności', as
   ])
 })
 
-test('końcowy komunikat usunięcia urządzenia nie zawiera akcji wylogowania', async () => {
-  const source = await readSource('src/views/AccountAccessView.vue')
-  const removedState = source.slice(
-    source.indexOf('<template v-if="sessionStore.deviceAccessRemoved">'),
-    source.indexOf('<div v-else-if="sessionStore.isLoading"')
-  )
+test('usunięcie aktywnego urządzenia nie zachowuje pośredniego ekranu końcowego', async () => {
+  const [storeSource, appSource, accountSource, routeSource] = await Promise.all([
+    readSource('src/stores/accountSessionStore.js'),
+    readSource('src/App.vue'),
+    readSource('src/views/AccountAccessView.vue'),
+    readSource('src/utils/routeAccess.js')
+  ])
 
-  assert.equal(DEVICE_ACCESS_REMOVED_HEADING, 'Dostęp urządzenia usunięty')
-  assert.match(DEVICE_ACCESS_REMOVED_MESSAGE, /poproś managera o nowe zaproszenie/)
-  assert.match(removedState, /DEVICE_ACCESS_REMOVED_MESSAGE/)
-  assert.doesNotMatch(removedState, /Wyloguj|Odłącz|Przywróć|Zaloguj/)
-  assert.match(source, /v-if="!sessionStore\.deviceAccessRemoved"[\s\S]*Wyloguj to urządzenie/)
+  for (const source of [storeSource, appSource, accountSource, routeSource]) {
+    assert.doesNotMatch(source, /deviceAccessRemoved|Dostęp urządzenia usunięty/)
+  }
+  assert.match(storeSource, /await signOut\(auth\)/)
 })
 
 test('listener rozróżnia brak dokumentu sesji od zwykłego błędu sieci', async () => {
@@ -67,16 +61,16 @@ test('listener rozróżnia brak dokumentu sesji od zwykłego błędu sieci', asy
   assert.match(listener, /handleContextListenerError\('sesji urządzenia', listenerError\)/)
 })
 
-test('reakcja jest jednokrotna i zachowuje komunikat po zdarzeniu Auth', async () => {
+test('reakcja jest jednokrotna i po zdarzeniu Auth prowadzi zwykłą ścieżką do logowania', async () => {
   const [storeSource, appSource] = await Promise.all([
     readSource('src/stores/accountSessionStore.js'),
     readSource('src/App.vue')
   ])
 
   assert.match(storeSource, /if \(deviceRemovalPromise\) return deviceRemovalPromise/)
-  assert.match(storeSource, /preserveDeviceRemovalNotice/)
   assert.match(storeSource, /await signOut\(auth\)/)
-  assert.match(appSource, /if \(accountSessionStore\.deviceAccessRemoved\)[\s\S]*router\.replace\('\/konto'\)/)
+  assert.doesNotMatch(appSource, /deviceAccessRemoved/)
+  assert.match(appSource, /resolveRouteAuthenticationRedirect\([\s\S]*hasFirebaseSession: false/)
 })
 
 test('ponowne uruchomienie z lokalnym śladem usuniętej sesji wykonuje pełne czyszczenie', async () => {
