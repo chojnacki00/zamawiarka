@@ -939,14 +939,15 @@ export const useAccountSessionStore = defineStore(
       }
     }
 
-    const initializeForUser = async (user, { force = false } = {}) => {
+    const initializeForUser = async (
+      user,
+      { force = false, loadContext = loadAccountContext } = {}
+    ) => {
       if (
         !force &&
         isInitialized.value &&
         authUser.value?.uid === user?.uid
       ) return
-
-      if (user) deviceRemovalPromise = null
 
       clearSensitiveContext()
       account.value = null
@@ -966,7 +967,7 @@ export const useAccountSessionStore = defineStore(
 
       isLoading.value = true
       try {
-        await loadAccountContext(user)
+        await loadContext(user)
       } catch (caughtError) {
         console.error('Błąd inicjalizacji konta pracownika:', caughtError)
         error.value =

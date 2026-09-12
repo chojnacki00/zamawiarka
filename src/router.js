@@ -12,6 +12,7 @@ import {
 } from './utils/accessControl.js'
 import {
   hasStoredLegacyPinSession,
+  ensureAccountSessionForRoute,
   EMAIL_ACTION_PATH,
   EMAIL_VERIFICATION_ALIAS_PATH,
   isPublicAuthFlowRoute,
@@ -105,13 +106,10 @@ router.beforeEach(async (to, from, next) => {
     const authorizationStore = useAuthorizationStore()
     const firebaseUser = await getResolvedFirebaseUser()
 
-  if (
-    firebaseUser &&
-    (!accountSessionStore.isInitialized ||
-      accountSessionStore.authUser?.uid !== firebaseUser.uid)
-  ) {
-    await accountSessionStore.initializeForUser(firebaseUser)
-  }
+  await ensureAccountSessionForRoute({
+    firebaseUser,
+    accountSessionStore
+  })
 
   if (
     firebaseUser &&

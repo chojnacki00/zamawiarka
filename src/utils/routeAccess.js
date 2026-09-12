@@ -64,6 +64,26 @@ export const createLocalPinRedirector = router => {
   }
 }
 
+export const ensureAccountSessionForRoute = async ({
+  firebaseUser,
+  accountSessionStore,
+  initializeOptions
+}) => {
+  if (
+    !firebaseUser ||
+    (
+      accountSessionStore.isInitialized &&
+      accountSessionStore.authUser?.uid === firebaseUser.uid
+    )
+  ) return false
+
+  await accountSessionStore.initializeForUser(
+    firebaseUser,
+    initializeOptions
+  )
+  return true
+}
+
 export const isPublicActivationRoute = route => (
   route?.name === ACTIVATION_ROUTE_NAME ||
   String(route?.path || '').split(/[?#]/, 1)[0] === '/aktywacja'
