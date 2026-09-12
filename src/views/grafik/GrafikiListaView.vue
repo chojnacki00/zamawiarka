@@ -56,12 +56,14 @@
           v-for="schedule in scheduleDraftsStore.schedules"
           :key="schedule.id"
           class="schedule-list-item"
+          role="link"
+          tabindex="0"
+          :aria-label="`Otwórz grafik ${schedule.name || 'bez nazwy'}`"
+          @click="openSchedule(schedule.id)"
+          @keydown.enter.prevent.self="openSchedule(schedule.id)"
+          @keydown.space.prevent.self="openSchedule(schedule.id)"
         >
-          <button
-            class="schedule-list-open-area"
-            type="button"
-            @click="openSchedule(schedule.id)"
-          >
+          <div class="schedule-list-open-area">
             <div class="schedule-list-item-top">
               <div class="schedule-list-item-name">
                 {{ schedule.name || 'Grafik bez nazwy' }}
@@ -91,7 +93,7 @@
                 {{ schedule.unfilledCount || 0 }} nieobsadzonych
               </span>
             </div>
-          </button>
+          </div>
 
           <div class="schedule-list-item-bottom">
             <span>
@@ -102,7 +104,7 @@
                 v-if="canUnpublish(schedule)"
                 class="schedule-list-unpublish-button"
                 type="button"
-                @click="openUnpublishConfirm(schedule)"
+                @click.stop="openUnpublishConfirm(schedule)"
               >
                 Wycofaj publikację
               </button>
@@ -110,16 +112,9 @@
                 v-if="canDeleteSchedule(schedule)"
                 class="schedule-list-delete-button"
                 type="button"
-                @click="openDeleteConfirm(schedule)"
+                @click.stop="openDeleteConfirm(schedule)"
               >
                 Usuń
-              </button>
-              <button
-                class="schedule-list-open-button"
-                type="button"
-                @click="openSchedule(schedule.id)"
-              >
-                Otwórz ›
               </button>
             </div>
           </div>
@@ -617,7 +612,12 @@ const getStatusClass = schedule => {
 .schedule-list-item {
   padding: 0;
   overflow: hidden;
-  cursor: default;
+  cursor: pointer;
+}
+
+.schedule-list-item:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, .28);
+  outline-offset: 3px;
 }
 
 .schedule-list-open-area {
@@ -664,11 +664,6 @@ const getStatusClass = schedule => {
 .schedule-list-unpublish-button {
   color: #9a3412;
   background: #ffedd5;
-}
-
-.schedule-list-open-button {
-  color: #0f766e;
-  background: #ccfbf1;
 }
 
 .schedule-delete-overlay,

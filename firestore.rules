@@ -471,6 +471,24 @@ service cloud.firestore {
         request.resource.data.invitationId == resource.data.invitationId;
     }
 
+    function isOwnCurrentDeviceSession(restaurantId, memberId, sessionId) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      let member = memberDocument(restaurantId);
+      return hasVerifiedEmail() &&
+        authTime is int &&
+        authTime > 0 &&
+        memberId == request.auth.uid &&
+        sessionId == string(authTime) &&
+        hasActiveMembership(restaurantId) &&
+        member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        resource.data.authUid == request.auth.uid &&
+        resource.data.restaurantId == restaurantId &&
+        resource.data.employeeId == member.data.employeeId &&
+        resource.data.authTime == authTime &&
+        resource.data.status == 'active';
+    }
+
     match /accounts/{authUid} {
       allow read: if isSignedIn() && request.auth.uid == authUid;
       allow create, update: if isSignedIn() &&
@@ -575,8 +593,14 @@ service cloud.firestore {
             restaurantId,
             memberId
           );
-          allow delete: if canManageEmployees(restaurantId) &&
-            memberId != request.auth.uid;
+          allow delete: if (
+            canManageEmployees(restaurantId) &&
+            memberId != request.auth.uid
+          ) || isOwnCurrentDeviceSession(
+            restaurantId,
+            memberId,
+            sessionId
+          );
         }
       }
 

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import {
   collection,
   collectionGroup,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -66,7 +67,10 @@ import {
   isPermissionDeniedError,
   shouldTreatBusinessPermissionDeniedAsBlocked
 } from '../utils/accountAccessUx.js'
-import { runDeviceRemovalReaction } from '../utils/deviceRemovalReaction.js'
+import {
+  createDeviceRemovalCoordinator,
+  runDeviceRemovalReaction
+} from '../utils/deviceRemovalReaction.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -109,7 +113,7 @@ export const useAccountSessionStore = defineStore(
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
     let isHandlingDeviceDisconnect = false
-    let deviceRemovalPromise = null
+    const deviceRemovalCoordinator = createDeviceRemovalCoordinator()
     let businessAccessValidationPromise = null
     const applicationLockCleanupHandlers = new Set()
 
@@ -362,8 +366,6 @@ export const useAccountSessionStore = defineStore(
     }
 
     const handleDeviceSessionRemoved = () => {
-      if (deviceRemovalPromise) return deviceRemovalPromise
-
       const user = auth.currentUser || authUser.value
       const authUid = user?.uid
       const restaurantId = currentRestaurantId.value
@@ -373,7 +375,7 @@ export const useAccountSessionStore = defineStore(
       const deviceId =
         currentDeviceSession.value?.deviceId || approvedDevice?.deviceId
 
-      deviceRemovalPromise = runDeviceRemovalReaction({
+      return deviceRemovalCoordinator.run(() => runDeviceRemovalReaction({
         finishLoading: () => {
           isLoading.value = false
           isMembershipContextReady.value = false
@@ -413,14 +415,12 @@ export const useAccountSessionStore = defineStore(
         signOutFirebase: async () => {
           if (auth.currentUser) await signOut(auth)
         }
-      }).catch(caughtError => {
+      })).catch(caughtError => {
         console.error(
           'Nie udało się zakończyć wylogowania usuniętego urządzenia:',
           caughtError?.code || 'account/device-removal-sign-out-failed'
         )
       })
-
-      return deviceRemovalPromise
     }
 
     const startContextListeners = () => {
@@ -1532,7 +1532,11 @@ export const useAccountSessionStore = defineStore(
         authUid,
         'deviceSessions'
       ))
-      return snapshot.docs
+      return normalizeEmployeeDevices(snapshot.docs)
+    }
+
+    const normalizeEmployeeDevices = deviceSnapshots => (
+      deviceSnapshots
         .map(deviceSnapshot => ({
           sessionId: deviceSnapshot.id,
           ...deviceSnapshot.data()
@@ -1542,6 +1546,31 @@ export const useAccountSessionStore = defineStore(
           (right.addedAt?.toMillis?.() || 0) -
           (left.addedAt?.toMillis?.() || 0)
         ))
+    )
+
+    const subscribeEmployeeDevices = (authUid, {
+      onChange,
+      onError
+    } = {}) => {
+      if (!currentRestaurantId.value || !authUid) return () => {}
+      if (!hasPermission('can_manage_employees')) {
+        throw new Error('Nie masz uprawnienia do przeglądania urządzeń.')
+      }
+
+      const restaurantId = currentRestaurantId.value
+      return onSnapshot(collection(
+        db,
+        'restaurants',
+        restaurantId,
+        'members',
+        authUid,
+        'deviceSessions'
+      ), snapshot => {
+        if (currentRestaurantId.value !== restaurantId) return
+        onChange?.(normalizeEmployeeDevices(snapshot.docs))
+      }, listenerError => {
+        onError?.(listenerError)
+      })
     }
 
     const removeEmployeeDevice = async ({ authUid, sessionId }) => {
@@ -1998,8 +2027,6 @@ export const useAccountSessionStore = defineStore(
         approvedDevice?.deviceId
       ].filter(Boolean))
 
-      deviceRemovalPromise = null
-
       if (authUid) {
         deviceIds.forEach(deviceId => clearLocalPin({ authUid, deviceId }))
       }
@@ -2028,6 +2055,55 @@ export const useAccountSessionStore = defineStore(
 
     const logoutCurrentDevice = () => clearLocalAccountAndSignOut()
     const returnToLoginAfterAccessRevoked = () => clearLocalAccountAndSignOut()
+
+    const disconnectCurrentDevice = () => {
+      return deviceRemovalCoordinator.run(async () => {
+        const user = auth.currentUser || authUser.value
+        const restaurantId = currentRestaurantId.value
+        const membership = currentMembership.value
+
+        if (
+          !user?.uid ||
+          !restaurantId ||
+          membership?.authUid !== user.uid ||
+          membership?.restaurantId !== restaurantId ||
+          membership?.status !== 'active'
+        ) {
+          throw new Error('Nie można potwierdzić bieżącego dostępu do urządzenia.')
+        }
+
+        const authTime = await getFirebaseAuthTime(user)
+        const sessionId = getDeviceSessionId(authTime)
+        const sessionRef = doc(
+          db,
+          'restaurants',
+          restaurantId,
+          'members',
+          user.uid,
+          'deviceSessions',
+          sessionId
+        )
+        const sessionSnapshot = await getDoc(sessionRef)
+        const session = sessionSnapshot.exists()
+          ? sessionSnapshot.data()
+          : null
+
+        if (
+          !session ||
+          session.authUid !== user.uid ||
+          session.restaurantId !== restaurantId ||
+          session.employeeId !== membership.employeeId ||
+          session.authTime !== authTime ||
+          session.status !== 'active'
+        ) {
+          throw new Error('Bieżąca sesja urządzenia nie jest aktywna.')
+        }
+
+        await deleteDoc(sessionRef)
+        await clearLocalAccountAndSignOut()
+        return true
+      })
+    }
 
     const hasPermission = permissionKey => (
       hasActiveContext.value && (
@@ -2073,6 +2149,7 @@ export const useAccountSessionStore = defineStore(
       createEmployeeAccessInvitation,
       cancelInvitation,
       getEmployeeDevices,
+      subscribeEmployeeDevices,
       removeEmployeeDevice,
       removeAllEmployeeDevices,
       disconnectDevice,
@@ -2089,6 +2166,7 @@ export const useAccountSessionStore = defineStore(
       lockApplication,
       registerApplicationLockCleanup,
       logoutCurrentDevice,
+      disconnectCurrentDevice,
       returnToLoginAfterAccessRevoked,
       hasPermission,
       clearSensitiveContext

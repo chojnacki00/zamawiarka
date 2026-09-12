@@ -1,6 +1,20 @@
 <template>
   <main class="pin-lock-screen">
     <section class="pin-lock-card" aria-labelledby="pin-lock-title">
+      <button
+        class="device-settings-button"
+        type="button"
+        :disabled="isBusy"
+        aria-label="Ustawienia urządzenia"
+        title="Ustawienia urządzenia"
+        @click="isSettingsOpen = true"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-3v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7.04 15a1.7 1.7 0 0 0-1.56-1.03H5.4v-3h.08a1.7 1.7 0 0 0 1.56-1.03 1.7 1.7 0 0 0-.34-1.87l-.06-.06 2.12-2.12.06.06a1.7 1.7 0 0 0 1.87.34 1.7 1.7 0 0 0 1.03-1.56v-.09h3v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 2.12 2.12-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03h.08v3h-.08A1.7 1.7 0 0 0 19.4 15Z" />
+        </svg>
+      </button>
+
       <div class="brand-mark" aria-hidden="true">GM</div>
       <p class="app-name">GastroManager</p>
       <h1 id="pin-lock-title">Wpisz 4-cyfrowy PIN</h1>
@@ -66,15 +80,74 @@
         </button>
       </div>
 
-      <button
-        class="disconnect-button"
-        type="button"
-        :disabled="isBusy"
-        @click="disconnectCurrentDevice"
-      >
-        Odłącz urządzenie
-      </button>
     </section>
+
+    <div
+      v-if="isSettingsOpen"
+      class="device-settings-overlay"
+      @click.self="closeSettings"
+    >
+      <aside
+        class="device-settings-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="device-settings-title"
+      >
+        <header>
+          <h2 id="device-settings-title">Ustawienia urządzenia</h2>
+          <button
+            class="panel-close-button"
+            type="button"
+            aria-label="Zamknij ustawienia urządzenia"
+            @click="closeSettings"
+          >×</button>
+        </header>
+        <button
+          class="settings-disconnect-button"
+          type="button"
+          @click="openDisconnectConfirmation"
+        >
+          Odłącz urządzenie
+        </button>
+      </aside>
+    </div>
+
+    <div
+      v-if="isDisconnectConfirmationOpen"
+      class="disconnect-dialog-overlay"
+      @click.self="closeDisconnectConfirmation"
+    >
+      <section
+        class="disconnect-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="disconnect-dialog-title"
+        aria-describedby="disconnect-dialog-description"
+      >
+        <h2 id="disconnect-dialog-title">Odłączyć urządzenie?</h2>
+        <p id="disconnect-dialog-description">
+          Lokalny PIN zostanie usunięty, a urządzenie zniknie z listy urządzeń
+          pracownika. Ponowne korzystanie z aplikacji na tym urządzeniu będzie
+          wymagało nowego zaproszenia od managera.
+        </p>
+        <p v-if="disconnectError" class="disconnect-error" role="alert">
+          {{ disconnectError }}
+        </p>
+        <div class="disconnect-dialog-actions">
+          <button
+            type="button"
+            :disabled="isBusy"
+            @click="closeDisconnectConfirmation"
+          >Anuluj</button>
+          <button
+            class="confirm-disconnect-button"
+            type="button"
+            :disabled="isBusy"
+            @click="confirmDisconnectCurrentDevice"
+          >{{ isBusy ? 'Odłączanie…' : 'Odłącz urządzenie' }}</button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>
 
@@ -94,6 +167,9 @@ const sessionStore = useAccountSessionStore()
 const digits = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9])
 const pin = ref('')
 const isBusy = ref(false)
+const isSettingsOpen = ref(false)
+const isDisconnectConfirmationOpen = ref(false)
+const disconnectError = ref('')
 const errorMessage = ref('')
 const retryUntil = ref(0)
 const retrySeconds = ref(0)
@@ -105,7 +181,11 @@ const accessIsBlocked = computed(() => Boolean(
   sessionStore.pinAccessFailure !== LOCAL_PIN_ACCESS_FAILURES.LOCAL_PIN_MISMATCH
 ))
 const keypadDisabled = computed(() => (
-  isBusy.value || retrySeconds.value > 0 || accessIsBlocked.value
+  isBusy.value ||
+  isSettingsOpen.value ||
+  isDisconnectConfirmationOpen.value ||
+  retrySeconds.value > 0 ||
+  accessIsBlocked.value
 ))
 
 const clearRetryTimer = () => {
@@ -185,29 +265,57 @@ const submitPin = async () => {
   }
 }
 
-const disconnectCurrentDevice = async () => {
-  const confirmed = window.confirm(
-    'Odłączyć to urządzenie? Lokalny PIN zostanie usunięty i kolejne użycie będzie wymagało ponownego zatwierdzenia urządzenia.'
-  )
-  if (!confirmed) return
+const closeSettings = () => {
+  if (isBusy.value) return
+  isSettingsOpen.value = false
+}
+
+const openDisconnectConfirmation = () => {
+  isSettingsOpen.value = false
+  disconnectError.value = ''
+  isDisconnectConfirmationOpen.value = true
+}
+
+const closeDisconnectConfirmation = () => {
+  if (isBusy.value) return
+  disconnectError.value = ''
+  isDisconnectConfirmationOpen.value = false
+}
+
+const confirmDisconnectCurrentDevice = async () => {
+  if (isBusy.value || !isDisconnectConfirmationOpen.value) return
 
   isBusy.value = true
   pin.value = ''
+  disconnectError.value = ''
   try {
-    await sessionStore.logoutCurrentDevice()
+    await sessionStore.disconnectCurrentDevice()
+    isDisconnectConfirmationOpen.value = false
     await router.replace('/login')
   } catch (error) {
     console.error(
       'Nie udało się odłączyć bieżącego urządzenia:',
       error?.code || 'local-pin/disconnect-failed'
     )
-    errorMessage.value = 'Nie udało się odłączyć urządzenia. Spróbuj ponownie.'
+    disconnectError.value =
+      'Nie udało się odłączyć urządzenia. Spróbuj ponownie.'
   } finally {
     isBusy.value = false
   }
 }
 
 const handleKeyboard = event => {
+  if (event.key === 'Escape') {
+    if (isDisconnectConfirmationOpen.value) {
+      event.preventDefault()
+      closeDisconnectConfirmation()
+    } else if (isSettingsOpen.value) {
+      event.preventDefault()
+      closeSettings()
+    }
+    return
+  }
+  if (isSettingsOpen.value || isDisconnectConfirmationOpen.value) return
   if (/^\d$/.test(event.key)) {
     event.preventDefault()
     addDigit(event.key)
@@ -241,7 +349,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pin-lock-screen { min-height: 100dvh; display: grid; box-sizing: border-box; place-items: center; padding: 18px; background: linear-gradient(180deg, #f5f8fc 0%, #eef2f7 100%); }
-.pin-lock-card { display: grid; width: min(390px, 100%); box-sizing: border-box; justify-items: center; padding: 28px 22px 24px; border: 1px solid rgba(148, 163, 184, .26); border-radius: 26px; background: rgba(255, 255, 255, .96); box-shadow: 0 22px 55px rgba(15, 23, 42, .12); }
+.pin-lock-card { position: relative; display: grid; width: min(390px, 100%); box-sizing: border-box; justify-items: center; padding: 28px 22px 24px; border: 1px solid rgba(148, 163, 184, .26); border-radius: 26px; background: rgba(255, 255, 255, .96); box-shadow: 0 22px 55px rgba(15, 23, 42, .12); }
+.device-settings-button { position: absolute; top: 12px; right: 12px; display: grid; width: 46px; height: 46px; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #64748b; background: transparent; cursor: pointer; touch-action: manipulation; }
+.device-settings-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.device-settings-button:active:not(:disabled) { color: #0f172a; background: #eef2f7; transform: scale(.95); }
+.device-settings-button:focus-visible, .panel-close-button:focus-visible, .settings-disconnect-button:focus-visible, .disconnect-dialog-actions button:focus-visible { outline: 3px solid rgba(0, 122, 255, .28); outline-offset: 2px; }
+.device-settings-button:disabled { opacity: .4; }
 .brand-mark { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 16px; color: #fff; background: #007aff; font-size: 15px; font-weight: 900; box-shadow: 0 8px 20px rgba(0, 122, 255, .24); }
 .app-name { margin: 12px 0 0; color: #64748b; font-size: 13px; font-weight: 800; letter-spacing: .04em; }
 h1 { margin: 8px 0 0; color: #111827; font-size: clamp(22px, 7vw, 28px); line-height: 1.2; text-align: center; }
@@ -258,10 +371,21 @@ h1 { margin: 8px 0 0; color: #111827; font-size: clamp(22px, 7vw, 28px); line-he
 .pin-key-secondary { color: #475569; background: #f8fafc; font-size: 22px; }
 .pin-key-submit { border-color: #007aff; color: #fff; background: #007aff; }
 .pin-key:disabled { opacity: .4; cursor: default; }
-.disconnect-button { min-height: 44px; margin-top: 20px; padding: 9px 14px; border: 0; color: #b91c1c; background: transparent; font-size: 14px; font-weight: 800; cursor: pointer; }
-.disconnect-button:active:not(:disabled) { opacity: .65; }
-.disconnect-button:focus-visible { outline: 3px solid rgba(185, 28, 28, .2); outline-offset: 2px; border-radius: 10px; }
-.disconnect-button:disabled { opacity: .4; cursor: default; }
+.device-settings-overlay, .disconnect-dialog-overlay { position: fixed; z-index: 5000; inset: 0; display: flex; box-sizing: border-box; padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); background: rgba(15, 23, 42, .3); }
+.device-settings-overlay { align-items: flex-start; justify-content: flex-end; }
+.device-settings-panel { width: min(360px, 100%); box-sizing: border-box; padding: 17px; border: 1px solid rgba(148, 163, 184, .3); border-radius: 20px; background: #fff; box-shadow: 0 20px 50px rgba(15, 23, 42, .2); }
+.device-settings-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.device-settings-panel h2, .disconnect-dialog h2 { margin: 0; color: #111827; font-size: 19px; }
+.panel-close-button { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: #ef4444; font-size: 25px; line-height: 1; cursor: pointer; }
+.settings-disconnect-button { width: 100%; min-height: 48px; margin-top: 16px; padding: 11px 14px; border: 1px solid #fecaca; border-radius: 13px; color: #b91c1c; background: #fff1f2; font-size: 15px; font-weight: 800; text-align: left; cursor: pointer; }
+.disconnect-dialog-overlay { align-items: center; justify-content: center; }
+.disconnect-dialog { width: min(420px, 100%); box-sizing: border-box; padding: 22px; border-radius: 22px; background: #fff; box-shadow: 0 24px 65px rgba(15, 23, 42, .25); }
+.disconnect-dialog p { margin: 13px 0 0; color: #475569; font-size: 14px; line-height: 1.55; }
+.disconnect-dialog .disconnect-error { color: #b91c1c; font-weight: 700; }
+.disconnect-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; }
+.disconnect-dialog-actions button { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 13px; color: #334155; background: #e2e8f0; font-size: 14px; font-weight: 800; cursor: pointer; }
+.disconnect-dialog-actions .confirm-disconnect-button { color: #fff; background: #dc2626; }
+.disconnect-dialog-actions button:disabled { opacity: .55; cursor: default; }
 @media (max-height: 670px) {
   .pin-lock-screen { align-items: start; padding-top: 10px; }
   .pin-lock-card { padding-top: 18px; padding-bottom: 18px; }

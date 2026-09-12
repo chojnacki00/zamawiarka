@@ -266,6 +266,7 @@ const deviceToRemove = ref(null)
 const actionFeedback = ref('')
 const temporaryCleanupWarning = ref('')
 let actionFeedbackTimer = null
+let unsubscribeEmployeeDevices = null
 
 const createEmptyForm = () => ({
   imie: '',
@@ -403,7 +404,15 @@ onMounted(async () => {
     })
 })
 
-onUnmounted(() => clearTimeout(actionFeedbackTimer))
+onUnmounted(() => {
+  clearTimeout(actionFeedbackTimer)
+  stopEmployeeDevicesSubscription()
+})
+
+const stopEmployeeDevicesSubscription = () => {
+  if (unsubscribeEmployeeDevices) unsubscribeEmployeeDevices()
+  unsubscribeEmployeeDevices = null
+}
 
 const clearActionFeedback = () => {
   clearTimeout(actionFeedbackTimer)
@@ -464,6 +473,7 @@ const syncAssignmentRateInputs = () => {
 }
 
 const openForm = (employee = null) => {
+  stopEmployeeDevicesSubscription()
   clearActionFeedback()
   editingEmployeeId.value = employee?.id || null
   form.value = employee
@@ -501,6 +511,7 @@ const openForm = (employee = null) => {
 }
 
 const cancelForm = () => {
+  stopEmployeeDevicesSubscription()
   clearActionFeedback()
   isFormOpen.value = false
   editingEmployeeId.value = null
@@ -662,16 +673,31 @@ const saveEmployee = async () => {
 const loadEmployeeAccountAccess = async employeeId => {
   if (!employeeId) return
 
+  stopEmployeeDevicesSubscription()
   try {
     const access = await accountSessionStore.getEmployeeAccountAccess(employeeId)
+    if (!isFormOpen.value || editingEmployeeId.value !== employeeId) return
     accountAccess.value = access
-    employeeDevices.value = access?.authUid
-      ? (await accountSessionStore.getEmployeeDevices(access.authUid))
-          .map(device => ({
+    employeeDevices.value = []
+    if (access?.authUid) {
+      unsubscribeEmployeeDevices = accountSessionStore.subscribeEmployeeDevices(
+        access.authUid,
+        {
+          onChange: devices => {
+            employeeDevices.value = devices.map(device => ({
             sessionId: device.sessionId,
             ...buildEmployeeDeviceSummary(device)
-          }))
-      : []
+            }))
+          },
+          onError: listenerError => {
+            if (!isFormOpen.value || editingEmployeeId.value !== employeeId) return
+            console.error('Błąd obserwowania urządzeń pracownika:', listenerError)
+            accountAccessMessage.value =
+              'Nie udało się odświeżyć listy urządzeń.'
+          }
+        }
+      )
+    }
   } catch (error) {
     console.error('Błąd odczytu dostępu pracownika:', error)
     accountAccessMessage.value =
