@@ -80,13 +80,15 @@ test('centralne czyszczenie obejmuje store’y zespołu i grafiku', async () => 
   }
 })
 
-test('pełne odłączenie urządzenia wymaga wyraźnego potwierdzenia', async () => {
+test('pełne odłączenie urządzenia na ekranie PIN używa własnego potwierdzenia', async () => {
   const [pinSource, accountSource] = await Promise.all([
     readSource('src/views/LocalPinLockView.vue'),
     readSource('src/views/AccountAccessView.vue')
   ])
 
-  assert.match(pinSource, /window\.confirm\(/)
+  assert.doesNotMatch(pinSource, /window\.confirm\(|window\.alert\(/)
+  assert.match(pinSource, /role="alertdialog"/)
+  assert.match(pinSource, /Odłączyć urządzenie\?/)
   assert.match(pinSource, /Odłącz urządzenie/)
   assert.match(accountSource, /window\.confirm\(/)
   assert.match(accountSource, /Wyloguj to urządzenie/)

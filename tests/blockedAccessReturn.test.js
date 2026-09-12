@@ -39,7 +39,7 @@ test('czyszczenie zablokowanego konta usuwa lokalny PIN także po ponownym uruch
   const source = await readSource('src/stores/accountSessionStore.js')
   const cleanup = source.slice(
     source.indexOf('const clearLocalAccountAndSignOut'),
-    source.indexOf('const hasPermission')
+    source.indexOf('const disconnectCurrentDevice')
   )
 
   assert.match(cleanup, /localStorage\.getItem\(ACTIVE_RESTAURANT_KEY\)/)
@@ -67,7 +67,8 @@ test('świadome odłączanie aktywnego urządzenia nadal wymaga potwierdzenia', 
 
   assert.match(activeLogout, /window\.confirm\(/)
   assert.match(activeLogout, /Odłączyć to urządzenie\?/)
-  assert.match(pinSource, /window\.confirm\(/)
+  assert.doesNotMatch(pinSource, /window\.confirm\(/)
+  assert.match(pinSource, /role="alertdialog"/)
   assert.match(pinSource, /Odłącz urządzenie/)
 })
 

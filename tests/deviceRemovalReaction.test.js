@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { runDeviceRemovalReaction } from '../src/utils/deviceRemovalReaction.js'
+import {
+  createDeviceRemovalCoordinator,
+  runDeviceRemovalReaction
+} from '../src/utils/deviceRemovalReaction.js'
 
 const readSource = relativePath => readFile(
   new URL(`../${relativePath}`, import.meta.url),
@@ -67,10 +70,31 @@ test('reakcja jest jednokrotna i po zdarzeniu Auth prowadzi zwykłą ścieżką 
     readSource('src/App.vue')
   ])
 
-  assert.match(storeSource, /if \(deviceRemovalPromise\) return deviceRemovalPromise/)
+  assert.match(storeSource, /deviceRemovalCoordinator\.run\(/)
   assert.match(storeSource, /await signOut\(auth\)/)
   assert.doesNotMatch(appSource, /deviceAccessRemoved/)
   assert.match(appSource, /resolveRouteAuthenticationRedirect\([\s\S]*hasFirebaseSession: false/)
+})
+
+test('akcja użytkownika i listener współdzielą jedną trwającą reakcję usunięcia', async () => {
+  const coordinator = createDeviceRemovalCoordinator()
+  let calls = 0
+  let finishOperation
+  const operation = () => {
+    calls += 1
+    return new Promise(resolve => { finishOperation = resolve })
+  }
+
+  const fromClick = coordinator.run(operation)
+  const fromListener = coordinator.run(operation)
+
+  assert.equal(calls, 0)
+  await Promise.resolve()
+  assert.equal(calls, 1)
+  finishOperation(true)
+  assert.equal(await fromClick, true)
+  assert.equal(await fromListener, true)
+  assert.equal(calls, 1)
 })
 
 test('ponowne uruchomienie z lokalnym śladem usuniętej sesji wykonuje pełne czyszczenie', async () => {

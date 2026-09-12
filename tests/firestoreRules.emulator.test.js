@@ -2488,9 +2488,14 @@ test('aktywny klient wykrywa na żywo usunięcie dokładnie własnej sesji urzą
   ))).data().status, 'active')
 })
 
-test('urządzenie usuwa właściciel lub manager zespołu, ale nie zwykły pracownik', async () => {
+test('użytkownik usuwa tylko własną bieżącą sesję, a manager nadal usuwa inne urządzenia', async () => {
+  const secondAuthTime = AUTH_TIME + 100
   await seedOwner()
   await seedEmployeeAccess()
+  await seed([[
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`,
+    deviceSessionData({ authTime: secondAuthTime })
+  ]])
   await seedEmployeeAccess({
     uid: 'manager-auth',
     employeeId: 'manager-employee',
@@ -2505,19 +2510,86 @@ test('urządzenie usuwa właściciel lub manager zespołu, ale nie zwykły praco
   })
   const sessionPath =
     `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+  const secondSessionPath =
+    `restaurants/restaurant-a/members/employee-auth/deviceSessions/${secondAuthTime}`
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const memberRef = doc(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth'
+  )
+  const membershipBefore = (await getDoc(memberRef)).data()
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
 
   await assertFails(deleteDoc(doc(
     context({ uid: 'limited-auth', email: 'limited@example.com' }).firestore(),
     sessionPath
   )))
   await assertFails(deleteDoc(doc(
-    context({ uid: 'employee-auth', email: 'employee@example.com' }).firestore(),
-    sessionPath
+    employeeDb,
+    secondSessionPath
   )))
+  await assertSucceeds(deleteDoc(doc(employeeDb, sessionPath)))
+
+  assert.deepEqual((await getDoc(memberRef)).data(), membershipBefore)
+  assert.equal((await getDoc(doc(ownerDb, sessionPath))).exists(), false)
+  assert.equal((await getDoc(doc(ownerDb, secondSessionPath))).exists(), true)
+
   await assertSucceeds(deleteDoc(doc(
     context({ uid: 'manager-auth', email: 'manager@example.com' }).firestore(),
-    sessionPath
+    secondSessionPath
   )))
+  assert.equal((await getDoc(doc(ownerDb, secondSessionPath))).exists(), false)
+})
+
+test('manager widzi na żywo samodzielne usunięcie bieżącego urządzenia pracownika', async () => {
+  await seedOwner()
+  await seedEmployeeAccess()
+  const ownerDb = context({
+    uid: 'owner-auth',
+    email: 'owner@example.com'
+  }).firestore()
+  const employeeDb = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const devicesRef = collection(
+    ownerDb,
+    'restaurants/restaurant-a/members/employee-auth/deviceSessions'
+  )
+
+  let initialResolve
+  const initialSnapshot = new Promise(resolve => { initialResolve = resolve })
+  let removalResolve
+  let removalReject
+  const removalSnapshot = new Promise((resolve, reject) => {
+    removalResolve = resolve
+    removalReject = reject
+  })
+  const timeout = setTimeout(() => {
+    removalReject(new Error('Lista managera nie otrzymała aktualizacji urządzeń.'))
+  }, 5000)
+  const unsubscribe = onSnapshot(devicesRef, snapshot => {
+    if (snapshot.size === 1) initialResolve()
+    if (snapshot.empty) removalResolve()
+  }, removalReject)
+
+  try {
+    await initialSnapshot
+    await assertSucceeds(deleteDoc(doc(
+      employeeDb,
+      `restaurants/restaurant-a/members/employee-auth/deviceSessions/${AUTH_TIME}`
+    )))
+    await removalSnapshot
+  } finally {
+    clearTimeout(timeout)
+    unsubscribe()
+  }
 })
 
 test('wyłączenie konta odcina dostęp przed usunięciem urządzeń i zaproszeń', async () => {
