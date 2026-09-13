@@ -12,8 +12,12 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthorizationStore } from './authorizationStore.js'
+import { useAccountSessionStore } from './accountSessionStore.js'
 import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
-import { shouldIgnoreScheduleListenerCallback } from '../utils/scheduleAvailabilityAccess.js'
+import {
+  shouldIgnoreScheduleListenerCallback,
+  shouldIgnoreScheduleListenerError
+} from '../utils/scheduleAvailabilityAccess.js'
 
 export const useScheduleDemandModelsStore = defineStore(
   'scheduleDemandModels',
@@ -92,15 +96,17 @@ export const useScheduleDemandModelsStore = defineStore(
               resolve(models.value)
             }
           },
-          error => {
+          async error => {
             const authorizationStore = useAuthorizationStore()
-            if (shouldIgnoreScheduleListenerCallback({
+            if (await shouldIgnoreScheduleListenerError({
               listenerRevision,
-              currentRevision: modelsListenerRevision,
+              getCurrentRevision: () => modelsListenerRevision,
               managerAccessRequired: true,
               managerAccessAtStart,
-              hasManagerAccess: authorizationStore
+              getHasManagerAccess: () => authorizationStore
                 .hasPermission('can_manage_schedule'),
+              confirmManagerAccess: () => useAccountSessionStore()
+                .refreshCurrentPermissionAndCheck('can_manage_schedule'),
               error
             })) {
               if (firstSnapshot) {

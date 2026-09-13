@@ -6,7 +6,8 @@ import {
   isSchedulePermissionDeniedError,
   normalizeAvailabilitySelectionForAccess,
   SCHEDULE_AVAILABILITY_ACCESS_MODE,
-  shouldIgnoreScheduleListenerCallback
+  shouldIgnoreScheduleListenerCallback,
+  shouldIgnoreScheduleListenerError
 } from '../src/utils/scheduleAvailabilityAccess.js'
 
 test('zwykły pracownik nie uruchamia managerskich odczytów grafiku', () => {
@@ -87,6 +88,97 @@ test('nieoczekiwany błąd uprawnień nadal jest raportowany', () => {
   }), false)
 })
 
+const runRevokedManagerListenerScenario = async () => {
+  let currentRevision = 12
+  let hasManagerAccess = true
+  let unsubscribeCalls = 0
+  let consoleErrorCalls = 0
+  const listenerRevision = currentRevision
+
+  const invalidateAndUnsubscribe = () => {
+    currentRevision += 1
+    unsubscribeCalls += 1
+  }
+
+  const shouldIgnoreError = await shouldIgnoreScheduleListenerError({
+    listenerRevision,
+    getCurrentRevision: () => currentRevision,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    getHasManagerAccess: () => hasManagerAccess,
+    confirmManagerAccess: async () => {
+      hasManagerAccess = false
+      invalidateAndUnsubscribe()
+      return false
+    },
+    error: { code: 'permission-denied' }
+  })
+
+  if (!shouldIgnoreError) consoleErrorCalls += 1
+
+  const ignoresLateSnapshot = shouldIgnoreScheduleListenerCallback({
+    listenerRevision,
+    currentRevision,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    hasManagerAccess
+  })
+  const ignoresLateError = await shouldIgnoreScheduleListenerError({
+    listenerRevision,
+    getCurrentRevision: () => currentRevision,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    getHasManagerAccess: () => hasManagerAccess,
+    error: { code: 'permission-denied' }
+  })
+
+  return {
+    consoleErrorCalls,
+    ignoresLateError,
+    ignoresLateSnapshot,
+    unsubscribeCalls
+  }
+}
+
+test('modele zapotrzebowania ignorują odmowę dostarczoną przed lokalnym snapshotem profilu', async () => {
+  assert.deepEqual(await runRevokedManagerListenerScenario(), {
+    consoleErrorCalls: 0,
+    ignoresLateError: true,
+    ignoresLateSnapshot: true,
+    unsubscribeCalls: 1
+  })
+})
+
+test('dyspozycje pracownika ignorują spóźniony snapshot i odmowę unieważnionej generacji', async () => {
+  assert.deepEqual(await runRevokedManagerListenerScenario(), {
+    consoleErrorCalls: 0,
+    ignoresLateError: true,
+    ignoresLateSnapshot: true,
+    unsubscribeCalls: 1
+  })
+})
+
+test('aktualna aktywna generacja nadal raportuje nieoczekiwany permission-denied', async () => {
+  let currentRevision = 20
+  let hasManagerAccess = true
+
+  const ignored = await shouldIgnoreScheduleListenerError({
+    listenerRevision: 20,
+    getCurrentRevision: () => currentRevision,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    getHasManagerAccess: () => hasManagerAccess,
+    confirmManagerAccess: async () => {
+      currentRevision = 20
+      hasManagerAccess = true
+      return true
+    },
+    error: { code: 'firestore/permission-denied' }
+  })
+
+  assert.equal(ignored, false)
+})
+
 test('zmiana uprawnienia unieważnia managerskie dane i pozwala uruchomić nowy listener', () => {
   const ownAvailability = [{ id: 'julia_2026-09-13' }]
   let managerAvailability = [{ id: 'marzena_2026-09-13' }]
@@ -137,6 +229,10 @@ test('widok zatrzymuje managerskie listenery i nie liczy obsady przy zapisie wł
   assert.match(source, /currentRevision: teamAvailabilityListenerRevision/)
   assert.match(source, /currentRevision: monthAvailabilityListenerRevision/)
   assert.match(source, /wasListeningToAnotherEmployee[\s\S]*stopAvailabilityListener\(\)/)
+  assert.equal(
+    (source.match(/refreshCurrentPermissionAndCheck\('can_manage_schedule'\)/g) || []).length,
+    3
+  )
   assert.doesNotMatch(ownSave, /fetchTeamAvailabilityRecordsForDay/)
   assert.doesNotMatch(ownSave, /validateEmployeeAvailabilityCoverage/)
 })
@@ -150,5 +246,6 @@ test('store modeli unieważnia callbacki przed wyczyszczeniem managerskich danyc
   assert.match(source, /let modelsListenerRevision = 0/)
   assert.match(source, /clearSensitiveData[\s\S]*modelsListenerRevision \+= 1[\s\S]*unsubscribeModels\(\)/)
   assert.match(source, /shouldIgnoreScheduleListenerCallback\([\s\S]*managerAccessAtStart/)
+  assert.match(source, /shouldIgnoreScheduleListenerError\([\s\S]*refreshCurrentPermissionAndCheck/)
   assert.match(source, /console\.error\('Błąd pobierania szablonów grafiku:', error\)/)
 })
