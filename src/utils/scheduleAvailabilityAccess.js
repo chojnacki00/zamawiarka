@@ -36,3 +36,29 @@ export const normalizeAvailabilitySelectionForAccess = ({
     selectedEmployeeId: loggedEmployeeId || null
   }
 }
+
+export const isSchedulePermissionDeniedError = error => (
+  ['permission-denied', 'firestore/permission-denied']
+    .includes(String(error?.code || ''))
+)
+
+export const shouldIgnoreScheduleListenerCallback = ({
+  listenerRevision,
+  currentRevision,
+  managerAccessRequired = false,
+  managerAccessAtStart = false,
+  hasManagerAccess = false,
+  error = null
+} = {}) => {
+  if (listenerRevision !== currentRevision) {
+    return true
+  }
+
+  return managerAccessRequired === true &&
+    managerAccessAtStart === true &&
+    hasManagerAccess !== true &&
+    (
+      error === null ||
+      isSchedulePermissionDeniedError(error)
+    )
+}

@@ -3,8 +3,10 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   getScheduleAvailabilityAccessPlan,
+  isSchedulePermissionDeniedError,
   normalizeAvailabilitySelectionForAccess,
-  SCHEDULE_AVAILABILITY_ACCESS_MODE
+  SCHEDULE_AVAILABILITY_ACCESS_MODE,
+  shouldIgnoreScheduleListenerCallback
 } from '../src/utils/scheduleAvailabilityAccess.js'
 
 test('zwykły pracownik nie uruchamia managerskich odczytów grafiku', () => {
@@ -40,6 +42,85 @@ test('odebranie uprawnienia przełącza widok na własne dyspozycje', () => {
   })
 })
 
+test('spóźnione snapshoty i błędy unieważnionego listenera są ignorowane', () => {
+  assert.equal(shouldIgnoreScheduleListenerCallback({
+    listenerRevision: 4,
+    currentRevision: 5,
+    error: { code: 'unavailable' }
+  }), true)
+  assert.equal(shouldIgnoreScheduleListenerCallback({
+    listenerRevision: 4,
+    currentRevision: 5
+  }), true)
+})
+
+test('oczekiwana odmowa po odebraniu uprawnienia kończy listener bez błędu', () => {
+  assert.equal(isSchedulePermissionDeniedError({
+    code: 'firestore/permission-denied'
+  }), true)
+  assert.equal(shouldIgnoreScheduleListenerCallback({
+    listenerRevision: 5,
+    currentRevision: 5,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    hasManagerAccess: false,
+    error: { code: 'permission-denied' }
+  }), true)
+})
+
+test('nieoczekiwany błąd uprawnień nadal jest raportowany', () => {
+  assert.equal(shouldIgnoreScheduleListenerCallback({
+    listenerRevision: 5,
+    currentRevision: 5,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    hasManagerAccess: true,
+    error: { code: 'permission-denied' }
+  }), false)
+  assert.equal(shouldIgnoreScheduleListenerCallback({
+    listenerRevision: 5,
+    currentRevision: 5,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    hasManagerAccess: false,
+    error: { code: 'unavailable' }
+  }), false)
+})
+
+test('zmiana uprawnienia unieważnia managerskie dane i pozwala uruchomić nowy listener', () => {
+  const ownAvailability = [{ id: 'julia_2026-09-13' }]
+  let managerAvailability = [{ id: 'marzena_2026-09-13' }]
+  let currentRevision = 8
+  let hasManagerAccess = true
+
+  const applyManagerSnapshot = (listenerRevision, records) => {
+    if (shouldIgnoreScheduleListenerCallback({
+      listenerRevision,
+      currentRevision,
+      managerAccessRequired: true,
+      managerAccessAtStart: true,
+      hasManagerAccess
+    })) {
+      return
+    }
+    managerAvailability = records
+  }
+
+  hasManagerAccess = false
+  currentRevision += 1
+  managerAvailability = []
+  applyManagerSnapshot(8, [{ id: 'spóźniony-wpis' }])
+
+  assert.deepEqual(managerAvailability, [])
+  assert.deepEqual(ownAvailability, [{ id: 'julia_2026-09-13' }])
+
+  hasManagerAccess = true
+  currentRevision += 1
+  applyManagerSnapshot(10, [{ id: 'nowy-wpis-managera' }])
+
+  assert.deepEqual(managerAvailability, [{ id: 'nowy-wpis-managera' }])
+})
+
 test('widok zatrzymuje managerskie listenery i nie liczy obsady przy zapisie własnym', async () => {
   const source = await readFile(new URL(
     '../src/views/grafik/GrafikKalendarzDyspozycjiView.vue',
@@ -53,8 +134,21 @@ test('widok zatrzymuje managerskie listenery i nie liczy obsady przy zapisie wł
   assert.match(source, /watch\(\s*canManageSchedule,[\s\S]*synchronizeScheduleAvailabilityAccess\(\)/)
   assert.match(source, /clearManagerScheduleAvailabilityData[\s\S]*employeesStore\.clearSensitiveData\(\)/)
   assert.match(source, /clearManagerScheduleAvailabilityData[\s\S]*demandModelsStore\.clearSensitiveData\(\)/)
-  assert.match(source, /listenerRevision !== teamAvailabilityListenerRevision/)
-  assert.match(source, /listenerRevision !== monthAvailabilityListenerRevision/)
+  assert.match(source, /currentRevision: teamAvailabilityListenerRevision/)
+  assert.match(source, /currentRevision: monthAvailabilityListenerRevision/)
+  assert.match(source, /wasListeningToAnotherEmployee[\s\S]*stopAvailabilityListener\(\)/)
   assert.doesNotMatch(ownSave, /fetchTeamAvailabilityRecordsForDay/)
   assert.doesNotMatch(ownSave, /validateEmployeeAvailabilityCoverage/)
+})
+
+test('store modeli unieważnia callbacki przed wyczyszczeniem managerskich danych', async () => {
+  const source = await readFile(new URL(
+    '../src/stores/scheduleDemandModelsStore.js',
+    import.meta.url
+  ), 'utf8')
+
+  assert.match(source, /let modelsListenerRevision = 0/)
+  assert.match(source, /clearSensitiveData[\s\S]*modelsListenerRevision \+= 1[\s\S]*unsubscribeModels\(\)/)
+  assert.match(source, /shouldIgnoreScheduleListenerCallback\([\s\S]*managerAccessAtStart/)
+  assert.match(source, /console\.error\('Błąd pobierania szablonów grafiku:', error\)/)
 })
