@@ -1414,6 +1414,7 @@ import {
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useAuthorizationStore } from '../../stores/authorizationStore.js'
+import { useAccountSessionStore } from '../../stores/accountSessionStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
@@ -1434,12 +1435,14 @@ import {
 import {
   getScheduleAvailabilityAccessPlan,
   normalizeAvailabilitySelectionForAccess,
-  shouldIgnoreScheduleListenerCallback
+  shouldIgnoreScheduleListenerCallback,
+  shouldIgnoreScheduleListenerError
 } from '../../utils/scheduleAvailabilityAccess.js'
 
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
 const authorizationStore = useAuthorizationStore()
+const accountSessionStore = useAccountSessionStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
@@ -2855,13 +2858,15 @@ const loadMonthAvailability = () => {
 
       monthAvailabilityRecords.value = recordsByDate
     },
-    error => {
-      if (shouldIgnoreScheduleListenerCallback({
+    async error => {
+      if (await shouldIgnoreScheduleListenerError({
         listenerRevision,
-        currentRevision: monthAvailabilityListenerRevision,
+        getCurrentRevision: () => monthAvailabilityListenerRevision,
         managerAccessRequired: true,
         managerAccessAtStart,
-        hasManagerAccess: canManageSchedule.value,
+        getHasManagerAccess: () => canManageSchedule.value,
+        confirmManagerAccess: () => accountSessionStore
+          .refreshCurrentPermissionAndCheck('can_manage_schedule'),
         error
       })) {
         return
@@ -2926,7 +2931,9 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
         ) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            isLoadingTeamAvailability.value = false
+            if (listenerRevision === teamAvailabilityListenerRevision) {
+              isLoadingTeamAvailability.value = false
+            }
             resolve()
           }
           return
@@ -2956,18 +2963,22 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
           resolve()
         }
       },
-      error => {
-        if (shouldIgnoreScheduleListenerCallback({
+      async error => {
+        if (await shouldIgnoreScheduleListenerError({
           listenerRevision,
-          currentRevision: teamAvailabilityListenerRevision,
+          getCurrentRevision: () => teamAvailabilityListenerRevision,
           managerAccessRequired: true,
           managerAccessAtStart,
-          hasManagerAccess: canManageSchedule.value,
+          getHasManagerAccess: () => canManageSchedule.value,
+          confirmManagerAccess: () => accountSessionStore
+            .refreshCurrentPermissionAndCheck('can_manage_schedule'),
           error
         })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            isLoadingTeamAvailability.value = false
+            if (listenerRevision === teamAvailabilityListenerRevision) {
+              isLoadingTeamAvailability.value = false
+            }
             resolve()
           }
           return
@@ -3047,7 +3058,9 @@ const loadAvailability = async () => {
         ) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            isLoadingAvailability.value = false
+            if (listenerRevision === ownAvailabilityListenerRevision) {
+              isLoadingAvailability.value = false
+            }
             resolve()
           }
           return
@@ -3077,18 +3090,22 @@ const loadAvailability = async () => {
           resolve()
         }
       },
-      error => {
-        if (shouldIgnoreScheduleListenerCallback({
+      async error => {
+        if (await shouldIgnoreScheduleListenerError({
           listenerRevision,
-          currentRevision: ownAvailabilityListenerRevision,
+          getCurrentRevision: () => ownAvailabilityListenerRevision,
           managerAccessRequired,
           managerAccessAtStart,
-          hasManagerAccess: canManageSchedule.value,
+          getHasManagerAccess: () => canManageSchedule.value,
+          confirmManagerAccess: () => accountSessionStore
+            .refreshCurrentPermissionAndCheck('can_manage_schedule'),
           error
         })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            isLoadingAvailability.value = false
+            if (listenerRevision === ownAvailabilityListenerRevision) {
+              isLoadingAvailability.value = false
+            }
             resolve()
           }
           return

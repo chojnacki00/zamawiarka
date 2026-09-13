@@ -6,6 +6,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   onSnapshot,
   query,
@@ -325,6 +326,44 @@ export const useAccountSessionStore = defineStore(
       })()
 
       return businessAccessValidationPromise
+    }
+
+    const refreshCurrentPermissionAndCheck = async permissionKey => {
+      if (isOwner.value) return true
+      if (!isEmployeeMembership.value) return null
+
+      const restaurantId = currentRestaurantId.value
+      const authUid = authUser.value?.uid
+      const profileId = currentMembership.value?.permissionProfileId
+
+      if (!restaurantId || !authUid || !profileId) return false
+
+      const snapshot = await getDocFromServer(doc(
+        db,
+        'users',
+        restaurantId,
+        'permissionProfiles',
+        profileId
+      ))
+
+      if (
+        restaurantId !== currentRestaurantId.value ||
+        authUid !== authUser.value?.uid ||
+        authUid !== auth.currentUser?.uid ||
+        profileId !== currentMembership.value?.permissionProfileId
+      ) {
+        return null
+      }
+
+      permissionProfile.value = snapshot.exists()
+        ? { id: snapshot.id, ...snapshot.data() }
+        : null
+      permissions.value = snapshot.exists()
+        ? snapshot.data().uprawnienia || snapshot.data()
+        : {}
+      applyCompatibilityContext()
+
+      return permissions.value?.[permissionKey] === true
     }
 
     const handleDeviceDisconnected = () => {
@@ -2169,6 +2208,7 @@ export const useAccountSessionStore = defineStore(
       logoutCurrentDevice,
       disconnectCurrentDevice,
       returnToLoginAfterAccessRevoked,
+      refreshCurrentPermissionAndCheck,
       hasPermission,
       clearSensitiveContext
     }

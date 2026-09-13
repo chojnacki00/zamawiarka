@@ -62,3 +62,64 @@ export const shouldIgnoreScheduleListenerCallback = ({
       isSchedulePermissionDeniedError(error)
     )
 }
+
+export const shouldIgnoreScheduleListenerError = async ({
+  listenerRevision,
+  getCurrentRevision,
+  managerAccessRequired = false,
+  managerAccessAtStart = false,
+  getHasManagerAccess,
+  confirmManagerAccess,
+  error = null
+} = {}) => {
+  const readCurrentRevision = () => (
+    typeof getCurrentRevision === 'function'
+      ? getCurrentRevision()
+      : listenerRevision
+  )
+  const readManagerAccess = () => (
+    typeof getHasManagerAccess === 'function' &&
+    getHasManagerAccess() === true
+  )
+
+  if (shouldIgnoreScheduleListenerCallback({
+    listenerRevision,
+    currentRevision: readCurrentRevision(),
+    managerAccessRequired,
+    managerAccessAtStart,
+    hasManagerAccess: readManagerAccess(),
+    error
+  })) {
+    return true
+  }
+
+  if (
+    !isSchedulePermissionDeniedError(error) ||
+    managerAccessRequired !== true ||
+    managerAccessAtStart !== true ||
+    typeof confirmManagerAccess !== 'function'
+  ) {
+    return false
+  }
+
+  let confirmedManagerAccess = null
+
+  try {
+    confirmedManagerAccess = await confirmManagerAccess()
+  } catch {
+    return false
+  }
+
+  if (shouldIgnoreScheduleListenerCallback({
+    listenerRevision,
+    currentRevision: readCurrentRevision(),
+    managerAccessRequired,
+    managerAccessAtStart,
+    hasManagerAccess: readManagerAccess(),
+    error
+  })) {
+    return true
+  }
+
+  return confirmedManagerAccess === false
+}
