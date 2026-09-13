@@ -13,6 +13,7 @@ import {
 import { db } from '../firebase.js'
 import { useAuthorizationStore } from './authorizationStore.js'
 import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
+import { shouldIgnoreScheduleListenerCallback } from '../utils/scheduleAvailabilityAccess.js'
 
 export const useScheduleDemandModelsStore = defineStore(
   'scheduleDemandModels',
@@ -23,6 +24,7 @@ export const useScheduleDemandModelsStore = defineStore(
     let unsubscribeModels = null
     let listenerRestaurantId = null
     let listenerReadyPromise = null
+    let modelsListenerRevision = 0
 
     const getRestaurantId = async () => (
       useAuthorizationStore().requireRestaurantId()
@@ -46,7 +48,11 @@ export const useScheduleDemandModelsStore = defineStore(
       if (!restaurantId) return []
       if (unsubscribeModels && listenerRestaurantId === restaurantId) return listenerReadyPromise || models.value
 
+      modelsListenerRevision += 1
       if (unsubscribeModels) unsubscribeModels()
+      const listenerRevision = modelsListenerRevision
+      const managerAccessAtStart = useAuthorizationStore()
+        .hasPermission('can_manage_schedule')
       listenerRestaurantId = restaurantId
       isLoading.value = true
       listenerReadyPromise = new Promise(resolve => {
@@ -54,7 +60,21 @@ export const useScheduleDemandModelsStore = defineStore(
         unsubscribeModels = onSnapshot(
           collection(db, 'users', restaurantId, 'scheduleDemandModels'),
           snapshot => {
-            if (!isRestaurantContextCurrent(restaurantId, useAuthorizationStore().restaurantId)) {
+            const authorizationStore = useAuthorizationStore()
+            if (
+              shouldIgnoreScheduleListenerCallback({
+                listenerRevision,
+                currentRevision: modelsListenerRevision,
+                managerAccessRequired: true,
+                managerAccessAtStart,
+                hasManagerAccess: authorizationStore
+                  .hasPermission('can_manage_schedule')
+              }) ||
+              !isRestaurantContextCurrent(
+                restaurantId,
+                authorizationStore.restaurantId
+              )
+            ) {
               if (firstSnapshot) {
                 firstSnapshot = false
                 isLoading.value = false
@@ -73,9 +93,31 @@ export const useScheduleDemandModelsStore = defineStore(
             }
           },
           error => {
+            const authorizationStore = useAuthorizationStore()
+            if (shouldIgnoreScheduleListenerCallback({
+              listenerRevision,
+              currentRevision: modelsListenerRevision,
+              managerAccessRequired: true,
+              managerAccessAtStart,
+              hasManagerAccess: authorizationStore
+                .hasPermission('can_manage_schedule'),
+              error
+            })) {
+              if (firstSnapshot) {
+                firstSnapshot = false
+                if (listenerRevision === modelsListenerRevision) {
+                  isLoading.value = false
+                }
+                resolve(models.value)
+              }
+              return
+            }
+
             console.error('Błąd pobierania szablonów grafiku:', error)
-            unsubscribeModels = null
-            listenerRestaurantId = null
+            if (listenerRevision === modelsListenerRevision) {
+              unsubscribeModels = null
+              listenerRestaurantId = null
+            }
             isLoading.value = false
             if (firstSnapshot) {
               firstSnapshot = false
@@ -223,6 +265,7 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const clearSensitiveData = () => {
+      modelsListenerRevision += 1
       if (unsubscribeModels) unsubscribeModels()
       unsubscribeModels = null
       listenerRestaurantId = null

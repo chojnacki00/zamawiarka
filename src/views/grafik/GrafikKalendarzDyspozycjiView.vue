@@ -1433,7 +1433,8 @@ import {
 } from '../../utils/scheduleAvailability.js'
 import {
   getScheduleAvailabilityAccessPlan,
-  normalizeAvailabilitySelectionForAccess
+  normalizeAvailabilitySelectionForAccess,
+  shouldIgnoreScheduleListenerCallback
 } from '../../utils/scheduleAvailabilityAccess.js'
 
 const router = useRouter()
@@ -2814,13 +2815,19 @@ const loadMonthAvailability = () => {
   )
 
   const listenerRevision = monthAvailabilityListenerRevision
+  const managerAccessAtStart = canManageSchedule.value
 
   unsubscribeMonthAvailability = onSnapshot(
     monthQuery,
     snapshot => {
       if (
-        listenerRevision !== monthAvailabilityListenerRevision ||
-        !canManageSchedule.value ||
+        shouldIgnoreScheduleListenerCallback({
+          listenerRevision,
+          currentRevision: monthAvailabilityListenerRevision,
+          managerAccessRequired: true,
+          managerAccessAtStart,
+          hasManagerAccess: canManageSchedule.value
+        }) ||
         selectedViewMode.value !== 'all' ||
         restaurantId !== availabilityRestaurantId.value
       ) {
@@ -2849,7 +2856,14 @@ const loadMonthAvailability = () => {
       monthAvailabilityRecords.value = recordsByDate
     },
     error => {
-      if (listenerRevision !== monthAvailabilityListenerRevision) {
+      if (shouldIgnoreScheduleListenerCallback({
+        listenerRevision,
+        currentRevision: monthAvailabilityListenerRevision,
+        managerAccessRequired: true,
+        managerAccessAtStart,
+        hasManagerAccess: canManageSchedule.value,
+        error
+      })) {
         return
       }
 
@@ -2891,6 +2905,7 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
   )
 
   const listenerRevision = teamAvailabilityListenerRevision
+  const managerAccessAtStart = canManageSchedule.value
 
   return new Promise((resolve, reject) => {
     let isFirstSnapshot = true
@@ -2899,8 +2914,13 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
       teamQuery,
       snapshot => {
         if (
-          listenerRevision !== teamAvailabilityListenerRevision ||
-          !canManageSchedule.value ||
+          shouldIgnoreScheduleListenerCallback({
+            listenerRevision,
+            currentRevision: teamAvailabilityListenerRevision,
+            managerAccessRequired: true,
+            managerAccessAtStart,
+            hasManagerAccess: canManageSchedule.value
+          }) ||
           selectedViewMode.value !== 'all' ||
           restaurantId !== availabilityRestaurantId.value
         ) {
@@ -2937,7 +2957,14 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
         }
       },
       error => {
-        if (listenerRevision !== teamAvailabilityListenerRevision) {
+        if (shouldIgnoreScheduleListenerCallback({
+          listenerRevision,
+          currentRevision: teamAvailabilityListenerRevision,
+          managerAccessRequired: true,
+          managerAccessAtStart,
+          hasManagerAccess: canManageSchedule.value,
+          error
+        })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
             isLoadingTeamAvailability.value = false
@@ -2997,6 +3024,8 @@ const loadAvailability = async () => {
   )
 
   const listenerRevision = ownAvailabilityListenerRevision
+  const managerAccessRequired = employeeId !== loggedEmployeeId.value
+  const managerAccessAtStart = canManageSchedule.value
 
   return new Promise(resolve => {
     let isFirstSnapshot = true
@@ -3005,7 +3034,13 @@ const loadAvailability = async () => {
       availabilityQuery,
       snapshot => {
         if (
-          listenerRevision !== ownAvailabilityListenerRevision ||
+          shouldIgnoreScheduleListenerCallback({
+            listenerRevision,
+            currentRevision: ownAvailabilityListenerRevision,
+            managerAccessRequired,
+            managerAccessAtStart,
+            hasManagerAccess: canManageSchedule.value
+          }) ||
           restaurantId !== availabilityRestaurantId.value ||
           employeeId !== availabilityEmployeeId.value ||
           selectedViewMode.value === 'all'
@@ -3043,7 +3078,14 @@ const loadAvailability = async () => {
         }
       },
       error => {
-        if (listenerRevision !== ownAvailabilityListenerRevision) {
+        if (shouldIgnoreScheduleListenerCallback({
+          listenerRevision,
+          currentRevision: ownAvailabilityListenerRevision,
+          managerAccessRequired,
+          managerAccessAtStart,
+          hasManagerAccess: canManageSchedule.value,
+          error
+        })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
             isLoadingAvailability.value = false
@@ -3100,6 +3142,17 @@ const synchronizeScheduleAvailabilityAccess = async () => {
   })
 
   if (!accessPlan.loadTeamAvailability) {
+    const wasListeningToAnotherEmployee = Boolean(
+      availabilityEmployeeId.value &&
+      availabilityEmployeeId.value !== loggedEmployeeId.value
+    )
+
+    if (wasListeningToAnotherEmployee) {
+      stopAvailabilityListener()
+      availabilityRecords.value = {}
+      isLoadingAvailability.value = false
+    }
+
     const selection = normalizeAvailabilitySelectionForAccess({
       canManageSchedule: false,
       selectedViewMode: selectedViewMode.value,
