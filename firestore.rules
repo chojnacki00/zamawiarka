@@ -129,8 +129,149 @@ service cloud.firestore {
     }
 
     function canManageSchedule(restaurantId) {
-      return hasPermission(restaurantId, 'can_view_schedule') &&
-        hasPermission(restaurantId, 'can_manage_schedule');
+      return hasActiveMembership(restaurantId) &&
+        activeMembershipGrantsPermission(
+          restaurantId,
+          'can_view_schedule'
+        ) &&
+        activeMembershipGrantsPermission(
+          restaurantId,
+          'can_manage_schedule'
+        );
+    }
+
+    function availabilityDayIsOpen(restaurantId, dateKey) {
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(dateKey);
+      let day = get(dayPath);
+      return dateKey is string &&
+        exists(dayPath) &&
+        day.data.date == dateKey &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true;
+    }
+
+    function ownAvailabilityEntryIsValid(entry, employeeId) {
+      return entry is map &&
+        entry.keys().hasOnly([
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'enteredById',
+          'enteredByName',
+          'enteredAt'
+        ]) &&
+        entry.periodId is string &&
+        entry.type in ['full', 'partial', 'preferred_off', 'unavailable'] &&
+        entry.get('timeFrom', null) == (
+          entry.type == 'partial' ? entry.timeFrom : null
+        ) &&
+        entry.get('timeTo', null) == (
+          entry.type == 'partial' ? entry.timeTo : null
+        ) &&
+        (entry.type != 'partial' || (
+          entry.timeFrom is string &&
+          entry.timeTo is string &&
+          entry.timeFrom != entry.timeTo
+        )) &&
+        entry.note is string &&
+        entry.note.size() <= 60 &&
+        entry.enteredById == employeeId &&
+        entry.enteredByName is string &&
+        entry.enteredAt is timestamp;
+    }
+
+    function ownAvailabilityPayloadIsValid(
+      restaurantId,
+      availabilityId,
+      incoming
+    ) {
+      let member = memberDocument(restaurantId);
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(incoming.date);
+      let day = get(dayPath);
+      return incoming.keys().hasOnly([
+          'employeeId',
+          'date',
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'effectiveSource',
+          'employeeEntry',
+          'updatedAt'
+        ]) &&
+        incoming.employeeId == member.data.employeeId &&
+        availabilityId == incoming.employeeId + '_' + incoming.date &&
+        exists(dayPath) &&
+        day.data.date == incoming.date &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true &&
+        incoming.periodId == day.data.sourcePeriodId &&
+        incoming.employeeEntry.periodId == incoming.periodId &&
+        incoming.type == incoming.employeeEntry.type &&
+        incoming.get('timeFrom', null) == incoming.employeeEntry.get('timeFrom', null) &&
+        incoming.get('timeTo', null) == incoming.employeeEntry.get('timeTo', null) &&
+        incoming.note == incoming.employeeEntry.note &&
+        incoming.effectiveSource == 'employee' &&
+        ownAvailabilityEntryIsValid(
+          incoming.employeeEntry,
+          incoming.employeeId
+        ) &&
+        incoming.updatedAt is timestamp;
+    }
+
+    function ownAvailabilityManagerEntryIsPreserved(
+      restaurantId,
+      availabilityId,
+      incoming,
+      existing
+    ) {
+      let member = memberDocument(restaurantId);
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(incoming.date);
+      let day = get(dayPath);
+      return existing.keys().hasAny(['managerEntry']) &&
+        incoming.keys().hasOnly([
+          'employeeId',
+          'date',
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'effectiveSource',
+          'employeeEntry',
+          'managerEntry',
+          'updatedAt'
+        ]) &&
+        incoming.employeeId == member.data.employeeId &&
+        incoming.employeeId == existing.employeeId &&
+        incoming.date == existing.date &&
+        availabilityId == incoming.employeeId + '_' + incoming.date &&
+        exists(dayPath) &&
+        day.data.date == incoming.date &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true &&
+        incoming.periodId == day.data.sourcePeriodId &&
+        incoming.employeeEntry.periodId == incoming.periodId &&
+        incoming.type == existing.type &&
+        incoming.get('timeFrom', null) == existing.get('timeFrom', null) &&
+        incoming.get('timeTo', null) == existing.get('timeTo', null) &&
+        incoming.note == existing.note &&
+        incoming.effectiveSource == existing.effectiveSource &&
+        incoming.managerEntry == existing.managerEntry &&
+        ownAvailabilityEntryIsValid(
+          incoming.employeeEntry,
+          incoming.employeeId
+        ) &&
+        incoming.updatedAt is timestamp;
     }
 
     function canManageEmployees(restaurantId) {
@@ -813,8 +954,8 @@ service cloud.firestore {
 
       match /employees/{employeeId} {
         allow read: if isOwnEmployee(restaurantId, employeeId) ||
-          canManageEmployees(restaurantId) ||
-          canManageSchedule(restaurantId);
+          canManageSchedule(restaurantId) ||
+          canManageEmployees(restaurantId);
         allow create, update, delete: if canManageEmployees(restaurantId);
       }
 
@@ -847,28 +988,50 @@ service cloud.firestore {
           hasActiveMembership(restaurantId) &&
           resource.data.employeeId == memberDocument(restaurantId).data.employeeId
         );
-        allow create: if canManageSchedule(restaurantId) || (
+        allow create: if (
           hasActiveMembership(restaurantId) &&
-          request.resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
-          !request.resource.data.keys().hasAny(['managerEntry'])
-        );
-        allow update: if canManageSchedule(restaurantId) || (
+          ownAvailabilityPayloadIsValid(
+            restaurantId,
+            availabilityId,
+            request.resource.data
+          )
+        ) || canManageSchedule(restaurantId);
+        allow update: if (
           hasActiveMembership(restaurantId) &&
           resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
           request.resource.data.employeeId == resource.data.employeeId &&
-          request.resource.data.get('managerEntry', null) ==
-            resource.data.get('managerEntry', null)
-        );
-        allow delete: if canManageSchedule(restaurantId) || (
+          (
+            ownAvailabilityPayloadIsValid(
+              restaurantId,
+              availabilityId,
+              request.resource.data
+            ) ||
+            ownAvailabilityManagerEntryIsPreserved(
+              restaurantId,
+              availabilityId,
+              request.resource.data,
+              resource.data
+            )
+          )
+        ) || canManageSchedule(restaurantId);
+        allow delete: if (
           hasActiveMembership(restaurantId) &&
           resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
-          !resource.data.keys().hasAny(['managerEntry'])
-        );
+          availabilityId == resource.data.employeeId + '_' + resource.data.date &&
+          !resource.data.keys().hasAny(['managerEntry']) &&
+          availabilityDayIsOpen(restaurantId, resource.data.date)
+        ) || canManageSchedule(restaurantId);
       }
 
       match /grafik_dyspozycyjnosc_wersje/{dateKey} {
         allow read: if hasActiveMembership(restaurantId);
-        allow create: if hasActiveMembership(restaurantId) &&
+        allow create: if (
+          (
+            hasActiveMembership(restaurantId) &&
+            availabilityDayIsOpen(restaurantId, dateKey)
+          ) ||
+          canManageSchedule(restaurantId)
+        ) &&
           request.resource.data.keys().hasOnly([
             'date',
             'version',
@@ -877,7 +1040,13 @@ service cloud.firestore {
           request.resource.data.date == dateKey &&
           request.resource.data.version == 1 &&
           request.resource.data.updatedAt is timestamp;
-        allow update: if hasActiveMembership(restaurantId) &&
+        allow update: if (
+          (
+            hasActiveMembership(restaurantId) &&
+            availabilityDayIsOpen(restaurantId, dateKey)
+          ) ||
+          canManageSchedule(restaurantId)
+        ) &&
           request.resource.data.keys().hasOnly([
             'date',
             'version',

@@ -21,6 +21,20 @@ test('ekran PIN pokazuje odłączanie wyłącznie w ustawieniach urządzenia', a
   assert.doesNotMatch(pinCard, /Odłącz urządzenie/)
 })
 
+test('ekran PIN używa tego samego koła zębatego co menu Grafiku', async () => {
+  const [pinSource, scheduleMenuSource] = await Promise.all([
+    readSource('src/views/LocalPinLockView.vue'),
+    readSource('src/views/grafik/GrafikHomeView.vue')
+  ])
+  const gearPath = /<path d="(M19\.4 15a1\.65[^\"]+)"\/>/
+  const pinGear = pinSource.match(gearPath)?.[1]
+  const menuGear = scheduleMenuSource.match(gearPath)?.[1]
+
+  assert.ok(pinGear)
+  assert.equal(pinGear, menuGear)
+  assert.match(pinSource, /aria-label="Ustawienia urządzenia"/)
+})
+
 test('panel ustawień zamyka przycisk, kliknięcie tła i Escape', async () => {
   const source = await readSource('src/views/LocalPinLockView.vue')
 
