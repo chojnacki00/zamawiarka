@@ -18,10 +18,12 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
+  query,
   runTransaction,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
   writeBatch
 } from 'firebase/firestore'
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' }
@@ -1951,6 +1953,242 @@ test('can_view_schedule czyta publiczny grafik i własną dyspozycyjność', asy
     db,
     'users/restaurant-a/grafik_dyspozycyjnosc/availability-1'
   )))
+})
+
+test('pracownik zapisuje własną dyspozycję atomowo tylko w otwartym dniu', async () => {
+  const dateKey = '2026-09-20'
+  const availabilityId = `employee-1_${dateKey}`
+  await seedEmployeeAccess({
+    permissions: { can_view_schedule: true }
+  })
+  await seed([
+    [`users/restaurant-a/dyspozycje_dni/${dateKey}`, {
+      date: dateKey,
+      availabilityStatus: 'open',
+      availabilityClosesAt: future(),
+      availabilityDisabled: false,
+      sourcePeriodId: 'period-open'
+    }],
+    [`users/restaurant-a/grafik_dyspozycyjnosc_wersje/${dateKey}`, {
+      date: dateKey,
+      version: 2,
+      updatedAt: now()
+    }]
+  ])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const availabilityRef = doc(
+    db,
+    `users/restaurant-a/grafik_dyspozycyjnosc/${availabilityId}`
+  )
+  const versionRef = doc(
+    db,
+    `users/restaurant-a/grafik_dyspozycyjnosc_wersje/${dateKey}`
+  )
+  const writtenAt = now()
+
+  await assertSucceeds(runTransaction(db, async transaction => {
+    const versionSnapshot = await transaction.get(versionRef)
+    transaction.set(availabilityRef, {
+      employeeId: 'employee-1',
+      date: dateKey,
+      periodId: 'period-open',
+      type: 'unavailable',
+      timeFrom: null,
+      timeTo: null,
+      note: 'Wizyta',
+      effectiveSource: 'employee',
+      employeeEntry: {
+        periodId: 'period-open',
+        type: 'unavailable',
+        timeFrom: null,
+        timeTo: null,
+        note: 'Wizyta',
+        enteredById: 'employee-1',
+        enteredByName: 'Jan Testowy',
+        enteredAt: writtenAt
+      },
+      updatedAt: writtenAt
+    })
+    transaction.set(versionRef, {
+      date: dateKey,
+      version: versionSnapshot.data().version + 1,
+      updatedAt: writtenAt
+    })
+  }))
+
+  const saved = await assertSucceeds(getDoc(availabilityRef))
+  assert.equal(saved.data().note, 'Wizyta')
+  assert.equal((await getDoc(versionRef)).data().version, 3)
+})
+
+test('pracownik czyta własną historię, ale nie cudze dyspozycje ani dane managerskie', async () => {
+  await seedEmployeeAccess({
+    permissions: { can_view_schedule: true }
+  })
+  await seed([
+    ['users/restaurant-a/grafik_dyspozycyjnosc/employee-1_2026-08-01', {
+      employeeId: 'employee-1',
+      date: '2026-08-01',
+      type: 'preferred_off'
+    }],
+    ['users/restaurant-a/grafik_dyspozycyjnosc/employee-2_2026-08-01', {
+      employeeId: 'employee-2',
+      date: '2026-08-01',
+      type: 'full'
+    }],
+    ['users/restaurant-a/scheduleDemandModels/model-1', {
+      name: 'Model managerski'
+    }]
+  ])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  const ownSnapshot = await assertSucceeds(getDocs(query(
+    collection(db, 'users/restaurant-a/grafik_dyspozycyjnosc'),
+    where('employeeId', '==', 'employee-1')
+  )))
+  assert.equal(ownSnapshot.size, 1)
+  await assertFails(getDoc(doc(
+    db,
+    'users/restaurant-a/grafik_dyspozycyjnosc/employee-2_2026-08-01'
+  )))
+  await assertFails(getDocs(collection(
+    db,
+    'users/restaurant-a/employees'
+  )))
+  await assertFails(getDocs(collection(
+    db,
+    'users/restaurant-a/scheduleDemandModels'
+  )))
+})
+
+test('zamknięty i wyłączony dzień pozostają dla pracownika tylko do odczytu', async () => {
+  const closedDate = '2026-09-21'
+  const disabledDate = '2026-09-22'
+  await seedEmployeeAccess({
+    permissions: { can_view_schedule: true }
+  })
+  await seed([
+    [`users/restaurant-a/dyspozycje_dni/${closedDate}`, {
+      date: closedDate,
+      availabilityStatus: 'closed',
+      availabilityClosesAt: future(),
+      availabilityDisabled: false,
+      sourcePeriodId: 'period-closed'
+    }],
+    [`users/restaurant-a/dyspozycje_dni/${disabledDate}`, {
+      date: disabledDate,
+      availabilityStatus: 'open',
+      availabilityClosesAt: future(),
+      availabilityDisabled: true,
+      sourcePeriodId: 'period-open'
+    }],
+    [`users/restaurant-a/grafik_dyspozycyjnosc/employee-1_${closedDate}`, {
+      employeeId: 'employee-1',
+      date: closedDate,
+      periodId: 'period-closed',
+      type: 'unavailable',
+      timeFrom: null,
+      timeTo: null,
+      note: '',
+      effectiveSource: 'employee',
+      employeeEntry: {
+        periodId: 'period-closed',
+        type: 'unavailable',
+        timeFrom: null,
+        timeTo: null,
+        note: '',
+        enteredById: 'employee-1',
+        enteredByName: 'Jan Testowy',
+        enteredAt: now()
+      },
+      updatedAt: now()
+    }]
+  ])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+  const closedRef = doc(
+    db,
+    `users/restaurant-a/grafik_dyspozycyjnosc/employee-1_${closedDate}`
+  )
+
+  await assertSucceeds(getDoc(closedRef))
+  await assertFails(updateDoc(closedRef, { note: 'Nie wolno' }))
+  await assertFails(deleteDoc(closedRef))
+  await assertFails(setDoc(doc(
+    db,
+    `users/restaurant-a/grafik_dyspozycyjnosc/employee-1_${disabledDate}`
+  ), {
+    employeeId: 'employee-1',
+    date: disabledDate,
+    periodId: 'period-open',
+    type: 'unavailable',
+    timeFrom: null,
+    timeTo: null,
+    note: '',
+    effectiveSource: 'employee',
+    employeeEntry: {
+      periodId: 'period-open',
+      type: 'unavailable',
+      timeFrom: null,
+      timeTo: null,
+      note: '',
+      enteredById: 'employee-1',
+      enteredByName: 'Jan Testowy',
+      enteredAt: now()
+    },
+    updatedAt: now()
+  }))
+})
+
+test('pracownik nie podszywa się pod inne employeeId w otwartym okresie', async () => {
+  const dateKey = '2026-09-23'
+  await seedEmployeeAccess({
+    permissions: { can_view_schedule: true }
+  })
+  await seed([[`users/restaurant-a/dyspozycje_dni/${dateKey}`, {
+    date: dateKey,
+    availabilityStatus: 'open',
+    availabilityClosesAt: future(),
+    availabilityDisabled: false,
+    sourcePeriodId: 'period-open'
+  }]])
+  const db = context({
+    uid: 'employee-auth',
+    email: 'employee@example.com'
+  }).firestore()
+
+  await assertFails(setDoc(doc(
+    db,
+    `users/restaurant-a/grafik_dyspozycyjnosc/employee-2_${dateKey}`
+  ), {
+    employeeId: 'employee-2',
+    date: dateKey,
+    periodId: 'period-open',
+    type: 'unavailable',
+    timeFrom: null,
+    timeTo: null,
+    note: '',
+    effectiveSource: 'employee',
+    employeeEntry: {
+      periodId: 'period-open',
+      type: 'unavailable',
+      timeFrom: null,
+      timeTo: null,
+      note: '',
+      enteredById: 'employee-2',
+      enteredByName: 'Inny Pracownik',
+      enteredAt: now()
+    },
+    updatedAt: now()
+  }))
 })
 
 test('can_view_schedule nie zarządza, nie publikuje i nie czyta snapshotu roboczego', async () => {

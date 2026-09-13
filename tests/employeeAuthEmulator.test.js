@@ -21,15 +21,20 @@ import {
   verifyBeforeUpdateEmail
 } from 'firebase/auth'
 import {
+  collection,
   connectFirestoreEmulator,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
+  onSnapshot,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
-  updateDoc
+  updateDoc,
+  where
 } from 'firebase/firestore'
 import emulatorConfig from '../firebase-emulators.json' with { type: 'json' }
 import { completeLegacyOwnerBootstrap } from '../src/services/legacyOwnerBootstrap.js'
@@ -512,6 +517,268 @@ test('rzeczywisty bootstrap pracownika czyta i zmienia wspólny legacy app/state
     }),
     error => String(error?.code || '').includes('permission-denied')
   )
+})
+
+test('rzeczywiste konto pracownika zapisuje własną dyspozycję i reaguje na zmianę uprawnień', async () => {
+  const restaurantId = 'restaurant-availability'
+  const employeeId = 'employee-julia'
+  const otherEmployeeId = 'employee-marzena'
+  const profileId = 'profile-schedule'
+  const openDate = '2026-09-20'
+  const closedDate = '2026-09-21'
+  const owner = await createVerifiedClient({
+    email: 'availability-owner@example.test'
+  })
+  const employee = await createVerifiedClient({
+    email: 'availability-employee@example.test'
+  })
+  const authTime = Number(
+    (await employee.user.getIdTokenResult()).claims.auth_time
+  )
+
+  await seed([
+    [`restaurants/${restaurantId}`, {
+      id: restaurantId,
+      name: 'Restauracja dyspozycji',
+      ownerAuthUid: owner.user.uid,
+      status: 'active'
+    }],
+    [`restaurants/${restaurantId}/members/${owner.user.uid}`, {
+      authUid: owner.user.uid,
+      restaurantId,
+      employeeId: null,
+      permissionProfileId: null,
+      invitationId: null,
+      role: 'owner',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      acceptedAt: Timestamp.now()
+    }],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}`, {
+      authUid: employee.user.uid,
+      restaurantId,
+      employeeId,
+      permissionProfileId: profileId,
+      invitationId: 'seed-invitation',
+      role: 'employee',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      acceptedAt: Timestamp.now()
+    }],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}/deviceSessions/${authTime}`, {
+      deviceId: 'device-availability-julia',
+      restaurantId,
+      employeeId,
+      authUid: employee.user.uid,
+      deviceName: 'Telefon Julii',
+      platform: 'Auth Emulator',
+      authTime,
+      status: 'active',
+      addedAt: Timestamp.now(),
+      lastActiveAt: Timestamp.now(),
+      approvedAt: Timestamp.now(),
+      approvedByAuthUid: owner.user.uid,
+      invitationId: 'seed-invitation',
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    }],
+    [`users/${restaurantId}/employees/${employeeId}`, {
+      imie: 'Julia',
+      nazwisko: 'Testowa',
+      aktywny: true,
+      permissionProfileId: profileId
+    }],
+    [`users/${restaurantId}/employees/${otherEmployeeId}`, {
+      imie: 'Marzena',
+      nazwisko: 'Testowa',
+      aktywny: true,
+      permissionProfileId: profileId
+    }],
+    [`users/${restaurantId}/permissionProfiles/${profileId}`, {
+      nazwa: 'Grafik',
+      uprawnienia: {
+        can_view_schedule: true,
+        can_manage_schedule: true
+      }
+    }],
+    [`users/${restaurantId}/scheduleDemandModels/model-1`, {
+      name: 'Model managera'
+    }],
+    [`users/${restaurantId}/dyspozycje_dni/${openDate}`, {
+      date: openDate,
+      availabilityStatus: 'open',
+      availabilityClosesAt: Timestamp.fromMillis(Date.now() + 3600000),
+      availabilityDisabled: false,
+      sourcePeriodId: 'period-open'
+    }],
+    [`users/${restaurantId}/dyspozycje_dni/${closedDate}`, {
+      date: closedDate,
+      availabilityStatus: 'closed',
+      availabilityClosesAt: Timestamp.fromMillis(Date.now() + 3600000),
+      availabilityDisabled: false,
+      sourcePeriodId: 'period-closed'
+    }],
+    [`users/${restaurantId}/grafik_dyspozycyjnosc/${otherEmployeeId}_${openDate}`, {
+      employeeId: otherEmployeeId,
+      date: openDate,
+      type: 'full'
+    }],
+    [`users/${restaurantId}/grafik_dyspozycyjnosc/${employeeId}_2026-08-01`, {
+      employeeId,
+      date: '2026-08-01',
+      type: 'preferred_off',
+      note: 'Historia'
+    }]
+  ])
+
+  const availabilityCollection = collection(
+    employee.db,
+    `users/${restaurantId}/grafik_dyspozycyjnosc`
+  )
+  const employeesCollection = collection(
+    employee.db,
+    `users/${restaurantId}/employees`
+  )
+  const modelsCollection = collection(
+    employee.db,
+    `users/${restaurantId}/scheduleDemandModels`
+  )
+  const profileRef = doc(
+    employee.db,
+    `users/${restaurantId}/permissionProfiles/${profileId}`
+  )
+  let resolvePermissionChange = null
+  const waitForPermission = expected => new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      resolvePermissionChange = null
+      reject(new Error(
+        `Listener profilu nie przekazał can_manage_schedule=${expected}.`
+      ))
+    }, 5000)
+
+    resolvePermissionChange = permissions => {
+      if (
+        (permissions?.can_manage_schedule === true) === expected
+      ) {
+        clearTimeout(timeout)
+        resolvePermissionChange = null
+        resolve()
+      }
+    }
+  })
+  const initialPermission = waitForPermission(true)
+  const unsubscribeProfile = onSnapshot(profileRef, snapshot => {
+    resolvePermissionChange?.(snapshot.data()?.uprawnienia || {})
+  })
+
+  try {
+    await initialPermission
+    await getDocs(employeesCollection)
+    await getDocs(modelsCollection)
+
+    const revoked = waitForPermission(false)
+    await updateDoc(doc(
+      owner.db,
+      `users/${restaurantId}/permissionProfiles/${profileId}`
+    ), {
+      uprawnienia: { can_view_schedule: true }
+    })
+    await revoked
+
+    await assert.rejects(
+      getDocs(employeesCollection),
+      error => String(error?.code || '').includes('permission-denied')
+    )
+    await assert.rejects(
+      getDocs(modelsCollection),
+      error => String(error?.code || '').includes('permission-denied')
+    )
+    await assert.rejects(
+      getDocs(availabilityCollection),
+      error => String(error?.code || '').includes('permission-denied')
+    )
+
+    const ownQuery = query(
+      availabilityCollection,
+      where('employeeId', '==', employeeId)
+    )
+    assert.equal((await getDocs(ownQuery)).size, 1)
+    await assert.rejects(getDoc(doc(
+      employee.db,
+      `users/${restaurantId}/grafik_dyspozycyjnosc/${otherEmployeeId}_${openDate}`
+    )), error => String(error?.code || '').includes('permission-denied'))
+
+    const openAvailabilityRef = doc(
+      employee.db,
+      `users/${restaurantId}/grafik_dyspozycyjnosc/${employeeId}_${openDate}`
+    )
+    const writtenAt = Timestamp.now()
+    await setDoc(openAvailabilityRef, {
+      employeeId,
+      date: openDate,
+      periodId: 'period-open',
+      type: 'preferred_off',
+      timeFrom: null,
+      timeTo: null,
+      note: 'Prośba',
+      effectiveSource: 'employee',
+      employeeEntry: {
+        periodId: 'period-open',
+        type: 'preferred_off',
+        timeFrom: null,
+        timeTo: null,
+        note: 'Prośba',
+        enteredById: employeeId,
+        enteredByName: 'Julia Testowa',
+        enteredAt: writtenAt
+      },
+      updatedAt: writtenAt
+    })
+    assert.equal((await getDoc(openAvailabilityRef)).data().note, 'Prośba')
+    assert.equal((await getDocs(ownQuery)).size, 2)
+
+    await assert.rejects(setDoc(doc(
+      employee.db,
+      `users/${restaurantId}/grafik_dyspozycyjnosc/${employeeId}_${closedDate}`
+    ), {
+      employeeId,
+      date: closedDate,
+      periodId: 'period-closed',
+      type: 'unavailable',
+      timeFrom: null,
+      timeTo: null,
+      note: '',
+      effectiveSource: 'employee',
+      employeeEntry: {
+        periodId: 'period-closed',
+        type: 'unavailable',
+        timeFrom: null,
+        timeTo: null,
+        note: '',
+        enteredById: employeeId,
+        enteredByName: 'Julia Testowa',
+        enteredAt: writtenAt
+      },
+      updatedAt: writtenAt
+    }), error => String(error?.code || '').includes('permission-denied'))
+
+    const granted = waitForPermission(true)
+    await updateDoc(doc(
+      owner.db,
+      `users/${restaurantId}/permissionProfiles/${profileId}`
+    ), {
+      uprawnienia: {
+        can_view_schedule: true,
+        can_manage_schedule: true
+      }
+    })
+    await granted
+    assert.equal((await getDocs(employeesCollection)).size, 2)
+    assert.equal((await getDocs(modelsCollection)).size, 1)
+    assert.equal((await getDocs(availabilityCollection)).size, 3)
+  } finally {
+    unsubscribeProfile()
+  }
 })
 
 test('aktywacja zachowuje zaproszenie po utworzeniu niezweryfikowanego konta i kończy się atomowo', async () => {
