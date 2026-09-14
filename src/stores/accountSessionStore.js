@@ -113,6 +113,7 @@ export const useAccountSessionStore = defineStore(
     let unsubscribeEmployee = null
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
+    let permissionContextRevision = 0
     let isHandlingDeviceDisconnect = false
     const deviceRemovalCoordinator = createDeviceRemovalCoordinator()
     let businessAccessValidationPromise = null
@@ -171,6 +172,7 @@ export const useAccountSessionStore = defineStore(
     ))
 
     const stopSensitiveListeners = () => {
+      permissionContextRevision += 1
       if (unsubscribeMembership) unsubscribeMembership()
       if (unsubscribeEmployee) unsubscribeEmployee()
       if (unsubscribePermissionProfile) unsubscribePermissionProfile()
@@ -335,6 +337,7 @@ export const useAccountSessionStore = defineStore(
       const restaurantId = currentRestaurantId.value
       const authUid = authUser.value?.uid
       const profileId = currentMembership.value?.permissionProfileId
+      const refreshRevision = permissionContextRevision
 
       if (!restaurantId || !authUid || !profileId) return false
 
@@ -355,15 +358,21 @@ export const useAccountSessionStore = defineStore(
         return null
       }
 
-      permissionProfile.value = snapshot.exists()
+      const refreshedProfile = snapshot.exists()
         ? { id: snapshot.id, ...snapshot.data() }
         : null
-      permissions.value = snapshot.exists()
+      const refreshedPermissions = snapshot.exists()
         ? snapshot.data().uprawnienia || snapshot.data()
         : {}
-      applyCompatibilityContext()
 
-      return permissions.value?.[permissionKey] === true
+      if (refreshRevision === permissionContextRevision) {
+        permissionContextRevision += 1
+        permissionProfile.value = refreshedProfile
+        permissions.value = refreshedPermissions
+        applyCompatibilityContext()
+      }
+
+      return refreshedPermissions?.[permissionKey] === true
     }
 
     const handleDeviceDisconnected = () => {
@@ -499,6 +508,8 @@ export const useAccountSessionStore = defineStore(
         currentMembership.value?.permissionProfileId || null
 
       const startPermissionProfileListener = profileId => {
+        permissionContextRevision += 1
+
         if (unsubscribePermissionProfile) {
           unsubscribePermissionProfile()
           unsubscribePermissionProfile = null
@@ -522,6 +533,7 @@ export const useAccountSessionStore = defineStore(
         )
 
         unsubscribePermissionProfile = onSnapshot(profileRef, snapshot => {
+          permissionContextRevision += 1
           permissionProfile.value = snapshot.exists()
             ? { id: snapshot.id, ...snapshot.data() }
             : null
@@ -530,6 +542,7 @@ export const useAccountSessionStore = defineStore(
             : {}
           applyCompatibilityContext()
         }, listenerError => {
+          permissionContextRevision += 1
           handleContextListenerError('profilu uprawnień', listenerError)
         })
       }

@@ -106,8 +106,8 @@ export const shouldIgnoreScheduleListenerError = async ({
 
   try {
     confirmedManagerAccess = await confirmManagerAccess()
-  } catch {
-    return false
+  } catch (confirmationError) {
+    return isSchedulePermissionDeniedError(confirmationError)
   }
 
   if (shouldIgnoreScheduleListenerCallback({

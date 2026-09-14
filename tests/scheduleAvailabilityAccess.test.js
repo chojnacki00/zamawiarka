@@ -179,6 +179,178 @@ test('aktualna aktywna generacja nadal raportuje nieoczekiwany permission-denied
   assert.equal(ignored, false)
 })
 
+test('odmowa serwerowego odczytu profilu w trakcie zmiany dostępu jest kontrolowanym zakończeniem', async () => {
+  const ignored = await shouldIgnoreScheduleListenerError({
+    listenerRevision: 24,
+    getCurrentRevision: () => 24,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    getHasManagerAccess: () => true,
+    confirmManagerAccess: async () => {
+      throw { code: 'firestore/permission-denied' }
+    },
+    error: { code: 'permission-denied' }
+  })
+
+  assert.equal(ignored, true)
+})
+
+test('błąd sieci podczas potwierdzania nie ukrywa permission-denied aktywnej generacji', async () => {
+  const ignored = await shouldIgnoreScheduleListenerError({
+    listenerRevision: 25,
+    getCurrentRevision: () => 25,
+    managerAccessRequired: true,
+    managerAccessAtStart: true,
+    getHasManagerAccess: () => true,
+    confirmManagerAccess: async () => {
+      throw { code: 'unavailable' }
+    },
+    error: { code: 'permission-denied' }
+  })
+
+  assert.equal(ignored, false)
+})
+
+const runRepeatedPermissionCycles = async listenerKind => {
+  let currentRevision = 0
+  let hasManagerAccess = false
+  let currentListener = null
+  let consoleErrorCalls = 0
+  let unsubscribeCalls = 0
+  const retiredListeners = []
+
+  const startManagerListener = () => {
+    currentRevision += 1
+    currentListener = {
+      kind: listenerKind,
+      revision: currentRevision,
+      managerAccessAtStart: hasManagerAccess
+    }
+    return currentListener
+  }
+
+  const revokeManagerAccess = () => {
+    hasManagerAccess = false
+    currentRevision += 1
+    unsubscribeCalls += 1
+    if (currentListener) retiredListeners.push(currentListener)
+    currentListener = null
+  }
+
+  const reportListenerError = async ({
+    listener,
+    confirmManagerAccess
+  }) => {
+    const ignored = await shouldIgnoreScheduleListenerError({
+      listenerRevision: listener.revision,
+      getCurrentRevision: () => currentRevision,
+      managerAccessRequired: true,
+      managerAccessAtStart: listener.managerAccessAtStart,
+      getHasManagerAccess: () => hasManagerAccess,
+      confirmManagerAccess,
+      error: { code: 'permission-denied' }
+    })
+
+    if (!ignored) consoleErrorCalls += 1
+    return ignored
+  }
+
+  // Cykl 1: odmowa przychodzi przed lokalnym snapshotem profilu.
+  hasManagerAccess = true
+  const firstListener = startManagerListener()
+  await reportListenerError({
+    listener: firstListener,
+    confirmManagerAccess: async () => {
+      revokeManagerAccess()
+      return false
+    }
+  })
+
+  // Cykl 2: lokalny profil unieważnia listener przed jego odmową.
+  hasManagerAccess = true
+  const secondListener = startManagerListener()
+  revokeManagerAccess()
+  await reportListenerError({ listener: secondListener })
+
+  // Cykl 3: dodatkowa odmowa dotyka również serwerowy odczyt profilu.
+  hasManagerAccess = true
+  const thirdListener = startManagerListener()
+  await reportListenerError({
+    listener: thirdListener,
+    confirmManagerAccess: async () => {
+      throw { code: 'permission-denied' }
+    }
+  })
+  revokeManagerAccess()
+
+  // Po ponownym nadaniu każda subskrypcja otrzymuje nową generację.
+  hasManagerAccess = true
+  const activeListener = startManagerListener()
+
+  for (const listener of retiredListeners) {
+    assert.equal(shouldIgnoreScheduleListenerCallback({
+      listenerRevision: listener.revision,
+      currentRevision,
+      managerAccessRequired: true,
+      managerAccessAtStart: listener.managerAccessAtStart,
+      hasManagerAccess
+    }), true)
+    await reportListenerError({ listener })
+  }
+
+  await reportListenerError({
+    listener: activeListener,
+    confirmManagerAccess: async () => true
+  })
+
+  return {
+    activeRevision: activeListener.revision,
+    consoleErrorCalls,
+    currentRevision,
+    retiredRevisions: retiredListeners.map(listener => listener.revision),
+    unsubscribeCalls
+  }
+}
+
+test('modele zapotrzebowania przechodzą trzy cykle odebrania i nadania bez błędów starych generacji', async () => {
+  assert.deepEqual(
+    await runRepeatedPermissionCycles('demand-models'),
+    {
+      activeRevision: 7,
+      consoleErrorCalls: 1,
+      currentRevision: 7,
+      retiredRevisions: [1, 3, 5],
+      unsubscribeCalls: 3
+    }
+  )
+})
+
+test('dyspozycje pracowników przechodzą trzy cykle odebrania i nadania bez błędów starych generacji', async () => {
+  assert.deepEqual(
+    await runRepeatedPermissionCycles('employee-availability'),
+    {
+      activeRevision: 7,
+      consoleErrorCalls: 1,
+      currentRevision: 7,
+      retiredRevisions: [1, 3, 5],
+      unsubscribeCalls: 3
+    }
+  )
+})
+
+test('store konta nie pozwala spóźnionemu potwierdzeniu nadpisać nowszego profilu', async () => {
+  const source = await readFile(new URL(
+    '../src/stores/accountSessionStore.js',
+    import.meta.url
+  ), 'utf8')
+
+  assert.match(source, /let permissionContextRevision = 0/)
+  assert.match(source, /const refreshRevision = permissionContextRevision/)
+  assert.match(source, /if \(refreshRevision === permissionContextRevision\)/)
+  assert.match(source, /stopSensitiveListeners[\s\S]*permissionContextRevision \+= 1/)
+  assert.match(source, /startPermissionProfileListener[\s\S]*permissionContextRevision \+= 1/)
+})
+
 test('zmiana uprawnienia unieważnia managerskie dane i pozwala uruchomić nowy listener', () => {
   const ownAvailability = [{ id: 'julia_2026-09-13' }]
   let managerAvailability = [{ id: 'marzena_2026-09-13' }]
