@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
+  createScheduleListenerSlot,
+  createSchedulePermissionConfirmationCoordinator,
   getScheduleAvailabilityAccessPlan,
   isSchedulePermissionDeniedError,
   normalizeAvailabilitySelectionForAccess,
@@ -9,6 +11,13 @@ import {
   shouldIgnoreScheduleListenerCallback,
   shouldIgnoreScheduleListenerError
 } from '../src/utils/scheduleAvailabilityAccess.js'
+
+const MANAGER_LISTENER_KINDS = [
+  'demand-models',
+  'employee-availability',
+  'team-availability',
+  'month-availability'
+]
 
 test('zwykły pracownik nie uruchamia managerskich odczytów grafiku', () => {
   assert.deepEqual(getScheduleAvailabilityAccessPlan(), {
@@ -211,6 +220,189 @@ test('błąd sieci podczas potwierdzania nie ukrywa permission-denied aktywnej g
   assert.equal(ignored, false)
 })
 
+test('brak konta Firebase nie jest mylony z potwierdzonym odebraniem uprawnienia', async () => {
+  const coordinator =
+    createSchedulePermissionConfirmationCoordinator()
+  const permissionToken = coordinator.capture()
+  let confirmationCalls = 0
+
+  const result = await coordinator.confirm(
+    permissionToken,
+    async () => {
+      confirmationCalls += 1
+      return false
+    }
+  )
+
+  assert.equal(result, null)
+  assert.equal(confirmationCalls, 0)
+})
+
+test('slot listenera utrzymuje najwyzej jedna subskrypcje i odpina kazda dokladnie raz', () => {
+  const slot = createScheduleListenerSlot('test-listener')
+  let unsubscribeCalls = 0
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    const listener = slot.begin()
+    slot.attach(listener, () => {
+      unsubscribeCalls += 1
+    })
+
+    assert.equal(slot.getStats().activeCount, 1)
+    assert.equal(slot.getStats().startCount, cycle + 1)
+  }
+
+  assert.equal(unsubscribeCalls, 4)
+  slot.stop()
+  slot.stop()
+  assert.equal(unsubscribeCalls, 5)
+  assert.deepEqual(slot.getStats(), {
+    activeCount: 0,
+    currentRevision: 7,
+    startCount: 5,
+    unsubscribeCount: 5
+  })
+})
+
+test('cztery listenery wspoldziela potwierdzenie przez piec cykli odebrania i nadania', async () => {
+  const coordinator =
+    createSchedulePermissionConfirmationCoordinator()
+  const slots = new Map(MANAGER_LISTENER_KINDS.map(kind => [
+    kind,
+    createScheduleListenerSlot(kind)
+  ]))
+  const unsubscribeCalls = Object.fromEntries(
+    MANAGER_LISTENER_KINDS.map(kind => [kind, 0])
+  )
+  let hasManagerAccess = false
+  let confirmationCalls = 0
+  let consoleErrorCalls = 0
+
+  const setManagerAccess = granted => {
+    hasManagerAccess = granted
+    coordinator.update({
+      nextContextKey: 'restaurant-a:employee-a:profile-a',
+      hasManagerAccess: granted
+    })
+  }
+
+  const startAll = () => Object.fromEntries(
+    MANAGER_LISTENER_KINDS.map(kind => {
+      const slot = slots.get(kind)
+      const listener = slot.begin()
+      slot.attach(listener, () => {
+        unsubscribeCalls[kind] += 1
+      })
+      return [kind, {
+        listener,
+        permissionToken: coordinator.capture()
+      }]
+    })
+  )
+
+  const handleError = async (
+    kind,
+    state,
+    confirmManagerAccess
+  ) => {
+    const slot = slots.get(kind)
+    const ignored = await shouldIgnoreScheduleListenerError({
+      listenerRevision: state.listener.revision,
+      getCurrentRevision: slot.getRevision,
+      managerAccessRequired: true,
+      managerAccessAtStart: true,
+      getHasManagerAccess: () => hasManagerAccess,
+      confirmManagerAccess: () => coordinator.confirm(
+        state.permissionToken,
+        confirmManagerAccess
+      ),
+      error: { code: 'permission-denied' }
+    })
+
+    if (!ignored) consoleErrorCalls += 1
+    if (ignored) slot.finish(state.listener)
+    return ignored
+  }
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    setManagerAccess(true)
+    const listeners = startAll()
+
+    MANAGER_LISTENER_KINDS.forEach(kind => {
+      assert.equal(slots.get(kind).getStats().activeCount, 1)
+    })
+
+    if (cycle % 2 === 0) {
+      let resolveConfirmation
+      const confirmationGate = new Promise(resolve => {
+        resolveConfirmation = resolve
+      })
+      const confirmManagerAccess = async () => {
+        confirmationCalls += 1
+        await confirmationGate
+        return false
+      }
+      const errors = MANAGER_LISTENER_KINDS.map(kind => (
+        handleError(kind, listeners[kind], confirmManagerAccess)
+      ))
+
+      await Promise.resolve()
+      resolveConfirmation()
+      assert.deepEqual(await Promise.all(errors), [
+        true,
+        true,
+        true,
+        true
+      ])
+      setManagerAccess(false)
+    } else {
+      setManagerAccess(false)
+      MANAGER_LISTENER_KINDS.forEach(kind => {
+        slots.get(kind).stop()
+      })
+      assert.deepEqual(await Promise.all(
+        MANAGER_LISTENER_KINDS.map(kind => (
+          handleError(
+            kind,
+            listeners[kind],
+            async () => {
+              confirmationCalls += 1
+              return false
+            }
+          )
+        ))
+      ), [true, true, true, true])
+    }
+
+    MANAGER_LISTENER_KINDS.forEach(kind => {
+      assert.equal(slots.get(kind).getStats().activeCount, 0)
+    })
+  }
+
+  assert.equal(confirmationCalls, 3)
+  assert.equal(consoleErrorCalls, 0)
+  assert.deepEqual(unsubscribeCalls, {
+    'demand-models': 5,
+    'employee-availability': 5,
+    'team-availability': 5,
+    'month-availability': 5
+  })
+
+  setManagerAccess(true)
+  const currentListeners = startAll()
+  const unexpectedErrorIgnored = await handleError(
+    'demand-models',
+    currentListeners['demand-models'],
+    async () => {
+      confirmationCalls += 1
+      return true
+    }
+  )
+
+  assert.equal(unexpectedErrorIgnored, false)
+  assert.equal(consoleErrorCalls, 1)
+})
+
 const runRepeatedPermissionCycles = async listenerKind => {
   let currentRevision = 0
   let hasManagerAccess = false
@@ -349,6 +541,9 @@ test('store konta nie pozwala spóźnionemu potwierdzeniu nadpisać nowszego pro
   assert.match(source, /if \(refreshRevision === permissionContextRevision\)/)
   assert.match(source, /stopSensitiveListeners[\s\S]*permissionContextRevision \+= 1/)
   assert.match(source, /startPermissionProfileListener[\s\S]*permissionContextRevision \+= 1/)
+  assert.match(source, /createSchedulePermissionConfirmationCoordinator/)
+  assert.match(source, /captureScheduleManagerPermission/)
+  assert.match(source, /confirmScheduleManagerPermission/)
 })
 
 test('zmiana uprawnienia unieważnia managerskie dane i pozwala uruchomić nowy listener', () => {
@@ -398,11 +593,11 @@ test('widok zatrzymuje managerskie listenery i nie liczy obsady przy zapisie wł
   assert.match(source, /watch\(\s*canManageSchedule,[\s\S]*synchronizeScheduleAvailabilityAccess\(\)/)
   assert.match(source, /clearManagerScheduleAvailabilityData[\s\S]*employeesStore\.clearSensitiveData\(\)/)
   assert.match(source, /clearManagerScheduleAvailabilityData[\s\S]*demandModelsStore\.clearSensitiveData\(\)/)
-  assert.match(source, /currentRevision: teamAvailabilityListenerRevision/)
-  assert.match(source, /currentRevision: monthAvailabilityListenerRevision/)
+  assert.match(source, /createScheduleListenerSlot\(\s*'team-availability'/)
+  assert.match(source, /createScheduleListenerSlot\(\s*'month-availability'/)
   assert.match(source, /wasListeningToAnotherEmployee[\s\S]*stopAvailabilityListener\(\)/)
   assert.equal(
-    (source.match(/refreshCurrentPermissionAndCheck\('can_manage_schedule'\)/g) || []).length,
+    (source.match(/confirmScheduleManagerPermission\(/g) || []).length,
     3
   )
   assert.doesNotMatch(ownSave, /fetchTeamAvailabilityRecordsForDay/)
@@ -415,9 +610,9 @@ test('store modeli unieważnia callbacki przed wyczyszczeniem managerskich danyc
     import.meta.url
   ), 'utf8')
 
-  assert.match(source, /let modelsListenerRevision = 0/)
-  assert.match(source, /clearSensitiveData[\s\S]*modelsListenerRevision \+= 1[\s\S]*unsubscribeModels\(\)/)
+  assert.match(source, /createScheduleListenerSlot\(\s*'demand-models'/)
+  assert.match(source, /clearSensitiveData[\s\S]*modelsListenerSlot\.stop\(\)/)
   assert.match(source, /shouldIgnoreScheduleListenerCallback\([\s\S]*managerAccessAtStart/)
-  assert.match(source, /shouldIgnoreScheduleListenerError\([\s\S]*refreshCurrentPermissionAndCheck/)
+  assert.match(source, /shouldIgnoreScheduleListenerError\([\s\S]*confirmScheduleManagerPermission/)
   assert.match(source, /console\.error\('Błąd pobierania szablonów grafiku:', error\)/)
 })

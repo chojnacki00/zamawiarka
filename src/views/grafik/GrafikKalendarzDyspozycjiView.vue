@@ -1433,6 +1433,7 @@ import {
   getAvailabilityDocumentId
 } from '../../utils/scheduleAvailability.js'
 import {
+  createScheduleListenerSlot,
   getScheduleAvailabilityAccessPlan,
   normalizeAvailabilitySelectionForAccess,
   shouldIgnoreScheduleListenerCallback,
@@ -1772,15 +1773,18 @@ const showSaveResultModal = (
 }
 const availabilityRecords = ref({})
 const isLoadingAvailability = ref(false)
-let unsubscribeAvailability = null
 const teamAvailabilityRecords = ref({})
 const isLoadingTeamAvailability = ref(false)
-let unsubscribeTeamAvailability = null
 const monthAvailabilityRecords = ref({})
-let unsubscribeMonthAvailability = null
-let ownAvailabilityListenerRevision = 0
-let teamAvailabilityListenerRevision = 0
-let monthAvailabilityListenerRevision = 0
+const ownAvailabilityListenerSlot = createScheduleListenerSlot(
+  'employee-availability'
+)
+const teamAvailabilityListenerSlot = createScheduleListenerSlot(
+  'team-availability'
+)
+const monthAvailabilityListenerSlot = createScheduleListenerSlot(
+  'month-availability'
+)
 const expandedTeamEmployeeId = ref(null)
 const selectedPositionFilter = ref('')
 const editingTeamEmployee = ref(null)
@@ -2755,25 +2759,11 @@ const fetchTeamAvailabilityRecordsForDay = async (
 }
 
 const stopTeamAvailabilityListener = () => {
-  teamAvailabilityListenerRevision += 1
-
-  if (!unsubscribeTeamAvailability) {
-    return
-  }
-
-  unsubscribeTeamAvailability()
-  unsubscribeTeamAvailability = null
+  teamAvailabilityListenerSlot.stop()
 }
 
 const stopMonthAvailabilityListener = () => {
-  monthAvailabilityListenerRevision += 1
-
-  if (!unsubscribeMonthAvailability) {
-    return
-  }
-
-  unsubscribeMonthAvailability()
-  unsubscribeMonthAvailability = null
+  monthAvailabilityListenerSlot.stop()
 }
 
 const loadMonthAvailability = () => {
@@ -2817,16 +2807,21 @@ const loadMonthAvailability = () => {
     where('date', '<=', monthEnd)
   )
 
-  const listenerRevision = monthAvailabilityListenerRevision
+  const listener = monthAvailabilityListenerSlot.begin()
+  const listenerRevision = listener.revision
   const managerAccessAtStart = canManageSchedule.value
+  const managerPermissionToken = accountSessionStore
+    .captureScheduleManagerPermission()
 
-  unsubscribeMonthAvailability = onSnapshot(
+  const unsubscribe = onSnapshot(
     monthQuery,
     snapshot => {
       if (
+        !monthAvailabilityListenerSlot.isCurrent(listener) ||
         shouldIgnoreScheduleListenerCallback({
           listenerRevision,
-          currentRevision: monthAvailabilityListenerRevision,
+          currentRevision:
+            monthAvailabilityListenerSlot.getRevision(),
           managerAccessRequired: true,
           managerAccessAtStart,
           hasManagerAccess: canManageSchedule.value
@@ -2861,14 +2856,18 @@ const loadMonthAvailability = () => {
     async error => {
       if (await shouldIgnoreScheduleListenerError({
         listenerRevision,
-        getCurrentRevision: () => monthAvailabilityListenerRevision,
+        getCurrentRevision: () =>
+          monthAvailabilityListenerSlot.getRevision(),
         managerAccessRequired: true,
         managerAccessAtStart,
         getHasManagerAccess: () => canManageSchedule.value,
         confirmManagerAccess: () => accountSessionStore
-          .refreshCurrentPermissionAndCheck('can_manage_schedule'),
+          .confirmScheduleManagerPermission(
+            managerPermissionToken
+          ),
         error
       })) {
+        monthAvailabilityListenerSlot.finish(listener)
         return
       }
 
@@ -2878,8 +2877,10 @@ const loadMonthAvailability = () => {
       )
 
       monthAvailabilityRecords.value = {}
+      monthAvailabilityListenerSlot.finish(listener)
     }
   )
+  monthAvailabilityListenerSlot.attach(listener, unsubscribe)
 }
 
 const loadTeamAvailabilityForDay = async (dateKey) => {
@@ -2909,19 +2910,24 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
     where('date', '==', dateKey)
   )
 
-  const listenerRevision = teamAvailabilityListenerRevision
+  const listener = teamAvailabilityListenerSlot.begin()
+  const listenerRevision = listener.revision
   const managerAccessAtStart = canManageSchedule.value
+  const managerPermissionToken = accountSessionStore
+    .captureScheduleManagerPermission()
 
   return new Promise((resolve, reject) => {
     let isFirstSnapshot = true
 
-    unsubscribeTeamAvailability = onSnapshot(
+    const unsubscribe = onSnapshot(
       teamQuery,
       snapshot => {
         if (
+          !teamAvailabilityListenerSlot.isCurrent(listener) ||
           shouldIgnoreScheduleListenerCallback({
             listenerRevision,
-            currentRevision: teamAvailabilityListenerRevision,
+            currentRevision:
+              teamAvailabilityListenerSlot.getRevision(),
             managerAccessRequired: true,
             managerAccessAtStart,
             hasManagerAccess: canManageSchedule.value
@@ -2931,7 +2937,7 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
         ) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            if (listenerRevision === teamAvailabilityListenerRevision) {
+            if (teamAvailabilityListenerSlot.isCurrent(listener)) {
               isLoadingTeamAvailability.value = false
             }
             resolve()
@@ -2966,21 +2972,25 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
       async error => {
         if (await shouldIgnoreScheduleListenerError({
           listenerRevision,
-          getCurrentRevision: () => teamAvailabilityListenerRevision,
+          getCurrentRevision: () =>
+            teamAvailabilityListenerSlot.getRevision(),
           managerAccessRequired: true,
           managerAccessAtStart,
           getHasManagerAccess: () => canManageSchedule.value,
           confirmManagerAccess: () => accountSessionStore
-            .refreshCurrentPermissionAndCheck('can_manage_schedule'),
+            .confirmScheduleManagerPermission(
+              managerPermissionToken
+            ),
           error
         })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            if (listenerRevision === teamAvailabilityListenerRevision) {
+            if (teamAvailabilityListenerSlot.isCurrent(listener)) {
               isLoadingTeamAvailability.value = false
             }
             resolve()
           }
+          teamAvailabilityListenerSlot.finish(listener)
           return
         }
 
@@ -2991,6 +3001,7 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
 
         teamAvailabilityRecords.value = {}
         isLoadingTeamAvailability.value = false
+        teamAvailabilityListenerSlot.finish(listener)
 
         if (isFirstSnapshot) {
           isFirstSnapshot = false
@@ -2998,17 +3009,11 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
         }
       }
     )
+    teamAvailabilityListenerSlot.attach(listener, unsubscribe)
   })
 }
 const stopAvailabilityListener = () => {
-  ownAvailabilityListenerRevision += 1
-
-  if (!unsubscribeAvailability) {
-    return
-  }
-
-  unsubscribeAvailability()
-  unsubscribeAvailability = null
+  ownAvailabilityListenerSlot.stop()
 }
 
 const loadAvailability = async () => {
@@ -3034,20 +3039,26 @@ const loadAvailability = async () => {
     where('employeeId', '==', employeeId)
   )
 
-  const listenerRevision = ownAvailabilityListenerRevision
+  const listener = ownAvailabilityListenerSlot.begin()
+  const listenerRevision = listener.revision
   const managerAccessRequired = employeeId !== loggedEmployeeId.value
   const managerAccessAtStart = canManageSchedule.value
+  const managerPermissionToken = managerAccessRequired
+    ? accountSessionStore.captureScheduleManagerPermission()
+    : null
 
   return new Promise(resolve => {
     let isFirstSnapshot = true
 
-    unsubscribeAvailability = onSnapshot(
+    const unsubscribe = onSnapshot(
       availabilityQuery,
       snapshot => {
         if (
+          !ownAvailabilityListenerSlot.isCurrent(listener) ||
           shouldIgnoreScheduleListenerCallback({
             listenerRevision,
-            currentRevision: ownAvailabilityListenerRevision,
+            currentRevision:
+              ownAvailabilityListenerSlot.getRevision(),
             managerAccessRequired,
             managerAccessAtStart,
             hasManagerAccess: canManageSchedule.value
@@ -3058,7 +3069,7 @@ const loadAvailability = async () => {
         ) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            if (listenerRevision === ownAvailabilityListenerRevision) {
+            if (ownAvailabilityListenerSlot.isCurrent(listener)) {
               isLoadingAvailability.value = false
             }
             resolve()
@@ -3093,21 +3104,25 @@ const loadAvailability = async () => {
       async error => {
         if (await shouldIgnoreScheduleListenerError({
           listenerRevision,
-          getCurrentRevision: () => ownAvailabilityListenerRevision,
+          getCurrentRevision: () =>
+            ownAvailabilityListenerSlot.getRevision(),
           managerAccessRequired,
           managerAccessAtStart,
           getHasManagerAccess: () => canManageSchedule.value,
           confirmManagerAccess: () => accountSessionStore
-            .refreshCurrentPermissionAndCheck('can_manage_schedule'),
+            .confirmScheduleManagerPermission(
+              managerPermissionToken
+            ),
           error
         })) {
           if (isFirstSnapshot) {
             isFirstSnapshot = false
-            if (listenerRevision === ownAvailabilityListenerRevision) {
+            if (ownAvailabilityListenerSlot.isCurrent(listener)) {
               isLoadingAvailability.value = false
             }
             resolve()
           }
+          ownAvailabilityListenerSlot.finish(listener)
           return
         }
 
@@ -3118,6 +3133,7 @@ const loadAvailability = async () => {
 
         availabilityRecords.value = {}
         isLoadingAvailability.value = false
+        ownAvailabilityListenerSlot.finish(listener)
 
         if (isFirstSnapshot) {
           isFirstSnapshot = false
@@ -3125,6 +3141,7 @@ const loadAvailability = async () => {
         }
       }
     )
+    ownAvailabilityListenerSlot.attach(listener, unsubscribe)
   })
 }
 

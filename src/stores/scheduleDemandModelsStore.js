@@ -15,6 +15,7 @@ import { useAuthorizationStore } from './authorizationStore.js'
 import { useAccountSessionStore } from './accountSessionStore.js'
 import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
+  createScheduleListenerSlot,
   shouldIgnoreScheduleListenerCallback,
   shouldIgnoreScheduleListenerError
 } from '../utils/scheduleAvailabilityAccess.js'
@@ -25,10 +26,11 @@ export const useScheduleDemandModelsStore = defineStore(
     const models = ref([])
     const isLoading = ref(false)
     const isSaving = ref(false)
-    let unsubscribeModels = null
     let listenerRestaurantId = null
     let listenerReadyPromise = null
-    let modelsListenerRevision = 0
+    const modelsListenerSlot = createScheduleListenerSlot(
+      'demand-models'
+    )
 
     const getRestaurantId = async () => (
       useAuthorizationStore().requireRestaurantId()
@@ -50,25 +52,30 @@ export const useScheduleDemandModelsStore = defineStore(
     const fetchModels = async () => {
       const restaurantId = await getRestaurantId()
       if (!restaurantId) return []
-      if (unsubscribeModels && listenerRestaurantId === restaurantId) return listenerReadyPromise || models.value
+      if (
+        modelsListenerSlot.hasActive() &&
+        listenerRestaurantId === restaurantId
+      ) return listenerReadyPromise || models.value
 
-      modelsListenerRevision += 1
-      if (unsubscribeModels) unsubscribeModels()
-      const listenerRevision = modelsListenerRevision
+      const listener = modelsListenerSlot.begin()
+      const listenerRevision = listener.revision
       const managerAccessAtStart = useAuthorizationStore()
         .hasPermission('can_manage_schedule')
+      const managerPermissionToken = useAccountSessionStore()
+        .captureScheduleManagerPermission()
       listenerRestaurantId = restaurantId
       isLoading.value = true
       listenerReadyPromise = new Promise(resolve => {
         let firstSnapshot = true
-        unsubscribeModels = onSnapshot(
+        const unsubscribe = onSnapshot(
           collection(db, 'users', restaurantId, 'scheduleDemandModels'),
           snapshot => {
             const authorizationStore = useAuthorizationStore()
             if (
+              !modelsListenerSlot.isCurrent(listener) ||
               shouldIgnoreScheduleListenerCallback({
                 listenerRevision,
-                currentRevision: modelsListenerRevision,
+                currentRevision: modelsListenerSlot.getRevision(),
                 managerAccessRequired: true,
                 managerAccessAtStart,
                 hasManagerAccess: authorizationStore
@@ -81,7 +88,9 @@ export const useScheduleDemandModelsStore = defineStore(
             ) {
               if (firstSnapshot) {
                 firstSnapshot = false
-                isLoading.value = false
+                if (modelsListenerSlot.isCurrent(listener)) {
+                  isLoading.value = false
+                }
                 resolve(models.value)
               }
               return
@@ -100,37 +109,42 @@ export const useScheduleDemandModelsStore = defineStore(
             const authorizationStore = useAuthorizationStore()
             if (await shouldIgnoreScheduleListenerError({
               listenerRevision,
-              getCurrentRevision: () => modelsListenerRevision,
+              getCurrentRevision: () =>
+                modelsListenerSlot.getRevision(),
               managerAccessRequired: true,
               managerAccessAtStart,
               getHasManagerAccess: () => authorizationStore
                 .hasPermission('can_manage_schedule'),
               confirmManagerAccess: () => useAccountSessionStore()
-                .refreshCurrentPermissionAndCheck('can_manage_schedule'),
+                .confirmScheduleManagerPermission(
+                  managerPermissionToken
+                ),
               error
             })) {
               if (firstSnapshot) {
                 firstSnapshot = false
-                if (listenerRevision === modelsListenerRevision) {
+                if (modelsListenerSlot.isCurrent(listener)) {
                   isLoading.value = false
                 }
                 resolve(models.value)
               }
+              modelsListenerSlot.finish(listener)
               return
             }
 
             console.error('Błąd pobierania szablonów grafiku:', error)
-            if (listenerRevision === modelsListenerRevision) {
-              unsubscribeModels = null
+            if (modelsListenerSlot.isCurrent(listener)) {
               listenerRestaurantId = null
+              isLoading.value = false
             }
-            isLoading.value = false
+            modelsListenerSlot.finish(listener)
             if (firstSnapshot) {
               firstSnapshot = false
               resolve(models.value)
             }
           }
         )
+        modelsListenerSlot.attach(listener, unsubscribe)
       })
       return listenerReadyPromise
     }
@@ -182,7 +196,7 @@ export const useScheduleDemandModelsStore = defineStore(
           active: modelData.active ?? true
         }
 
-        if (!unsubscribeModels && !models.value.some(model => model.id === newModel.id)) models.value.push(newModel)
+        if (!modelsListenerSlot.hasActive() && !models.value.some(model => model.id === newModel.id)) models.value.push(newModel)
 
         return newModel
       } catch (error) {
@@ -217,7 +231,7 @@ export const useScheduleDemandModelsStore = defineStore(
 
         await updateDoc(modelRef, dataToSave)
 
-        if (!unsubscribeModels) {
+        if (!modelsListenerSlot.hasActive()) {
           const index = models.value.findIndex(
             model => model.id === modelId
           )
@@ -257,7 +271,7 @@ export const useScheduleDemandModelsStore = defineStore(
           )
         )
 
-        if (!unsubscribeModels) {
+        if (!modelsListenerSlot.hasActive()) {
           models.value = models.value.filter(
             model => model.id !== modelId
           )
@@ -271,9 +285,7 @@ export const useScheduleDemandModelsStore = defineStore(
     }
 
     const clearSensitiveData = () => {
-      modelsListenerRevision += 1
-      if (unsubscribeModels) unsubscribeModels()
-      unsubscribeModels = null
+      modelsListenerSlot.stop()
       listenerRestaurantId = null
       listenerReadyPromise = null
       models.value = []

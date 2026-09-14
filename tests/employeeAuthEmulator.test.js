@@ -25,6 +25,7 @@ import {
   connectFirestoreEmulator,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   getFirestore,
   onSnapshot,
@@ -52,6 +53,11 @@ import {
   EMAIL_ACTION_MODES,
   inspectEmailAction
 } from '../src/utils/emailActionHandler.js'
+import {
+  createScheduleListenerSlot,
+  createSchedulePermissionConfirmationCoordinator,
+  shouldIgnoreScheduleListenerError
+} from '../src/utils/scheduleAvailabilityAccess.js'
 
 let rulesEnv
 let appCounter = 0
@@ -1409,4 +1415,289 @@ test('zweryfikowane konto przyjmuje zaproszenie atomowo w Auth i Firestore Emula
     ))).exists(), false)
   })
   assert.notEqual(credential.user.uid, 'restaurant-a')
+})
+
+test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia', async () => {
+  const restaurantId = 'restaurant-listener-cycles'
+  const employeeId = 'employee-manager'
+  const otherEmployeeId = 'employee-other'
+  const profileId = 'profile-schedule-cycles'
+  const dateKey = '2026-09-20'
+  const owner = await createVerifiedClient({
+    email: 'listener-owner@example.test'
+  })
+  const employee = await createVerifiedClient({
+    email: 'listener-employee@example.test'
+  })
+  const authTime = Number(
+    (await employee.user.getIdTokenResult()).claims.auth_time
+  )
+
+  await seed([
+    [`restaurants/${restaurantId}`, {
+      id: restaurantId,
+      name: 'Restauracja listenerow',
+      ownerAuthUid: owner.user.uid,
+      status: 'active'
+    }],
+    [`restaurants/${restaurantId}/members/${owner.user.uid}`, {
+      authUid: owner.user.uid,
+      restaurantId,
+      employeeId: null,
+      permissionProfileId: null,
+      invitationId: null,
+      role: 'owner',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      acceptedAt: Timestamp.now()
+    }],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}`, {
+      authUid: employee.user.uid,
+      restaurantId,
+      employeeId,
+      permissionProfileId: profileId,
+      invitationId: 'seed-listener-cycles',
+      role: 'employee',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      acceptedAt: Timestamp.now()
+    }],
+    [`restaurants/${restaurantId}/members/${employee.user.uid}/deviceSessions/${authTime}`, {
+      deviceId: 'device-listener-cycles',
+      restaurantId,
+      employeeId,
+      authUid: employee.user.uid,
+      deviceName: 'Telefon testowy',
+      platform: 'Auth Emulator',
+      authTime,
+      status: 'active',
+      addedAt: Timestamp.now(),
+      lastActiveAt: Timestamp.now(),
+      approvedAt: Timestamp.now(),
+      approvedByAuthUid: owner.user.uid,
+      invitationId: 'seed-listener-cycles',
+      disconnectedAt: null,
+      disconnectedByAuthUid: null
+    }],
+    [`users/${restaurantId}/employees/${employeeId}`, {
+      imie: 'Manager',
+      nazwisko: 'Testowy',
+      aktywny: true,
+      permissionProfileId: profileId
+    }],
+    [`users/${restaurantId}/employees/${otherEmployeeId}`, {
+      imie: 'Pracownik',
+      nazwisko: 'Testowy',
+      aktywny: true,
+      permissionProfileId: profileId
+    }],
+    [`users/${restaurantId}/permissionProfiles/${profileId}`, {
+      nazwa: 'Manager grafiku',
+      uprawnienia: {
+        can_view_schedule: true,
+        can_manage_schedule: true
+      }
+    }],
+    [`users/${restaurantId}/scheduleDemandModels/model-1`, {
+      name: 'Model testowy'
+    }],
+    [`users/${restaurantId}/grafik_dyspozycyjnosc/${otherEmployeeId}_${dateKey}`, {
+      employeeId: otherEmployeeId,
+      date: dateKey,
+      type: 'full'
+    }]
+  ])
+
+  const profileRef = doc(
+    employee.db,
+    `users/${restaurantId}/permissionProfiles/${profileId}`
+  )
+  const ownerProfileRef = doc(
+    owner.db,
+    `users/${restaurantId}/permissionProfiles/${profileId}`
+  )
+  const availabilityCollection = collection(
+    employee.db,
+    `users/${restaurantId}/grafik_dyspozycyjnosc`
+  )
+  const listenerQueries = {
+    'demand-models': collection(
+      employee.db,
+      `users/${restaurantId}/scheduleDemandModels`
+    ),
+    'employee-availability': query(
+      availabilityCollection,
+      where('employeeId', '==', otherEmployeeId)
+    ),
+    'team-availability': query(
+      availabilityCollection,
+      where('date', '==', dateKey)
+    ),
+    'month-availability': query(
+      availabilityCollection,
+      where('date', '>=', '2026-09-01'),
+      where('date', '<=', '2026-09-30')
+    )
+  }
+  const slots = new Map(Object.keys(listenerQueries).map(kind => [
+    kind,
+    createScheduleListenerSlot(kind)
+  ]))
+  const unsubscribeCalls = Object.fromEntries(
+    Object.keys(listenerQueries).map(kind => [kind, 0])
+  )
+  const coordinator =
+    createSchedulePermissionConfirmationCoordinator()
+  const contextKey = `${restaurantId}:${employee.user.uid}:${profileId}`
+  let hasManagerAccess = true
+  let confirmationReads = 0
+  let reportedErrors = 0
+
+  coordinator.update({
+    nextContextKey: contextKey,
+    hasManagerAccess: true
+  })
+
+  const withTimeout = (promise, label) => new Promise(
+    (resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(
+        `Nie zakonczono listenera ${label}.`
+      )), 5000)
+
+      promise.then(result => {
+        clearTimeout(timeout)
+        resolve(result)
+      }, error => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+    }
+  )
+
+  const startListener = (kind, queryRef) => {
+    const slot = slots.get(kind)
+    const listener = slot.begin()
+    const permissionToken = coordinator.capture()
+    let resolveInitial
+    let resolveError
+    const initial = new Promise(resolve => {
+      resolveInitial = resolve
+    })
+    const errorResult = new Promise(resolve => {
+      resolveError = resolve
+    })
+    const unsubscribe = onSnapshot(
+      queryRef,
+      () => {
+        if (slot.isCurrent(listener)) resolveInitial()
+      },
+      async error => {
+        const ignored = await shouldIgnoreScheduleListenerError({
+          listenerRevision: listener.revision,
+          getCurrentRevision: slot.getRevision,
+          managerAccessRequired: true,
+          managerAccessAtStart: true,
+          getHasManagerAccess: () => hasManagerAccess,
+          confirmManagerAccess: () => coordinator.confirm(
+            permissionToken,
+            async () => {
+              confirmationReads += 1
+              const snapshot = await getDocFromServer(profileRef)
+              const currentPermissions =
+                snapshot.data()?.uprawnienia || {}
+              hasManagerAccess =
+                currentPermissions.can_manage_schedule === true
+              coordinator.update({
+                nextContextKey: contextKey,
+                hasManagerAccess
+              })
+              return hasManagerAccess
+            }
+          ),
+          error
+        })
+
+        if (!ignored) reportedErrors += 1
+        slot.finish(listener)
+        resolveError({ ignored, code: error.code })
+      }
+    )
+    slot.attach(listener, () => {
+      unsubscribeCalls[kind] += 1
+      unsubscribe()
+    })
+    return { initial, errorResult }
+  }
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    const listeners = Object.fromEntries(
+      Object.entries(listenerQueries).map(([kind, queryRef]) => [
+        kind,
+        startListener(kind, queryRef)
+      ])
+    )
+
+    await Promise.all(Object.entries(listeners).map(([kind, state]) => (
+      withTimeout(state.initial, `${kind}:start:${cycle}`)
+    )))
+
+    slots.forEach(slot => {
+      assert.equal(slot.getStats().activeCount, 1)
+    })
+
+    await updateDoc(ownerProfileRef, {
+      uprawnienia: { can_view_schedule: true }
+    })
+    await Promise.all([
+      updateDoc(doc(
+        owner.db,
+        `users/${restaurantId}/scheduleDemandModels/model-1`
+      ), {
+        name: `Model po odebraniu ${cycle}`
+      }),
+      updateDoc(doc(
+        owner.db,
+        `users/${restaurantId}/grafik_dyspozycyjnosc/${otherEmployeeId}_${dateKey}`
+      ), {
+        note: `Zmiana po odebraniu ${cycle}`
+      })
+    ])
+
+    const errors = await Promise.all(
+      Object.entries(listeners).map(([kind, state]) => (
+        withTimeout(state.errorResult, `${kind}:error:${cycle}`)
+      ))
+    )
+    errors.forEach(result => {
+      assert.equal(result.ignored, true)
+      assert.match(String(result.code), /permission-denied/)
+    })
+    slots.forEach(slot => {
+      assert.equal(slot.getStats().activeCount, 0)
+    })
+
+    await updateDoc(ownerProfileRef, {
+      uprawnienia: {
+        can_view_schedule: true,
+        can_manage_schedule: true
+      }
+    })
+    const grantedSnapshot = await getDocFromServer(profileRef)
+    hasManagerAccess =
+      grantedSnapshot.data()?.uprawnienia?.can_manage_schedule === true
+    coordinator.update({
+      nextContextKey: contextKey,
+      hasManagerAccess
+    })
+    assert.equal(hasManagerAccess, true)
+  }
+
+  assert.equal(reportedErrors, 0)
+  assert.equal(confirmationReads, 5)
+  assert.deepEqual(unsubscribeCalls, {
+    'demand-models': 5,
+    'employee-availability': 5,
+    'team-availability': 5,
+    'month-availability': 5
+  })
 })

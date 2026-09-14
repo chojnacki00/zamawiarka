@@ -72,6 +72,9 @@ import {
   createDeviceRemovalCoordinator,
   runDeviceRemovalReaction
 } from '../utils/deviceRemovalReaction.js'
+import {
+  createSchedulePermissionConfirmationCoordinator
+} from '../utils/scheduleAvailabilityAccess.js'
 
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
@@ -114,6 +117,8 @@ export const useAccountSessionStore = defineStore(
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
     let permissionContextRevision = 0
+    const schedulePermissionConfirmation =
+      createSchedulePermissionConfirmationCoordinator()
     let isHandlingDeviceDisconnect = false
     const deviceRemovalCoordinator = createDeviceRemovalCoordinator()
     let businessAccessValidationPromise = null
@@ -171,8 +176,24 @@ export const useAccountSessionStore = defineStore(
       )
     ))
 
+    const syncSchedulePermissionConfirmationContext = () => {
+      const contextKey = JSON.stringify([
+        currentRestaurantId.value || '',
+        authUser.value?.uid || '',
+        currentMembership.value?.permissionProfileId ||
+          currentMembership.value?.role || ''
+      ])
+
+      schedulePermissionConfirmation.update({
+        nextContextKey: contextKey,
+        hasManagerAccess: isOwner.value ||
+          permissions.value?.can_manage_schedule === true
+      })
+    }
+
     const stopSensitiveListeners = () => {
       permissionContextRevision += 1
+      schedulePermissionConfirmation.reset()
       if (unsubscribeMembership) unsubscribeMembership()
       if (unsubscribeEmployee) unsubscribeEmployee()
       if (unsubscribePermissionProfile) unsubscribePermissionProfile()
@@ -231,6 +252,8 @@ export const useAccountSessionStore = defineStore(
     }
 
     const applyCompatibilityContext = () => {
+      syncSchedulePermissionConfirmationContext()
+
       if (!hasActiveContext.value) {
         employeeAuthStore.clearAuthenticatedRestaurantContext()
         return
@@ -374,6 +397,20 @@ export const useAccountSessionStore = defineStore(
 
       return refreshedPermissions?.[permissionKey] === true
     }
+
+    const captureScheduleManagerPermission = () => {
+      syncSchedulePermissionConfirmationContext()
+      return schedulePermissionConfirmation.capture()
+    }
+
+    const confirmScheduleManagerPermission = permissionToken => (
+      schedulePermissionConfirmation.confirm(
+        permissionToken,
+        () => refreshCurrentPermissionAndCheck(
+          'can_manage_schedule'
+        )
+      )
+    )
 
     const handleDeviceDisconnected = () => {
       if (isHandlingDeviceDisconnect) return
@@ -2222,6 +2259,8 @@ export const useAccountSessionStore = defineStore(
       disconnectCurrentDevice,
       returnToLoginAfterAccessRevoked,
       refreshCurrentPermissionAndCheck,
+      captureScheduleManagerPermission,
+      confirmScheduleManagerPermission,
       hasPermission,
       clearSensitiveContext
     }
