@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { useAuthorizationStore } from './authorizationStore.js'
-import { useAccountSessionStore } from './accountSessionStore.js'
 import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
 import {
   createScheduleListenerSlot,
@@ -61,8 +60,6 @@ export const useScheduleDemandModelsStore = defineStore(
       const listenerRevision = listener.revision
       const managerAccessAtStart = useAuthorizationStore()
         .hasPermission('can_manage_schedule')
-      const managerPermissionToken = useAccountSessionStore()
-        .captureScheduleManagerPermission()
       listenerRestaurantId = restaurantId
       isLoading.value = true
       listenerReadyPromise = new Promise(resolve => {
@@ -95,6 +92,7 @@ export const useScheduleDemandModelsStore = defineStore(
               }
               return
             }
+            modelsListenerSlot.markSnapshotDelivered(listener)
             models.value = snapshot.docs.map(document => ({
               id: document.id,
               ...document.data()
@@ -105,20 +103,12 @@ export const useScheduleDemandModelsStore = defineStore(
               resolve(models.value)
             }
           },
-          async error => {
-            const authorizationStore = useAuthorizationStore()
-            if (await shouldIgnoreScheduleListenerError({
-              listenerRevision,
-              getCurrentRevision: () =>
-                modelsListenerSlot.getRevision(),
+          error => {
+            if (shouldIgnoreScheduleListenerError({
+              listener,
+              isCurrentListener: modelsListenerSlot.isCurrent,
               managerAccessRequired: true,
               managerAccessAtStart,
-              getHasManagerAccess: () => authorizationStore
-                .hasPermission('can_manage_schedule'),
-              confirmManagerAccess: () => useAccountSessionStore()
-                .confirmScheduleManagerPermission(
-                  managerPermissionToken
-                ),
               error
             })) {
               if (firstSnapshot) {

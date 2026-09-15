@@ -6,7 +6,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocFromServer,
   getDocs,
   onSnapshot,
   query,
@@ -72,10 +71,6 @@ import {
   createDeviceRemovalCoordinator,
   runDeviceRemovalReaction
 } from '../utils/deviceRemovalReaction.js'
-import {
-  createSchedulePermissionConfirmationCoordinator
-} from '../utils/scheduleAvailabilityAccess.js'
-
 const ACTIVE_RESTAURANT_KEY = 'gm_active_restaurant_id'
 const INVITATION_LIFETIME_DAYS = 7
 
@@ -116,9 +111,6 @@ export const useAccountSessionStore = defineStore(
     let unsubscribeEmployee = null
     let unsubscribePermissionProfile = null
     let unsubscribeDeviceSession = null
-    let permissionContextRevision = 0
-    const schedulePermissionConfirmation =
-      createSchedulePermissionConfirmationCoordinator()
     let isHandlingDeviceDisconnect = false
     const deviceRemovalCoordinator = createDeviceRemovalCoordinator()
     let businessAccessValidationPromise = null
@@ -176,24 +168,7 @@ export const useAccountSessionStore = defineStore(
       )
     ))
 
-    const syncSchedulePermissionConfirmationContext = () => {
-      const contextKey = JSON.stringify([
-        currentRestaurantId.value || '',
-        authUser.value?.uid || '',
-        currentMembership.value?.permissionProfileId ||
-          currentMembership.value?.role || ''
-      ])
-
-      schedulePermissionConfirmation.update({
-        nextContextKey: contextKey,
-        hasManagerAccess: isOwner.value ||
-          permissions.value?.can_manage_schedule === true
-      })
-    }
-
     const stopSensitiveListeners = () => {
-      permissionContextRevision += 1
-      schedulePermissionConfirmation.reset()
       if (unsubscribeMembership) unsubscribeMembership()
       if (unsubscribeEmployee) unsubscribeEmployee()
       if (unsubscribePermissionProfile) unsubscribePermissionProfile()
@@ -252,8 +227,6 @@ export const useAccountSessionStore = defineStore(
     }
 
     const applyCompatibilityContext = () => {
-      syncSchedulePermissionConfirmationContext()
-
       if (!hasActiveContext.value) {
         employeeAuthStore.clearAuthenticatedRestaurantContext()
         return
@@ -352,65 +325,6 @@ export const useAccountSessionStore = defineStore(
 
       return businessAccessValidationPromise
     }
-
-    const refreshCurrentPermissionAndCheck = async permissionKey => {
-      if (isOwner.value) return true
-      if (!isEmployeeMembership.value) return null
-
-      const restaurantId = currentRestaurantId.value
-      const authUid = authUser.value?.uid
-      const profileId = currentMembership.value?.permissionProfileId
-      const refreshRevision = permissionContextRevision
-
-      if (!restaurantId || !authUid || !profileId) return false
-
-      const snapshot = await getDocFromServer(doc(
-        db,
-        'users',
-        restaurantId,
-        'permissionProfiles',
-        profileId
-      ))
-
-      if (
-        restaurantId !== currentRestaurantId.value ||
-        authUid !== authUser.value?.uid ||
-        authUid !== auth.currentUser?.uid ||
-        profileId !== currentMembership.value?.permissionProfileId
-      ) {
-        return null
-      }
-
-      const refreshedProfile = snapshot.exists()
-        ? { id: snapshot.id, ...snapshot.data() }
-        : null
-      const refreshedPermissions = snapshot.exists()
-        ? snapshot.data().uprawnienia || snapshot.data()
-        : {}
-
-      if (refreshRevision === permissionContextRevision) {
-        permissionContextRevision += 1
-        permissionProfile.value = refreshedProfile
-        permissions.value = refreshedPermissions
-        applyCompatibilityContext()
-      }
-
-      return refreshedPermissions?.[permissionKey] === true
-    }
-
-    const captureScheduleManagerPermission = () => {
-      syncSchedulePermissionConfirmationContext()
-      return schedulePermissionConfirmation.capture()
-    }
-
-    const confirmScheduleManagerPermission = permissionToken => (
-      schedulePermissionConfirmation.confirm(
-        permissionToken,
-        () => refreshCurrentPermissionAndCheck(
-          'can_manage_schedule'
-        )
-      )
-    )
 
     const handleDeviceDisconnected = () => {
       if (isHandlingDeviceDisconnect) return
@@ -545,8 +459,6 @@ export const useAccountSessionStore = defineStore(
         currentMembership.value?.permissionProfileId || null
 
       const startPermissionProfileListener = profileId => {
-        permissionContextRevision += 1
-
         if (unsubscribePermissionProfile) {
           unsubscribePermissionProfile()
           unsubscribePermissionProfile = null
@@ -570,7 +482,6 @@ export const useAccountSessionStore = defineStore(
         )
 
         unsubscribePermissionProfile = onSnapshot(profileRef, snapshot => {
-          permissionContextRevision += 1
           permissionProfile.value = snapshot.exists()
             ? { id: snapshot.id, ...snapshot.data() }
             : null
@@ -579,7 +490,6 @@ export const useAccountSessionStore = defineStore(
             : {}
           applyCompatibilityContext()
         }, listenerError => {
-          permissionContextRevision += 1
           handleContextListenerError('profilu uprawnień', listenerError)
         })
       }
@@ -2258,9 +2168,6 @@ export const useAccountSessionStore = defineStore(
       logoutCurrentDevice,
       disconnectCurrentDevice,
       returnToLoginAfterAccessRevoked,
-      refreshCurrentPermissionAndCheck,
-      captureScheduleManagerPermission,
-      confirmScheduleManagerPermission,
       hasPermission,
       clearSensitiveContext
     }
