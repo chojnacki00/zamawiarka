@@ -60,9 +60,7 @@ export const createScheduleListenerSlot = (kind = 'schedule-listener') => {
     const subscription = currentSubscription
     currentSubscription = null
 
-    if (!subscription || subscription.active !== true) {
-      return false
-    }
+    if (!subscription || subscription.active !== true) return false
 
     subscription.active = false
 
@@ -81,6 +79,7 @@ export const createScheduleListenerSlot = (kind = 'schedule-listener') => {
 
     currentSubscription = {
       active: true,
+      hasDeliveredSnapshot: false,
       kind,
       revision,
       unsubscribe: null
@@ -99,6 +98,12 @@ export const createScheduleListenerSlot = (kind = 'schedule-listener') => {
     }
 
     subscription.unsubscribe = unsubscribe
+  }
+
+  const markSnapshotDelivered = subscription => {
+    if (!isCurrent(subscription)) return false
+    subscription.hasDeliveredSnapshot = true
+    return true
   }
 
   const finish = subscription => {
@@ -121,108 +126,8 @@ export const createScheduleListenerSlot = (kind = 'schedule-listener') => {
     getStats,
     hasActive: () => currentSubscription?.active === true,
     isCurrent,
+    markSnapshotDelivered,
     stop
-  }
-}
-
-export const createSchedulePermissionConfirmationCoordinator = () => {
-  let contextKey = ''
-  let granted = false
-  let revision = 0
-  const confirmedRevocations = new Set()
-  const pendingConfirmations = new Map()
-
-  const update = ({
-    nextContextKey = '',
-    hasManagerAccess = false
-  } = {}) => {
-    const normalizedContextKey = String(nextContextKey || '')
-    const normalizedGranted = hasManagerAccess === true
-
-    if (
-      normalizedContextKey === contextKey &&
-      normalizedGranted === granted
-    ) {
-      return revision
-    }
-
-    contextKey = normalizedContextKey
-    granted = normalizedGranted
-    revision += 1
-    confirmedRevocations.clear()
-    return revision
-  }
-
-  const reset = () => {
-    contextKey = ''
-    granted = false
-    revision += 1
-    confirmedRevocations.clear()
-  }
-
-  const capture = () => ({
-    contextKey,
-    granted,
-    revision
-  })
-
-  const isCurrent = token => (
-    Boolean(token) &&
-    token.contextKey === contextKey &&
-    token.revision === revision
-  )
-
-  const confirm = async (token, confirmManagerAccess) => {
-    if (!token?.granted) {
-      return null
-    }
-
-    if (!isCurrent(token) || granted !== true) {
-      return false
-    }
-
-    const confirmationKey = `${token.contextKey}:${token.revision}`
-
-    if (confirmedRevocations.has(confirmationKey)) {
-      return false
-    }
-
-    if (pendingConfirmations.has(confirmationKey)) {
-      return pendingConfirmations.get(confirmationKey)
-    }
-
-    const confirmationPromise = Promise.resolve()
-      .then(() => confirmManagerAccess())
-      .then(result => {
-        if (result === false) {
-          confirmedRevocations.add(confirmationKey)
-        }
-        return result
-      })
-      .finally(() => {
-        if (
-          pendingConfirmations.get(confirmationKey) ===
-            confirmationPromise
-        ) {
-          pendingConfirmations.delete(confirmationKey)
-        }
-      })
-
-    pendingConfirmations.set(
-      confirmationKey,
-      confirmationPromise
-    )
-
-    return confirmationPromise
-  }
-
-  return {
-    capture,
-    confirm,
-    getRevision: () => revision,
-    isCurrent,
-    reset,
-    update
   }
 }
 
@@ -247,63 +152,20 @@ export const shouldIgnoreScheduleListenerCallback = ({
     )
 }
 
-export const shouldIgnoreScheduleListenerError = async ({
-  listenerRevision,
-  getCurrentRevision,
+export const shouldIgnoreScheduleListenerError = ({
+  listener,
+  isCurrentListener,
   managerAccessRequired = false,
   managerAccessAtStart = false,
-  getHasManagerAccess,
-  confirmManagerAccess,
   error = null
 } = {}) => {
-  const readCurrentRevision = () => (
-    typeof getCurrentRevision === 'function'
-      ? getCurrentRevision()
-      : listenerRevision
-  )
-  const readManagerAccess = () => (
-    typeof getHasManagerAccess === 'function' &&
-    getHasManagerAccess() === true
-  )
-
-  if (shouldIgnoreScheduleListenerCallback({
-    listenerRevision,
-    currentRevision: readCurrentRevision(),
-    managerAccessRequired,
-    managerAccessAtStart,
-    hasManagerAccess: readManagerAccess(),
-    error
-  })) {
-    return true
-  }
-
   if (
-    !isSchedulePermissionDeniedError(error) ||
-    managerAccessRequired !== true ||
-    managerAccessAtStart !== true ||
-    typeof confirmManagerAccess !== 'function'
-  ) {
-    return false
-  }
+    typeof isCurrentListener === 'function' &&
+    !isCurrentListener(listener)
+  ) return true
 
-  let confirmedManagerAccess = null
-
-  try {
-    confirmedManagerAccess = await confirmManagerAccess()
-  } catch (confirmationError) {
-    return isSchedulePermissionDeniedError(confirmationError)
-  }
-
-  if (shouldIgnoreScheduleListenerCallback({
-    listenerRevision,
-    currentRevision: readCurrentRevision(),
-    managerAccessRequired,
-    managerAccessAtStart,
-    hasManagerAccess: readManagerAccess(),
-    error
-  })) {
-    return true
-  }
-
-  return confirmedManagerAccess === false
+  return managerAccessRequired === true &&
+    managerAccessAtStart === true &&
+    listener?.hasDeliveredSnapshot === true &&
+    isSchedulePermissionDeniedError(error)
 }

@@ -1414,7 +1414,6 @@ import {
 import { useRouter } from 'vue-router'
 import { useEmployeeAuthStore } from '../../stores/employeeAuthStore.js'
 import { useAuthorizationStore } from '../../stores/authorizationStore.js'
-import { useAccountSessionStore } from '../../stores/accountSessionStore.js'
 import { useEmployeesStore } from '../../stores/employeesStore.js'
 import { useSchedulePositionsStore } from '../../stores/schedulePositionsStore.js'
 import { useAuthStore } from '../../stores/authStore.js'
@@ -1443,7 +1442,6 @@ import {
 const router = useRouter()
 const employeeAuthStore = useEmployeeAuthStore()
 const authorizationStore = useAuthorizationStore()
-const accountSessionStore = useAccountSessionStore()
 const employeesStore = useEmployeesStore()
 const positionsStore = useSchedulePositionsStore()
 const authStore = useAuthStore()
@@ -2810,8 +2808,6 @@ const loadMonthAvailability = () => {
   const listener = monthAvailabilityListenerSlot.begin()
   const listenerRevision = listener.revision
   const managerAccessAtStart = canManageSchedule.value
-  const managerPermissionToken = accountSessionStore
-    .captureScheduleManagerPermission()
 
   const unsubscribe = onSnapshot(
     monthQuery,
@@ -2832,6 +2828,7 @@ const loadMonthAvailability = () => {
         return
       }
 
+      monthAvailabilityListenerSlot.markSnapshotDelivered(listener)
       const recordsByDate = {}
 
       snapshot.docs.forEach(documentSnapshot => {
@@ -2853,18 +2850,12 @@ const loadMonthAvailability = () => {
 
       monthAvailabilityRecords.value = recordsByDate
     },
-    async error => {
-      if (await shouldIgnoreScheduleListenerError({
-        listenerRevision,
-        getCurrentRevision: () =>
-          monthAvailabilityListenerSlot.getRevision(),
+    error => {
+      if (shouldIgnoreScheduleListenerError({
+        listener,
+        isCurrentListener: monthAvailabilityListenerSlot.isCurrent,
         managerAccessRequired: true,
         managerAccessAtStart,
-        getHasManagerAccess: () => canManageSchedule.value,
-        confirmManagerAccess: () => accountSessionStore
-          .confirmScheduleManagerPermission(
-            managerPermissionToken
-          ),
         error
       })) {
         monthAvailabilityListenerSlot.finish(listener)
@@ -2913,8 +2904,6 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
   const listener = teamAvailabilityListenerSlot.begin()
   const listenerRevision = listener.revision
   const managerAccessAtStart = canManageSchedule.value
-  const managerPermissionToken = accountSessionStore
-    .captureScheduleManagerPermission()
 
   return new Promise((resolve, reject) => {
     let isFirstSnapshot = true
@@ -2945,6 +2934,7 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
           return
         }
 
+        teamAvailabilityListenerSlot.markSnapshotDelivered(listener)
         teamAvailabilityRecords.value =
           snapshot.docs.reduce(
             (records, documentSnapshot) => {
@@ -2969,18 +2959,12 @@ const loadTeamAvailabilityForDay = async (dateKey) => {
           resolve()
         }
       },
-      async error => {
-        if (await shouldIgnoreScheduleListenerError({
-          listenerRevision,
-          getCurrentRevision: () =>
-            teamAvailabilityListenerSlot.getRevision(),
+      error => {
+        if (shouldIgnoreScheduleListenerError({
+          listener,
+          isCurrentListener: teamAvailabilityListenerSlot.isCurrent,
           managerAccessRequired: true,
           managerAccessAtStart,
-          getHasManagerAccess: () => canManageSchedule.value,
-          confirmManagerAccess: () => accountSessionStore
-            .confirmScheduleManagerPermission(
-              managerPermissionToken
-            ),
           error
         })) {
           if (isFirstSnapshot) {
@@ -3043,9 +3027,6 @@ const loadAvailability = async () => {
   const listenerRevision = listener.revision
   const managerAccessRequired = employeeId !== loggedEmployeeId.value
   const managerAccessAtStart = canManageSchedule.value
-  const managerPermissionToken = managerAccessRequired
-    ? accountSessionStore.captureScheduleManagerPermission()
-    : null
 
   return new Promise(resolve => {
     let isFirstSnapshot = true
@@ -3077,6 +3058,7 @@ const loadAvailability = async () => {
           return
         }
 
+        ownAvailabilityListenerSlot.markSnapshotDelivered(listener)
         availabilityRecords.value =
           snapshot.docs.reduce(
             (records, documentSnapshot) => {
@@ -3101,18 +3083,12 @@ const loadAvailability = async () => {
           resolve()
         }
       },
-      async error => {
-        if (await shouldIgnoreScheduleListenerError({
-          listenerRevision,
-          getCurrentRevision: () =>
-            ownAvailabilityListenerSlot.getRevision(),
+      error => {
+        if (shouldIgnoreScheduleListenerError({
+          listener,
+          isCurrentListener: ownAvailabilityListenerSlot.isCurrent,
           managerAccessRequired,
           managerAccessAtStart,
-          getHasManagerAccess: () => canManageSchedule.value,
-          confirmManagerAccess: () => accountSessionStore
-            .confirmScheduleManagerPermission(
-              managerPermissionToken
-            ),
           error
         })) {
           if (isFirstSnapshot) {

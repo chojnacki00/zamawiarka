@@ -55,7 +55,6 @@ import {
 } from '../src/utils/emailActionHandler.js'
 import {
   createScheduleListenerSlot,
-  createSchedulePermissionConfirmationCoordinator,
   shouldIgnoreScheduleListenerError
 } from '../src/utils/scheduleAvailabilityAccess.js'
 
@@ -1417,7 +1416,7 @@ test('zweryfikowane konto przyjmuje zaproszenie atomowo w Auth i Firestore Emula
   assert.notEqual(credential.user.uid, 'restaurant-a')
 })
 
-test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia', async () => {
+test('cztery rzeczywiste listenery kończą pięć cykli odebrania uprawnienia bez raportowania', async () => {
   const restaurantId = 'restaurant-listener-cycles'
   const employeeId = 'employee-manager'
   const otherEmployeeId = 'employee-other'
@@ -1546,17 +1545,7 @@ test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia'
   const unsubscribeCalls = Object.fromEntries(
     Object.keys(listenerQueries).map(kind => [kind, 0])
   )
-  const coordinator =
-    createSchedulePermissionConfirmationCoordinator()
-  const contextKey = `${restaurantId}:${employee.user.uid}:${profileId}`
-  let hasManagerAccess = true
-  let confirmationReads = 0
   let reportedErrors = 0
-
-  coordinator.update({
-    nextContextKey: contextKey,
-    hasManagerAccess: true
-  })
 
   const withTimeout = (promise, label) => new Promise(
     (resolve, reject) => {
@@ -1577,7 +1566,6 @@ test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia'
   const startListener = (kind, queryRef) => {
     const slot = slots.get(kind)
     const listener = slot.begin()
-    const permissionToken = coordinator.capture()
     let resolveInitial
     let resolveError
     const initial = new Promise(resolve => {
@@ -1589,31 +1577,16 @@ test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia'
     const unsubscribe = onSnapshot(
       queryRef,
       () => {
-        if (slot.isCurrent(listener)) resolveInitial()
+        if (!slot.isCurrent(listener)) return
+        slot.markSnapshotDelivered(listener)
+        resolveInitial()
       },
-      async error => {
-        const ignored = await shouldIgnoreScheduleListenerError({
-          listenerRevision: listener.revision,
-          getCurrentRevision: slot.getRevision,
+      error => {
+        const ignored = shouldIgnoreScheduleListenerError({
+          listener,
+          isCurrentListener: slot.isCurrent,
           managerAccessRequired: true,
           managerAccessAtStart: true,
-          getHasManagerAccess: () => hasManagerAccess,
-          confirmManagerAccess: () => coordinator.confirm(
-            permissionToken,
-            async () => {
-              confirmationReads += 1
-              const snapshot = await getDocFromServer(profileRef)
-              const currentPermissions =
-                snapshot.data()?.uprawnienia || {}
-              hasManagerAccess =
-                currentPermissions.can_manage_schedule === true
-              coordinator.update({
-                nextContextKey: contextKey,
-                hasManagerAccess
-              })
-              return hasManagerAccess
-            }
-          ),
           error
         })
 
@@ -1683,17 +1656,13 @@ test('cztery rzeczywiste listenery wspoldziela piec cykli odebrania uprawnienia'
       }
     })
     const grantedSnapshot = await getDocFromServer(profileRef)
-    hasManagerAccess =
-      grantedSnapshot.data()?.uprawnienia?.can_manage_schedule === true
-    coordinator.update({
-      nextContextKey: contextKey,
-      hasManagerAccess
-    })
-    assert.equal(hasManagerAccess, true)
+    assert.equal(
+      grantedSnapshot.data()?.uprawnienia?.can_manage_schedule,
+      true
+    )
   }
 
   assert.equal(reportedErrors, 0)
-  assert.equal(confirmationReads, 5)
   assert.deepEqual(unsubscribeCalls, {
     'demand-models': 5,
     'employee-availability': 5,
