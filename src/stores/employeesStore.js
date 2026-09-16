@@ -1,0 +1,157 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase.js'
+import { useAuthorizationStore } from './authorizationStore.js'
+import { isRestaurantContextCurrent } from '../utils/restaurantDataContext.js'
+import {
+  normalizeCompensation,
+  normalizePositionAssignments
+} from '../utils/employeeAssignments.js'
+
+const normalizeEmployee = (employee, id = null) => ({
+  id: id || employee?.id || null,
+  imie: String(employee?.imie || '').trim(),
+  nazwisko: String(employee?.nazwisko || '').trim(),
+  telefon: String(employee?.telefon || '').trim(),
+  email: String(employee?.email || '').trim(),
+  pin: String(employee?.pin || '').trim(),
+  aktywny: employee?.aktywny !== false,
+  archived: employee?.archived === true,
+  archivedAt: employee?.archivedAt || null,
+  employmentProfileId: employee?.employmentProfileId || null,
+  employmentPercentage: Math.min(200, Math.max(5, Number(employee?.employmentPercentage) || 100)),
+  employeeGroupIds: [...new Set(
+    (Array.isArray(employee?.employeeGroupIds) ? employee.employeeGroupIds : [])
+      .map(groupId => String(groupId || '').trim())
+      .filter(Boolean)
+  )],
+  compensation: normalizeCompensation(employee),
+  positionAssignments: normalizePositionAssignments(employee?.positionAssignments),
+  permissionProfileId: employee?.permissionProfileId || null,
+  schemaVersion: 3
+})
+
+export const useEmployeesStore = defineStore('employees', () => {
+  const employees = ref([])
+  const isLoading = ref(false)
+  let unsubscribeEmployees = null
+  let listenerUid = null
+  let listenerReadyPromise = null
+
+  const getUid = async () => (
+    useAuthorizationStore().requireRestaurantId()
+  )
+
+  const fetchEmployees = async () => {
+    const uid = await getUid()
+    if (!uid) return []
+    if (unsubscribeEmployees && listenerUid === uid) return listenerReadyPromise || employees.value
+
+    if (unsubscribeEmployees) unsubscribeEmployees()
+    listenerUid = uid
+    isLoading.value = true
+    listenerReadyPromise = new Promise(resolve => {
+      let firstSnapshot = true
+      unsubscribeEmployees = onSnapshot(
+        collection(db, 'users', uid, 'employees'),
+        snapshot => {
+          if (!isRestaurantContextCurrent(uid, useAuthorizationStore().restaurantId)) {
+            if (firstSnapshot) {
+              firstSnapshot = false
+              isLoading.value = false
+              resolve(employees.value)
+            }
+            return
+          }
+          employees.value = snapshot.docs.map(employeeSnapshot => normalizeEmployee(
+            employeeSnapshot.data(),
+            employeeSnapshot.id
+          ))
+          if (firstSnapshot) {
+            firstSnapshot = false
+            isLoading.value = false
+            resolve(employees.value)
+          }
+        },
+        error => {
+          console.error('Błąd pobierania pracowników:', error)
+          unsubscribeEmployees = null
+          listenerUid = null
+          isLoading.value = false
+          if (firstSnapshot) {
+            firstSnapshot = false
+            resolve(employees.value)
+          }
+        }
+      )
+    })
+    return listenerReadyPromise
+  }
+
+  const addEmployee = async (employeeData) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
+    const uid = await getUid()
+    if (!uid) return null
+    try {
+      const employeeRef = doc(collection(db, 'users', uid, 'employees'))
+      const normalizedEmployee = normalizeEmployee(employeeData, employeeRef.id)
+      const storedEmployee = {
+        ...normalizedEmployee,
+        id: employeeRef.id,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }
+      await setDoc(employeeRef, storedEmployee)
+      const newEmployee = { ...normalizedEmployee, id: employeeRef.id }
+      if (!unsubscribeEmployees && !employees.value.some(employee => employee.id === newEmployee.id)) employees.value.push(newEmployee)
+      return newEmployee
+    } catch (error) { throw error }
+  }
+
+  const updateEmployee = async (empId, updatedData) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
+    const uid = await getUid()
+    if (!uid) return
+    try {
+      const employeeRef = doc(db, 'users', uid, 'employees', empId)
+      const currentSnapshot = await getDoc(employeeRef)
+      const normalizedEmployee = normalizeEmployee(updatedData, empId)
+      const wasActive = currentSnapshot.data()?.aktywny !== false
+      if (wasActive !== normalizedEmployee.aktywny) {
+        const { useAccountSessionStore } = await import('./accountSessionStore.js')
+        await useAccountSessionStore().setEmployeeAccountActive({
+          employeeId: empId,
+          active: normalizedEmployee.aktywny
+        })
+      }
+      await setDoc(employeeRef, {
+        ...normalizedEmployee,
+        id: empId,
+        createdAt: currentSnapshot.data()?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: false })
+      if (!unsubscribeEmployees) {
+        const index = employees.value.findIndex(e => e.id === empId)
+        if (index !== -1) employees.value[index] = normalizedEmployee
+      }
+    } catch (error) { throw error }
+  }
+
+  const deleteEmployee = async (empId) => {
+    useAuthorizationStore().requirePermission('can_manage_employees')
+    const { useAccountSessionStore } = await import('./accountSessionStore.js')
+    return useAccountSessionStore().archiveEmployeeFromTeam(empId)
+  }
+
+  const clearSensitiveData = () => {
+    if (unsubscribeEmployees) unsubscribeEmployees()
+    unsubscribeEmployees = null
+    listenerUid = null
+    listenerReadyPromise = null
+    employees.value = []
+    isLoading.value = false
+  }
+
+  return { employees, isLoading, fetchEmployees, addEmployee, updateEmployee, deleteEmployee, clearSensitiveData }
+})

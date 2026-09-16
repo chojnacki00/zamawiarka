@@ -1,704 +1,701 @@
 <template>
   <!-- =========================
-       LOGIN commit2
+       EKRAN ŁADOWANIA (WIDOCZNY PODCZAS WERYFIKACJI FIREBASE)
   ========================== -->
-   <div
-    v-if="!isLoggedIn"
-    class="login-screen"
-  >
-    <form
-      class="login-card"
-      @submit.prevent="handleLogin"
-      autocomplete="on"
-    >
-      <h1 class="login-title">GastroManager</h1>
-      <div class="login-subtitle">Zaloguj się do swojej restauracji</div>
-
-      <div class="supplier-form-group" style="margin-top:20px;">
-  <label class="supplier-form-label" for="login-email">E-mail</label>
-  <input
-    id="login-email"
-    v-model="authForm.email"
-    type="email"
-    class="login-input"
-    placeholder="Wpisz e-mail"
-    name="email"
-    autocomplete="username"
-    autocapitalize="none"
-    autocorrect="off"
-    spellcheck="false"
-  />
-</div>
-
-      <div class="supplier-form-group">
-        <label class="supplier-form-label" for="login-password">Hasło</label>
-        <input
-          id="login-password"
-          v-model="authForm.password"
-          type="password"
-          class="login-input"
-          placeholder="Wpisz hasło"
-          name="password"
-          autocomplete="current-password"
-          autocapitalize="none"
-          autocorrect="off"
-          spellcheck="false"
-        />
-      </div>
-
-      <div
-        v-if="authError"
-        style="margin-top:10px; font-size:14px; color:#dc2626; font-weight:600;"
-      >
-        {{ authError }}
-      </div>
-
-  <button
-  class="login-button"
-  type="submit"
-  :disabled="isLoggingIn"
-  :class="{ 'login-button-loading': isLoggingIn }"
->
-  <span v-if="!isLoggingIn">Zaloguj</span>
-  <span v-else class="login-button-content">
-    <span class="login-spinner"></span>
-    <span>Logowanie...</span>
-  </span>
-</button>
-    </form>
+  <div v-if="!isAppReady" class="splash-screen">
+    <div class="splash-spinner"></div>
+    <div class="splash-text-container">
+      <span class="splash-subtitle">Wczytywanie...</span>
+      <h1 class="splash-title">GastroManager</h1>
+    </div>
   </div>
-
   <!-- =========================
-       APP / KONTENER GŁÓWNY
+       WŁAŚCIWA APLIKACJA (PO WERYFIKACJI)
   ========================== -->
-  <div
-  v-else
-  class="app"
->
+  <template v-else>
+    <!-- =========================
+         ROUTER: WIDOK LOGOWANIA (Tylko gdy nikt nie jest zalogowany)
+    ========================== -->
+    <router-view v-if="isPublicAuthRoute || (!isLoggedIn && !employeeAuthStore?.currentEmployee)" />
 
-<div v-if="!isDataLoaded" style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
-    
-    <div class="login-spinner" style="border-top-color: #2563eb; width: 48px; height: 48px; border-width: 4px; margin-bottom: 24px;"></div>
-    
-    <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #111827; text-align: center; letter-spacing: 0.5px;">
-      Pobieranie danych...
-    </h2>
-    <div style="font-size: 15px; color: #6b7280; margin-top: 8px; text-align: center;">
-      Proszę czekać, ładuję dane
-    </div>
-
-  </div>
-  
-
-
-  <div v-else>
-    </div>
-
-
-  
-
-   <!-- =========================
-     HOME
-========================== -->
-<div v-if="currentScreen === 'home'" class="home-screen-ios">
-  <div class="home-header-ios">
-
-    <button 
-      @click="currentScreen = 'settings'"
-      style="position: absolute; top: 97px; right: -1px; background: none; border: none; font-size: 35px; cursor: pointer; padding: 10px;"
-      aria-label="Ustawienia"
+    <!-- =========================
+         APP / KONTENER GŁÓWNY (Dla Managera LUB Pracownika)
+    ========================== -->
+    <div
+      v-else
+      class="app"
     >
-      ⚙️
-    </button>
 
-
-    <h1 class="home-title-ios">GastroManager</h1>
-
-    <div class="home-version-ios">wersja {{ appVersion }}</div>
-
-        <div
-      v-if="currentCompany"
-      class="home-account-ios"
-    >
-      <span class="home-account-icon">👤</span>
-      <span>Konto:</span>
-      <strong translate="no" class="notranslate">{{ currentCompany.companyName }}</strong>
-    </div>
-  </div>
-
-  <div class="home-content-ios">
-    
-    <!-- GŁÓWNE MENU APLIKACJI (SIATKA KAFELKÓW) -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; max-width: 380px; margin: 40px auto 30px auto; padding: 0 20px; box-sizing: border-box;">
-      
-      <!-- KAFELEK 1: ZAMAWIARKA -->
-      <button
-        v-if="aktywneModuly.includes('zamawiarka')"
-        @click="openZamawiarkaMenuFromHome"
-        class="ios-menu-tile"
-        style="margin: 0; min-height: 140px; box-sizing: border-box;"
-      >
-        <div class="ios-menu-icon ios-menu-icon-blue">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="9" cy="21" r="1"></circle>
-            <circle cx="20" cy="21" r="1"></circle>
-            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-          </svg>
-        </div>
-        <div class="ios-menu-title" style="font-size: 15px;">Zamawiarka</div>
-      </button>
-
-      <!-- KAFELEK 2: RENTOWNOŚĆ MENU -->
-      <button
-        v-if="aktywneModuly.includes('rentownosc')"
-        @click="currentScreen = 'receptury'; recepturyView = 'dashboard'"
-        class="ios-menu-tile"
-        style="margin: 0; min-height: 140px; box-sizing: border-box;"
-      >
-        <div class="ios-menu-icon ios-menu-icon-green">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
-            <path d="M7 2v20"/>
-            <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
-          </svg>
-        </div>
-        <div class="ios-menu-title" style="font-size: 15px;">Rentowność Menu</div>
-      </button>
-
-
-
-      
-
-       
-
-
-
-
-
-    </div>
-
-        <!-- WYLOGUJ -->
-    <button
-      @click="handleLogout"
-      class="home-logout-ios"
-    >
-      <span class="home-logout-icon">⏻</span>
-      <span>Wyloguj</span>
-    </button>
-
-    <div class="home-footer-ios">
-      GastroManager © 2026
-    </div>
-
-  </div>
-</div>
-
-
-<div v-if="currentScreen === 'settings'" class="screen-with-topbar">
-  <div class="zamawiarka-menu-topbar">
-    <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">←</button>
-    <h2 class="zamawiarka-menu-title">USTAWIENIA APLIKACJI</h2>
-  </div>
-
-  <div class="scroll-area" style="padding: 20px;">
-    <button 
-      @click="eksportujBackup" 
-      class="item-card" 
-      style="width: 100%; text-align: center; margin-bottom: 15px; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
-    >
-      💾 Utwórz kopię zapasową
-    </button>
-
-    <button 
-      @click="triggerFileInput"
-      class="item-card" 
-      style="width: 100%; text-align: center; cursor: pointer; padding: 15px; font-size: 16px; font-weight: 600; color: #111827; display: block;"
-    >
-      📂 Przywróć dane z pliku
-    </button>
-
-    <input 
-      type="file" 
-      ref="backupInputRef" 
-      style="display: none" 
-      accept=".json" 
-      @change="wczytajBackup" 
-    />
-  </div>
-</div>
-
-
-
-<div v-if="currentScreen === 'receptury' && recepturyView === 'dashboard'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="currentScreen = 'home'" class="zamawiarka-menu-back">
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">RENTOWNOŚĆ MENU</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
+      <div v-if="!isDataLoaded" style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
-          <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średni FC Menu</div>
-            <div style="font-size: 24px; font-weight: 800; color: #111827; margin-top: 4px;">{{ dashboardMetrics.avgFc }}%</div>
-          </div>
-          <div class="item-card" style="padding: 14px; text-align: center;">
-            <div style="font-size: 12px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Średnia Marża</div>
-            <div style="font-size: 24px; font-weight: 800; color: #16a34a; margin-top: 4px;">{{ dashboardMetrics.avgMargin }}%</div>
-          </div>
-          
-          <div v-if="dashboardMetrics.exceededCount > 0" class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fef2f2; border-color: #fca5a5;">
-            <span style="font-size: 24px;">🚨</span>
-            <div style="text-align: left;">
-              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ dashboardMetrics.exceededCount }} pozycje</div>
-              <div style="font-size: 12px; color: #991b1b; font-weight: 700;">przekroczyły próg Food Cost!</div>
-            </div>
-          </div>
-          <div v-else class="item-card" style="padding: 14px; text-align: center; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 10px; background: #f0fdf4; border-color: #bbf7d0;">
-            <span style="font-size: 24px;">✅</span>
-            <div style="text-align: left;">
-              <div style="font-size: 18px; font-weight: 800; color: #16a34a;">Menu w normie</div>
-              <div style="font-size: 12px; color: #166534; font-weight: 700;">Wszystkie pozycje trzymają FC.</div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardWorstFC.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #dc2626; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🔻</span> Największe odchylenia FC
-          </h3>
-          <div v-for="item in dashboardWorstFC" :key="item.id" class="item-card" style="border-left: 4px solid #dc2626; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
-                Cel: {{ item.target }}% | Odchylenie: <span style="color: #dc2626; font-weight: 700;">+{{ item.deviation.toFixed(1) }}%</span>
-              </div>
-            </div>
-            <div style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
-              {{ item.fc.toFixed(1) }}%
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardGoldenShots.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #d97706; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🏆</span> Złote strzały (Polecaj)
-          </h3>
-          <div v-for="item in dashboardGoldenShots" :key="item.id" class="item-card" style="border-left: 4px solid #d97706; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #16a34a; font-weight: 700; margin-top: 2px;">FC w normie: {{ item.fc.toFixed(1) }}%</div>
-            </div>
-            <div style="text-align: right; margin-left: 8px;">
-              <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Zysk</div>
-              <div style="color: #d97706; font-weight: 800; font-size: 15px;">{{ item.zysk.toFixed(2) }} zł</div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardBestFC.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #16a34a; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🛡️</span> Największy bufor (Najniższy FC)
-          </h3>
-          <div v-for="item in dashboardBestFC" :key="item.id" class="item-card" style="border-left: 4px solid #16a34a; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="min-width: 0;">
-              <div style="font-weight: 800; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }}</div>
-              <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-top: 2px;">
-                Cel: {{ item.target }}% | <span style="color: #16a34a; font-weight: 700;">-{{ item.deviation.toFixed(1) }}%</span> poniżej progu
-              </div>
-            </div>
-            <div style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 14px; margin-left: 8px;">
-              {{ item.fc.toFixed(1) }}%
-            </div>
-          </div>
-        </div>
-
-        <div v-if="dashboardCategoryHealth.length > 0" style="margin-bottom: 24px;">
-          <h3 style="font-size: 15px; color: #3b82f6; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">📊</span> Kondycja kategorii
-          </h3>
-          <div v-for="cat in dashboardCategoryHealth" :key="cat.name" class="item-card" :style="{ borderLeft: cat.isExceeded ? '4px solid #dc2626' : '4px solid #16a34a', padding: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }">
-            <div style="font-weight: 800; font-size: 14px; color: #111827;">{{ cat.name }}</div>
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <div style="font-size: 11px; color: #64748b; font-weight: 600; text-align: right;">Cel:<br>{{ cat.target }}%</div>
-              <div :style="{ background: cat.isExceeded ? '#fee2e2' : '#dcfce7', color: cat.isExceeded ? '#dc2626' : '#16a34a', padding: '4px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '14px', width: '45px', textAlign: 'center' }">
-                {{ cat.avgFc }}%
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+        <div class="login-spinner" style="border-top-color: #2563eb; width: 48px; height: 48px; border-width: 4px; margin-bottom: 24px;"></div>
         
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
-        </button>
-
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">📊</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Analiza</span>
-        </button>
-
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
-        </button>
-
-      </div>
-
-    </div>
-
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'lista'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">MENU</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
-
-        <!-- dodaje danie do menu + lupka wyszukiwarki -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px;">
-          
-          <h3 v-if="!showMenuSearch" style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
-          
-          <div v-if="showMenuSearch" style="display: flex; align-items: center; flex: 1; gap: 10px; margin-right: 12px;">
-            <button @click="showMenuSearch = false; menuSearch = ''" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; padding: 0;">
-              ←
-            </button>
-            <input 
-              v-model="menuSearch" 
-              type="text" 
-              placeholder="Szukaj pozycji menu..." 
-              style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #111827; font-weight: 600; font-size: 15px; outline: none;"
-            />
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-            <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
-              🔍
-            </button>
-            <button @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
-              +
-            </button>
-          </div>
-        </div>
-
-        <!-- Lista kategorii -->
-        <div v-if="menuSearch" style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px;">
-          <div v-if="dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase())).length === 0" style="text-align: center; color: #6b7280; font-size: 14px; margin-top: 20px;">
-            Brak dań o nazwie "{{ menuSearch }}"
-          </div>
-          
-          <div
-            v-for="item in dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
-            :key="item.id" 
-            @click="openDishDetails(item)"
-            class="item-card" 
-            style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex-shrink: 0;"
-          >
-            <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-              <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                {{ item.name }}
-              </div>
-              <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-              </div>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-              <div 
-                :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
-                :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
-              ></div>
-              <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="!menuSearch" style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
-          <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
-            
-          <button 
-              @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
-              class="item-card" 
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#f1f5f9' }"
-            >
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div 
-                  :style="{ 
-                    width: '10px', 
-                    height: '10px', 
-                    borderRadius: '50%', 
-                    backgroundColor: dynamicMenuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? '#ef4444' : '#22c55e') 
-                  }"
-                  :title="dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? 'Przekroczony Food Cost (z uwzgl. tolerancji)' : 'Wszystko w normie'"
-                ></div>
-                <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
-              </div>
-
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
-                  {{ dynamicMenuItems.filter(item => item.category === cat.name).length }} pozycji
-                </span>
-                <span style="font-size: 16px; color: #2563eb;">
-                  {{ selectedCategory === cat.name ? '▲' : '▼' }}
-                </span>
-              </div>
-            </button>
-
-                        <div v-if="selectedCategory === cat.name" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              
-                            <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
-                <div style="display: flex; gap: 16px;">
-                  <div>
-                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
-                    <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
-                      {{ currentCategoryFC }}%
-                    </div>
-                  </div>
-                  <div style="width: 1px; background: #cbd5e1;"></div>
-                  <div>
-                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #1e293b;">
-                      {{ cat.targetFC || fcSettings.target }}%
-                    </div>
-                  </div>
-                </div>
-
-                                <button 
-                  @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
-                  style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
-                >
-                  Sortuj
-                   wg FC
-                  <span style="font-size: 14px; line-height: 1;">
-                    {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
-                  </span>
-                </button>
-              </div>
-
-                            <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-                <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
-                  Brak dań w tej kategorii.
-                </div>
-
-               <div
-                  v-for="item in filteredMenuItems.filter(i => !menuSearch || i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
-                  :key="item.id" 
-                  @click="openDishDetails(item)"
-                  class="item-card" 
-                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
-                >
-                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                      {{ item.name }}
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-                    </div>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-                    <div 
-                      :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
-                      :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
-                    ></div>
-                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-                    </div>
-                  </div>
-
-
-
-
-
-
-                  
-                  
-
-
-
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="dynamicMenuItems.some(i => !i.category)" style="display:flex; flex-direction:column; gap:8px;">
-            <button 
-              @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
-              class="item-card" 
-              :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === 'brak_kategorii' ? '2px solid #64748b' : '1px solid #e2e8f0', backgroundColor: selectedCategory === 'brak_kategorii' ? '#f8fafc' : '#f1f5f9' }"
-            >
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
-                <span style="font-size: 16px; color: #475569; font-style: italic;">Bez kategorii</span>
-              </div>
-
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
-                  {{ dynamicMenuItems.filter(item => !item.category).length }} pozycji
-                </span>
-                <span style="font-size: 16px; color: #64748b;">
-                  {{ selectedCategory === 'brak_kategorii' ? '▲' : '▼' }}
-                </span>
-              </div>
-            </button>
-
-            <div v-if="selectedCategory === 'brak_kategorii'" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-                <div
-                  v-for="item in dynamicMenuItems.filter(i => !i.category)" 
-                  :key="item.id" 
-                  @click="openDishDetails(item)"
-                  class="item-card" 
-                  style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
-                >
-                  <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
-                    <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
-                      {{ item.name }}
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
-                      Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
-                    </div>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-                    <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
-                      {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-
-
-        </div>
-
-      </div> 
-
-
-
-      
-
-
-
-
-
-
-
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">📋</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Menu</span>
-        </button>
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
-        </button>
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
-        </button>
-      </div>
-    </div>
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'form'" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; background: #f8fafc; padding-bottom: 100px;">
-      
-      <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <button @click="closeDishForm" style="background: none; border: none; color: #64748b; font-size: 24px; font-weight: 700; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Wróć do listy">
-          ←
-        </button>
-        <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
-          {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
+        <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #111827; text-align: center; letter-spacing: 0.5px;">
+          Pobieranie danych...
         </h2>
-        <button @click="saveDishForm" style="background: transparent; border: none; color: #22c55e; font-size: 28px; font-weight: bold; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Zapisz">
-          ✓
+        <div style="font-size: 15px; color: #6b7280; margin-top: 8px; text-align: center;">
+          Proszę czekać, ładuję dane
+        </div>
+
+      </div>
+      
+      <div
+        v-else-if="restaurantDataLoadError"
+        style="min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center;"
+      >
+        <div style="font-size: 38px;" aria-hidden="true">⚠️</div>
+        <h2 style="margin: 0; color: #111827; font-size: 21px;">Nie udało się wczytać danych</h2>
+        <p style="max-width: 420px; margin: 0; color: #64748b; line-height: 1.5;">
+          {{ restaurantDataLoadError }}
+        </p>
+        <button
+          type="button"
+          style="min-height: 46px; padding: 0 20px; border: 0; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 16px; font-weight: 700; cursor: pointer;"
+          @click="retryRestaurantDataLoad"
+        >
+          Spróbuj ponownie
         </button>
       </div>
 
-      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+      <div v-else style="height: 100%;">
+        <!-- ROUTER: WIDOKI ZALOGOWANEGO UŻYTKOWNIKA -->
+        <router-view />
+      </div>
+
+     
+
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'lista'" class="screen-with-topbar">
         
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Nazwa dania w karcie</label>
-          <input v-model="editingDish.name" type="text" placeholder="Wpisz nazwę..." autocomplete="off" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 600; color: #1e293b; box-sizing: border-box; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+        <div class="zamawiarka-menu-topbar">
+          <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+            ←
+          </button>
+          <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">MENU</h2>
         </div>
 
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Kategoria</label>
-          <select v-model="editingDish.category" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fafafa; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%2364748b%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; font-size: 15px; font-weight: 600; color: #1e293b; box-sizing: border-box; appearance: none; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#fafafa'">
-            <option value="" disabled selected>Wybierz kategorię...</option>
-            <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
-          </select>
-        </div>
+        <div class="scroll-area" style="padding: 0 16px; display: flex; flex-direction: column;">
 
-       <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
-          <div>
-            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
-            <input 
-              v-model.number="editingDish.cena" 
-              type="number" 
-              step="0.01" 
-              @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
-              @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
-              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
-              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
-              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+          <!-- dodaje danie do menu + lupka wyszukiwarki -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px;">
+            
+            <h3 v-if="!showMenuSearch" style="font-size: 18px; color: #111827; margin: 0;">Lista dań</h3>
+            
+            <div v-if="showMenuSearch" style="display: flex; align-items: center; flex: 1; gap: 10px; margin-right: 12px;">
+              <button @click="showMenuSearch = false; menuSearch = ''" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; padding: 0;">
+                ←
+              </button>
+              <input 
+                v-model="menuSearch" 
+                type="text" 
+                placeholder="Szukaj pozycji menu..." 
+                style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #111827; font-weight: 600; font-size: 15px; outline: none;"
+              />
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+              <button v-if="!showMenuSearch" @click="showMenuSearch = true" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Szukaj">
+                🔍
+              </button>
+              <button v-if="authorizationStore.hasPermission('can_edit_menu')" @click="openDishForm()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj danie">
+              +
+              </button>
+            </div>
           </div>
-          <div>
-            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">VAT (%)</label>
-            <input 
-              v-model.number="editingDish.vat" 
-              type="number" 
-              placeholder="np. 8"
-              @focus="editingDish.vat === 0 ? editingDish.vat = '' : null"
-              @blur="editingDish.vat === '' ? editingDish.vat = 0 : null"
-              style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 700; color: #1e293b; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
-              onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
-              onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+
+          <!-- Lista kategorii -->
+          <div v-if="menuSearch" style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px;">
+            <div v-if="dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase())).length === 0" style="text-align: center; color: #6b7280; font-size: 14px; margin-top: 20px;">
+              Brak dań o nazwie "{{ menuSearch }}"
+            </div>
+            
+            <div
+              v-for="item in dynamicMenuItems.filter(i => i.name && i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
+              :key="item.id" 
+              @click="openDishDetails(item)"
+              class="item-card" 
+              style="padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex-shrink: 0;"
+            >
+              <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                  {{ item.name }}
+                </div>
+                <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                  Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                </div>
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                <div 
+                  :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                  :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
+                ></div>
+                <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                  {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        
-        <div v-if="suggestedDishPriceBrutto > 0" style="font-size: 12px; color: #64748b; font-weight: 600; margin-top: 8px; text-align: left; padding-left: 2px;">
-          💡 Sugerowana cena brutto: <span style="color: #2563eb; font-weight: 700;">{{ suggestedDishPriceBrutto }},00 zł</span>
+
+          <div v-if="!menuSearch" style="display:flex; flex-direction:column; gap:10px; margin-top: 20px;">
+            <div v-for="cat in dishCategories" :key="cat.id" style="display:flex; flex-direction:column; gap:8px;">
+              
+            <button 
+                @click="selectedCategory = selectedCategory === cat.name ? null : cat.name" 
+                class="item-card" 
+                :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: selectedCategory === cat.name ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: selectedCategory === cat.name ? '#eff6ff' : '#f1f5f9' }"
+              >
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div 
+                    :style="{ 
+                      width: '10px', 
+                      height: '10px', 
+                      borderRadius: '50%', 
+                      backgroundColor: dynamicMenuItems.filter(i => i.category === cat.name).length === 0 ? '#d1d5db' : (dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? '#ef4444' : '#22c55e') 
+                    }"
+                    :title="dynamicMenuItems.some(i => i.category === cat.name && isDishFcExceeded(i)) ? 'Przekroczony Food Cost (z uwzgl. tolerancji)' : 'Wszystko w normie'"
+                  ></div>
+                  <span style="font-size: 16px; color: #111827;">{{ cat.name }}</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                    {{ dynamicMenuItems.filter(item => item.category === cat.name).length }} pozycji
+                  </span>
+                  <span style="font-size: 16px; color: #2563eb;">
+                    {{ selectedCategory === cat.name ? '▲' : '▼' }}
+                  </span>
+                </div>
+              </button>
+
+                          <div v-if="selectedCategory === cat.name" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                
+                              <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                  <div style="display: flex; gap: 16px;">
+                    <div>
+                      <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Rzecz.</div>
+                      <div :style="{ fontSize: '16px', fontWeight: '800', color: currentCategoryFC > (cat.targetFC || fcSettings.target) ? '#dc2626' : '#16a34a' }">
+                        {{ currentCategoryFC }}%
+                      </div>
+                    </div>
+                    <div style="width: 1px; background: #cbd5e1;"></div>
+                    <div>
+                      <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">FC Cel</div>
+                      <div style="font-size: 16px; font-weight: 800; color: #1e293b;">
+                        {{ cat.targetFC || fcSettings.target }}%
+                      </div>
+                    </div>
+                  </div>
+
+                                  <button 
+                    @click="fcSortOrder = fcSortOrder === 'desc' ? 'asc' : 'desc'"
+                    style="display: flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #cbd5e1; color: #3b82f6; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
+                  >
+                    Sortuj
+                     wg FC
+                    <span style="font-size: 14px; line-height: 1;">
+                      {{ fcSortOrder === 'desc' ? '↓' : '↑' }}
+                    </span>
+                  </button>
+                </div>
+
+                              <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                  <div v-if="filteredMenuItems.length === 0" style="text-align: center; padding: 20px; color: #6b7280; font-size: 13px;">
+                    Brak dań w tej kategorii.
+                  </div>
+
+                 <div
+                    v-for="item in filteredMenuItems.filter(i => !menuSearch || i.name.toLowerCase().includes(menuSearch.toLowerCase()))" 
+                    :key="item.id" 
+                    @click="openDishDetails(item)"
+                    class="item-card" 
+                    style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                  >
+                    <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                      <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                        {{ item.name }}
+                      </div>
+                      <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                        Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                      <div 
+                        :title="'FC: ' + ((item.cena && item.cena > 0) ? ((item.koszt / item.cena) * 100).toFixed(1) : 0) + '%'" 
+                        :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isDishFcExceeded(item) ? '#ef4444' : '#22c55e', flexShrink: 0 }"
+                      ></div>
+                      <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                        {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="dynamicMenuItems.some(i => !i.category)" style="display:flex; flex-direction:column; gap:8px;">
+              <button 
+                @click="selectedCategory = selectedCategory === 'brak_kategorii' ? null : 'brak_kategorii'" 
+                class="item-card" 
+                :class="{ 'item-card-active': selectedCategory === 'brak_kategorii' }"
+                :style="{ padding: '16px', textAlign: 'left', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }"
+              >
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #94a3b8;"></div>
+                  <span style="font-size: 16px; color: #111827;">Bez kategorii</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="color: #6b7280; font-size: 13px; font-weight: 400;">
+                    {{ dynamicMenuItems.filter(item => !item.category).length }} pozycji
+                  </span>
+                  <span style="font-size: 16px; color: #64748b;">
+                    {{ selectedCategory === 'brak_kategorii' ? '▲' : '▼' }}
+                  </span>
+                </div>
+              </button>
+
+              <div v-if="selectedCategory === 'brak_kategorii'" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                  <div
+                    v-for="item in dynamicMenuItems.filter(i => !i.category)" 
+                    :key="item.id" 
+                    @click="openDishDetails(item)"
+                    class="item-card" 
+                    style="padding:14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 8px; flex-shrink: 0;"
+                  >
+                    <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 12px;">
+                      <div class="towary-col-name" style="font-size: 16px; color: #111827; font-weight: 700;">
+                        {{ item.name }}
+                      </div>
+                      <div style="font-size: 12px; color: #6b7280; font-weight: 600;">
+                        Koszt: {{ Number(item.koszt || 0).toFixed(2) }} zł
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                      <div class="towary-col-price" style="font-size: 18px; font-weight: 800; color: #111827; min-width: 60px; text-align: right;">
+                        {{ Number(item.cena || 0).toFixed(2) }} <span style="font-size: 12px; font-weight: 600; color: #6b7280;">zł</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div> 
+
+        <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+          <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px;">📋</span>
+            <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Menu</span>
+          </button>
+          <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+          </button>
+          <button v-if="authorizationStore.hasPermission('can_edit_menu')" @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+           <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">⚙️</span>
+           <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Ustawienia</span>
+          </button>
         </div>
       </div>
 
-      <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">Składniki receptury</h3>
-          <button @click="openIngredientModal()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj składnik">
-            +
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'form'" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; background: #f8fafc; padding-bottom: 100px;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <button @click="closeDishForm" style="background: none; border: none; color: #64748b; font-size: 24px; font-weight: 700; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Wróć do listy">
+            ←
+          </button>
+          <h2 style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 800;">
+            {{ editingDish?.id && menuItems.find(i => i.id === editingDish?.id) ? 'Edycja dania' : 'Nowe danie' }}
+          </h2>
+          <button @click="saveDishForm" style="background: transparent; border: none; color: #22c55e; font-size: 28px; font-weight: bold; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Zapisz">
+            ✓
           </button>
         </div>
 
-        <div v-if="!editingDish.recipe || editingDish.recipe.length === 0" style="text-align: center; padding: 20px; color: #94a3b8; font-weight: 600; border: 1px dashed #cbd5e1; border-radius: 12px; font-size: 14px;">
-          Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
+        <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+          
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Nazwa dania w karcie</label>
+            <input v-model="editingDish.name" type="text" placeholder="Wpisz nazwę..." autocomplete="off" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 600; color: #1e293b; box-sizing: border-box; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Kategoria</label>
+            <select v-model="editingDish.category" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fafafa; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%2364748b%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; font-size: 15px; font-weight: 600; color: #1e293b; box-sizing: border-box; appearance: none; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#ffffff'" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#fafafa'">
+              <option value="" disabled selected>Wybierz kategorię...</option>
+              <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
+            </select>
+          </div>
+
+         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Cena brutto (zł)</label>
+              <input 
+                v-model.number="editingDish.cena" 
+                type="number" 
+                step="0.01" 
+                @focus="editingDish.cena === 0 ? editingDish.cena = '' : null"
+                @blur="editingDish.cena === '' ? editingDish.cena = 0 : null"
+                style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 18px; font-weight: 800; color: #111827; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
+                onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+            </div>
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">VAT (%)</label>
+              <input 
+                v-model.number="editingDish.vat" 
+                type="number" 
+                placeholder="np. 8"
+                @focus="editingDish.vat === 0 ? editingDish.vat = '' : null"
+                @blur="editingDish.vat === '' ? editingDish.vat = 0 : null"
+                style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fafafa; font-size: 16px; font-weight: 700; color: #1e293b; box-sizing: border-box; text-align: center; outline: none; transition: all 0.2s;" 
+                onfocus="this.style.borderColor='#3b82f6'; this.style.background='#ffffff'" 
+                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#fafafa'">
+            </div>
+          </div>
+          
+          <div v-if="suggestedDishPriceBrutto > 0" style="font-size: 12px; color: #64748b; font-weight: 600; margin-top: 8px; text-align: left; padding-left: 2px;">
+            💡 Sugerowana cena brutto: <span style="color: #2563eb; font-weight: 700;">{{ suggestedDishPriceBrutto }},00 zł</span>
+          </div>
         </div>
 
-       <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="background: #ffffff; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">Składniki receptury</h3>
+            <button @click="openIngredientModal()" style="background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj składnik">
+              +
+            </button>
+          </div>
+
+          <div v-if="!editingDish.recipe || editingDish.recipe.length === 0" style="text-align: center; padding: 20px; color: #94a3b8; font-weight: 600; border: 1px dashed #cbd5e1; border-radius: 12px; font-size: 14px;">
+            Brak składników. Kliknij przycisk, aby dodać pierwszy surowiec.
+          </div>
+
+         <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+            <div
+              v-for="(ing, index) in editingDish.recipe"
+              :key="ing.id"
+              @click="editRecipeIngredient(ing, index)"
+              class="item-card"
+              style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
+            >
+              <div style="min-width: 0;">
+                <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
+              </div>
+              <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
+                {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
+              </div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+              <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Całkowity koszt:</div>
+              <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ calculateTotalRecipeCost().toFixed(2) }} <span style="font-size: 13px; color: #64748b;">zł</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showIngredientModal" class="supplier-modal-overlay" style="z-index: 9999; padding-top: 60px;">
+          <div class="supplier-modal-card" style="display: flex; flex-direction: column; max-height: 85vh; padding: 20px;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 class="supplier-modal-title" style="margin: 0; font-size: 18px;">
+                {{ selectedIngredientTowar ? 'PODAJ ILOŚĆ' : 'WYBIERZ SUROWIEC' }}
+              </h3>
+              <button @click="closeIngredientModal" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
+            </div>
+
+            <div v-if="!selectedIngredientTowar" style="display: flex; flex-direction: column; min-height: 0; flex: 1;">
+              <input
+                v-model="ingredientSearch"
+                type="text"
+                placeholder="Szukaj towaru po nazwie..."
+                class="towary-search-input"
+                style="margin-bottom: 12px; flex-shrink: 0;"
+              />
+              
+              <div class="scroll-area" style="padding-bottom: 20px;">
+                <div v-if="filteredIngredientTowary.length === 0" style="text-align: center; color: #6b7280; font-size: 13px; margin-top: 20px;">
+                  Brak wyników wyszukiwania
+                </div>
+                
+                <div
+                  v-for="item in filteredIngredientTowary"
+                  :key="item.id"
+                  @click="selectIngredient(item)"
+                  class="towary-row-fixed"
+                  style="grid-template-columns: 1fr auto; cursor: pointer; margin-bottom: 8px; min-height: unset; padding: 12px;"
+                >
+                  <div style="min-width: 0;">
+                    <div class="towary-col-name" style="font-size: 15px;">{{ item.name }}</div>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ item.supplier || 'Brak hurtowni' }}</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div class="towary-col-price" style="font-size: 15px;">{{ Number(item.netPrice || 0).toFixed(2) }} zł</div>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">za 1 {{ item.unit }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else style="display: flex; flex-direction: column; gap: 16px;">
+              <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ selectedIngredientTowar.name }}</div>
+                <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Cena netto: {{ Number(selectedIngredientTowar.netPrice || 0).toFixed(2) }} zł / {{ selectedIngredientTowar.unit }}</div>
+              </div>
+
+              <div class="supplier-form-group">
+                <label class="supplier-form-label">Zużycie na porcję (w: {{ selectedIngredientTowar.unit }})</label>
+                <input
+                  v-model.number="ingredientQty"
+                  type="number"
+                  step="0.001"
+                  placeholder="0.000"
+                  class="supplier-form-input"
+                />
+              </div>
+
+              <div class="supplier-modal-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+                <button 
+                  v-if="editingRecipeIndex !== null" 
+                  @click="removeIngredientFromRecipe" 
+                  style="width: 48px; flex-shrink: 0; background: #fee2e2; border: none; border-radius: 10px; color: #dc2626; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                >
+                  🗑️
+                </button>
+                
+                <button 
+                  @click="goBackToIngredientList" 
+                  class="supplier-cancel-button" 
+                  style="flex: 1;" 
+                >
+                  {{ editingRecipeIndex !== null ? 'Anuluj' : 'Wróć' }}
+                </button>
+                
+                <button 
+                  @click="saveIngredientToRecipe" 
+                  class="supplier-save-button" 
+                  style="flex: 1;"
+                >
+                  {{ editingRecipeIndex !== null ? 'Zapisz' : 'Dodaj' }}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
+        
+        <div class="zamawiarka-menu-topbar">
+          <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
+            ←
+          </button>
+          <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">USTAWIENIA</h2>
+        </div>
+
+        <div class="scroll-area" style="padding: 0 16px;">
+          
+          <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px; text-align: center;">Cele i alarmy</h3>
+          
+          <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
+            <div class="supplier-form-group">
+              <label class="supplier-form-label" style="color: #0284c7;"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
+              <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
+            </div>
+
+            <div class="supplier-form-group" style="margin-bottom: 0;">
+              <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px; color: #0284c7;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
+              <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
+            </div>
+
+            <button v-if="isSettingsDirty" @click="saveSettings" style="margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #28a745; color: white; font-weight: 700; cursor: pointer;">
+              ✅ Zapisz zmiany
+            </button>
+          </div>
+
+              <!--dodaje kategorie dania-->
+          <div style="position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; margin-top: 10px;">
+            <h3 style="font-size: 16px; color: #111827; margin: 0; text-align: center;">Kategorie menu</h3>
+            <button @click="openDishCategoryForm" style="position: absolute; right: 0; background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
+              +
+            </button>
+          </div>
+          
+          <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
+            <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; align-items: center; position: relative;">
+              <div style="flex: 1; text-align: center;">
+                <div style="font-weight: 600;">{{ cat.name }}</div>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
+                  Cel FC: <strong style="color: #111827;">{{ cat.targetFC ? cat.targetFC + '%' : 'wg ogólnych ustawień' }}</strong>
+                </div>
+              </div>
+              <button @click="editDishCategory(cat)" class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px; position: absolute; right: 12px;">✏️</button>
+            </div>
+          </div>
+
+          <div v-if="showDishCategoryForm" class="supplier-modal-overlay">
+          <div class="supplier-modal-card">
+            <h3 class="supplier-modal-title">
+              {{ dishCategoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
+            </h3>
+
+            <div class="supplier-form-group">
+              <label class="supplier-form-label">Nazwa kategorii</label>
+              <input
+                v-model="dishCategoryForm.name"
+                type="text"
+                placeholder="Np. Przystawki, Zupy"
+                class="supplier-form-input"
+              />
+            </div>
+
+            <div class="supplier-form-group">
+              <label class="supplier-form-label">Indywidualny Food Cost (%)</label>
+              <input
+                v-model="dishCategoryForm.targetFC"
+                type="number"
+                placeholder="wg ogólnych ustawień"
+                class="supplier-form-input"
+              />
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+                Aktualnie używany cel: 
+                <strong style="color: #111827;">{{ dishCategoryForm.targetFC ? dishCategoryForm.targetFC + '% (własny)' : fcSettings.target + '% (ogólny)' }}</strong>
+              </div>
+            </div>
+
+            <div class="supplier-modal-actions">
+              <button
+                v-if="dishCategoryFormMode === 'edit'"
+                @click="deleteDishCategory"
+                style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
+              >
+                Usuń
+              </button>
+
+              <button @click="closeDishCategoryForm" class="supplier-cancel-button">
+                Anuluj
+              </button>
+
+              <button @click="saveDishCategory" class="supplier-save-button">
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+
+        </div>
+
+        <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
+          <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
+          </button>
+          <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
+            <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
+          </button>
+          <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
+            <span style="font-size: 24px;">⚙️</span>
+            <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Ustawienia</span>
+          </button>
+        </div>
+      </div>
+
+    <!-- =========================
+       PODGLĄD PDF
+  ========================== -->
+
+    <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
+    <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+      
+      <div style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f9fafb;">
+        <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #111827;">Podgląd zamówienia</h3>
+        <button @click="closePdfViewer" style="background: none; border: none; font-size: 28px; line-height: 1; cursor: pointer; color: #6b7280; padding: 0;">&times;</button>
+      </div>
+      
+      <div style="flex-grow: 1; background: #e5e7eb; position: relative; height: 65vh; width: 100%;">
+        <iframe :src="pdfViewerUrl" style="width: 100%; height: 100%; border: none;" title="Podgląd PDF"></iframe>
+      </div>
+      
+      <div style="padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;">
+        <button @click="closePdfViewer" style="padding: 10px 20px; border-radius: 8px; border: 1px solid #d1d5db; background: #ffffff; color: #374151; font-weight: bold; cursor: pointer;">
+          Zamknij
+        </button>
+        <button @click="sharePdf" style="padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <span style="font-size: 16px;">📤</span> Udostępnij / Zapisz
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+    <!-- =========================
+       MODAL POWIADOMIEŃ iOS
+  ========================== -->
+  <div v-if="showDishDetailsModal" class="supplier-modal-overlay">
+    <div class="supplier-modal-card" style="max-width: 450px;">
+      
+      <div style="position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10; margin: -20px -20px 20px -20px; padding: 20px 20px 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
+            {{ selectedDishDetails?.name }}
+          </h3>
+          <div style="font-size: 13px; color: #6b7280; margin-top: 4px; font-weight: 600;">
+            Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
+          </div>
+        </div>
+        <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
+      </div>
+
+     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
+        
+        <div style="background: #f8fafc; padding: 8px 6px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center;">
+          <div style="margin-bottom: 6px;">
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Cena:</div>
+            <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+          </div>
+          <div>
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Koszt:</div>
+            <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+          </div>
+        </div>
+
+        <div :style="{ background: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fecaca' : '#bbf7d0', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+          <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#991b1b' : '#166534' }">FC Rzecz.</div>
+          <div :style="{ fontSize: '16px', fontWeight: '800', marginTop: '2px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a' }">
+            {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / (selectedDishDetails.cena / (1 + (Number(selectedDishDetails.vat || 0) / 100)))) * 100).toFixed(1) : 0 }}%
+          </div>
+        </div>
+
+        <div :style="{ background: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#f0fdf4' : '#fef2f2', border: '1px solid', borderColor: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#bbf7d0' : '#fecaca', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
+          <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#166534' : '#991b1b' }">Zysk</div>
+          <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '2px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#16a34a' : '#dc2626' }">
+            {{ ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
+        
+        <div v-if="!selectedDishDetails?.recipe || selectedDishDetails.recipe.length === 0" style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
+          Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
+        </div>
+
+        <div v-else style="display: flex; flex-direction: column; gap: 8px;">
           <div
-            v-for="(ing, index) in editingDish.recipe"
+            v-for="ing in selectedDishDetails.recipe"
             :key="ing.id"
-            @click="editRecipeIngredient(ing, index)"
-            class="item-card"
-            style="padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; cursor: pointer; align-items: center; margin-bottom: 0;"
+            style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
           >
             <div style="min-width: 0;">
               <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
@@ -709,3090 +706,236 @@
             </div>
           </div>
           
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
-            <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Całkowity koszt:</div>
-            <div style="font-size: 18px; font-weight: 800; color: #dc2626;">{{ calculateTotalRecipeCost().toFixed(2) }} <span style="font-size: 13px; color: #64748b;">zł</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+            <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
+            <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
+              {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * getIngredientLivePrice(ing)), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div v-if="showIngredientModal" class="supplier-modal-overlay" style="z-index: 9999; padding-top: 60px;">
-        <div class="supplier-modal-card" style="display: flex; flex-direction: column; max-height: 85vh; padding: 20px;">
-          
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 class="supplier-modal-title" style="margin: 0; font-size: 18px;">
-              {{ selectedIngredientTowar ? 'PODAJ ILOŚĆ' : 'WYBIERZ SUROWIEC' }}
-            </h3>
-            <button @click="closeIngredientModal" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center;">&times;</button>
-          </div>
-
-          <div v-if="!selectedIngredientTowar" style="display: flex; flex-direction: column; min-height: 0; flex: 1;">
-            <input
-              v-model="ingredientSearch"
-              type="text"
-              placeholder="Szukaj towaru po nazwie..."
-              class="towary-search-input"
-              style="margin-bottom: 12px; flex-shrink: 0;"
-            />
-            
-            <div class="scroll-area" style="padding-bottom: 20px;">
-              <div v-if="filteredIngredientTowary.length === 0" style="text-align: center; color: #6b7280; font-size: 13px; margin-top: 20px;">
-                Brak wyników wyszukiwania
-              </div>
-              
-              <div
-                v-for="item in filteredIngredientTowary"
-                :key="item.id"
-                @click="selectIngredient(item)"
-                class="towary-row-fixed"
-                style="grid-template-columns: 1fr auto; cursor: pointer; margin-bottom: 8px; min-height: unset; padding: 12px;"
-              >
-                <div style="min-width: 0;">
-                  <div class="towary-col-name" style="font-size: 15px;">{{ item.name }}</div>
-                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ item.supplier || 'Brak hurtowni' }}</div>
-                </div>
-                <div style="text-align: right;">
-                  <div class="towary-col-price" style="font-size: 15px;">{{ Number(item.netPrice || 0).toFixed(2) }} zł</div>
-                  <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">za 1 {{ item.unit }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else style="display: flex; flex-direction: column; gap: 16px;">
-            <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 700; font-size: 16px; color: #111827;">{{ selectedIngredientTowar.name }}</div>
-              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Cena netto: {{ Number(selectedIngredientTowar.netPrice || 0).toFixed(2) }} zł / {{ selectedIngredientTowar.unit }}</div>
-            </div>
-
-            <div class="supplier-form-group">
-              <label class="supplier-form-label">Zużycie na porcję (w: {{ selectedIngredientTowar.unit }})</label>
-              <input
-                v-model.number="ingredientQty"
-                type="number"
-                step="0.001"
-                placeholder="0.000"
-                class="supplier-form-input"
-              />
-            </div>
-
-            <div class="supplier-modal-actions" style="margin-top: 10px; display: flex; gap: 8px;">
-              <button 
-                v-if="editingRecipeIndex !== null" 
-                @click="removeIngredientFromRecipe" 
-                style="width: 48px; flex-shrink: 0; background: #fee2e2; border: none; border-radius: 10px; color: #dc2626; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
-              >
-                🗑️
-              </button>
-              
-              <button 
-                @click="goBackToIngredientList" 
-                class="supplier-cancel-button" 
-                style="flex: 1;" 
-              >
-                {{ editingRecipeIndex !== null ? 'Anuluj' : 'Wróć' }}
-              </button>
-              
-              <button 
-                @click="saveIngredientToRecipe" 
-                class="supplier-save-button" 
-                style="flex: 1;"
-              >
-                {{ editingRecipeIndex !== null ? 'Zapisz' : 'Dodaj' }}
-              </button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-    </div>
-
-
-
-
-
-    <div v-if="currentScreen === 'receptury' && recepturyView === 'ustawienia'" class="screen-with-topbar">
-      
-      <div class="zamawiarka-menu-topbar">
-        <button @click="recepturyView = 'dashboard'" class="zamawiarka-menu-back">
-          ←
-        </button>
-        <h2 class="zamawiarka-menu-title" style="font-size: 16px; white-space: nowrap;">USTAWIENIA</h2>
-      </div>
-
-      <div class="scroll-area" style="padding: 0 16px;">
-        
-        <h3 style="font-size: 16px; color: #111827; margin-bottom: 12px; text-align: center;">Cele i alarmy</h3>
-        
-        <div class="item-card" style="margin-bottom: 24px; margin-left: -4px; margin-right: -4px; width: auto; padding: 16px 12px; position: relative;">
-          <div class="supplier-form-group">
-            <label class="supplier-form-label" style="color: #0284c7;"><span translate="no" class="notranslate">Food Cost</span> ogólny (%)</label>
-            <input v-model.number="fcSettings.target" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj FC %" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Wartość do której dążysz, poniżej tej wartości wskaźniki będą zielone, powyżej czerwone.</div>
-          </div>
-
-          <div class="supplier-form-group" style="margin-bottom: 0;">
-            <label class="supplier-form-label" style="white-space: nowrap; letter-spacing: -0.3px; color: #0284c7;">Dopuszczalne odchylenie <span translate="no" class="notranslate">FC</span> - Delta (%)</label>
-            <input v-model.number="fcSettings.tolerance" @input="markSettingsDirty" type="number" class="supplier-form-input" placeholder="podaj deltę %" />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">O ile procent wynik może przekroczyć cel, zanim włączy się alarm.</div>
-          </div>
-
-          <button v-if="isSettingsDirty" @click="saveSettings" style="margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #28a745; color: white; font-weight: 700; cursor: pointer;">
-            ✅ Zapisz zmiany
-          </button>
-        </div>
-
-            <!--dodaje kategorie dania-->
-        <div style="position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; margin-top: 10px;">
-          <h3 style="font-size: 16px; color: #111827; margin: 0; text-align: center;">Kategorie menu</h3>
-          <button @click="openDishCategoryForm" style="position: absolute; right: 0; background: #2563eb; color: #ffffff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); flex-shrink: 0;" aria-label="Dodaj kategorię">
-            +
-          </button>
-        </div>
-        
-        <div style="display:flex; flex-direction:column; gap:8px; padding-bottom: 20px;">
-          <div v-for="cat in dishCategories" :key="cat.id" class="item-card" style="padding: 12px; display: flex; align-items: center; position: relative;">
-            <div style="flex: 1; text-align: center;">
-              <div style="font-weight: 600;">{{ cat.name }}</div>
-              <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                Cel FC: <strong style="color: #111827;">{{ cat.targetFC ? cat.targetFC + '%' : 'wg ogólnych ustawień' }}</strong>
-              </div>
-            </div>
-            <button @click="editDishCategory(cat)" class="supplier-edit-button" style="width: 32px; height: 32px; font-size: 14px; position: absolute; right: 12px;">✏️</button>
-          </div>
-        </div>
-
-
-        <div v-if="showDishCategoryForm" class="supplier-modal-overlay">
-        <div class="supplier-modal-card">
-          <h3 class="supplier-modal-title">
-            {{ dishCategoryFormMode === 'edit' ? 'EDYTUJ KATEGORIĘ' : 'DODAJ KATEGORIĘ' }}
-          </h3>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa kategorii</label>
-            <input
-              v-model="dishCategoryForm.name"
-              type="text"
-              placeholder="Np. Przystawki, Zupy"
-              class="supplier-form-input"
-            />
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Indywidualny Food Cost (%)</label>
-            <input
-              v-model="dishCategoryForm.targetFC"
-              type="number"
-              placeholder="wg ogólnych ustawień"
-              class="supplier-form-input"
-            />
-            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
-              Aktualnie używany cel: 
-              <strong style="color: #111827;">{{ dishCategoryForm.targetFC ? dishCategoryForm.targetFC + '% (własny)' : fcSettings.target + '% (ogólny)' }}</strong>
-            </div>
-          </div>
-
-          <div class="supplier-modal-actions">
-            <button
-              v-if="dishCategoryFormMode === 'edit'"
-              @click="deleteDishCategory"
-              style="flex:1; padding:12px; border:none; border-radius:10px; background:#d9534f; color:white; font-size:15px; font-weight:600; cursor:pointer;"
-            >
-              Usuń
-            </button>
-
-            <button @click="closeDishCategoryForm" class="supplier-cancel-button">
-              Anuluj
-            </button>
-
-            <button @click="saveDishCategory" class="supplier-save-button">
-              Zapisz
-            </button>
-          </div>
-        </div>
-      </div>
-
-
-
-
-      </div>
-
-      <div style="display: flex; justify-content: space-around; padding: 10px 16px 20px 16px; flex-shrink: 0;">
-        <button @click="recepturyView = 'lista'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📋</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Menu</span>
-        </button>
-        <button @click="recepturyView = 'dashboard'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px; filter: grayscale(100%) opacity(0.5);">📊</span>
-          <span style="font-size: 11px; font-weight: 600; color: #9ca3af;">Analiza</span>
-        </button>
-        <button @click="recepturyView = 'ustawienia'" style="flex: 1; padding: 8px 4px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;">
-          <span style="font-size: 24px;">⚙️</span>
-          <span style="font-size: 11px; font-weight: 700; color: #0284c7;">Ustawienia</span>
-        </button>
-      </div>
-    </div>
-
-
-
-
-
-    <!-- =========================
-         ZAMAWIARKA / MENU
-    ========================== -->
-    <div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'menu'">
-    <div class="zamawiarka-menu-topbar">
-  <button
-  @click="currentScreen = 'home'; zamawiarkaView = 'menu'"
-  class="zamawiarka-menu-back"
->
-    ←
-  </button>
-  <h2 class="zamawiarka-menu-title">ZAMAWIARKA</h2>
-</div>
-
-            <div
-  class="zamawiarka-menu-grid-ios"
-  :class="{ 'menu-tiles-animate': animateMenuTiles }"
->
-        <button
-  @click="zamawiarkaView = 'produkty'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-blue">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M12 20h9"/>
-      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">Zamówienia</div>
-  <div class="ios-menu-subtitle">Złóż zamówienie</div>
-</button>
-
-        <button
-  @click="zamawiarkaView = 'koszyk'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-green">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <circle cx="9" cy="21" r="1"/>
-      <circle cx="20" cy="21" r="1"/>
-      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">
-    Koszyk ({{ cartItems.length }})
-  </div>
-  <div class="ios-menu-subtitle">Twoje produkty</div>
-</button>
-
-  <button
-  @click="zamawiarkaView = 'historia'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-orange">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M8 2v4"/>
-      <path d="M16 2v4"/>
-      <rect width="18" height="18" x="3" y="4" rx="2"/>
-      <path d="M3 10h18"/>
-      <path d="M8 14h.01"/>
-      <path d="M12 14h.01"/>
-      <path d="M16 14h.01"/>
-      <path d="M8 18h.01"/>
-      <path d="M12 18h.01"/>
-      <path d="M16 18h.01"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">Rejestr</div>
-  <div class="ios-menu-subtitle">Historia zamówień</div>
-</button>
-
-  <button
-  @click="zamawiarkaView = 'towary'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-purple">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-      <path d="M3.3 7l8.7 5 8.7-5"/>
-      <path d="M12 22V12"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">Towary</div>
-  <div class="ios-menu-subtitle">Lista produktów</div>
-</button>
-
-
-
-
-
-
-
-
- <button
-  @click="zamawiarkaView = 'ustawienia'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-gray">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.7 0 1.31-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06c.5.5 1.24.66 1.82.33h0c.6-.2 1-.8 1-1.51V3a2 2 0 1 1 4 0v.09c0 .7.4 1.31 1 1.51.58.33 1.32.17 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.5.5-.66 1.24-.33 1.82.2.6.8 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.31.4-1.51 1z"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">Ustawienia</div>
-  <div class="ios-menu-subtitle">Konfiguracja</div>
-</button>
-
-<button
-  @click="zamawiarkaView = 'pomoc'"
-  class="ios-menu-tile"
->
-  <div class="ios-menu-icon ios-menu-icon-red">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <circle cx="12" cy="12" r="10"/>
-      <path d="M9 9h.01"/>
-      <path d="M15 9h.01"/>
-      <path d="M8 15s1.5-2 4-2 4 2 4 2"/>
-    </svg>
-  </div>
-
-  <div class="ios-menu-title">Pomoc</div>
-  <div class="ios-menu-subtitle">Wsparcie</div>
-</button>
-
-
-      </div>
-    </div>
-
-
-
-    <!-- =========================
-     WIDOK: POMOC
-========================== -->
-<ZamawiarkaPomocView 
-  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'pomoc'" 
-  @close="zamawiarkaView = 'menu'" 
-/>
-
-
-
-<!-- =========================
-     WIDOK: ZRÓB ZAMÓWIENIE
-========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'produkty'" class="screen-with-topbar">
-
-  <!-- =========================
-       NAGŁÓWEK
-  ========================== -->
-    <!-- =========================
-       TOPBAR: ZRÓB ZAMÓWIENIE
-  ========================== -->
-  <div class="towary-topbar">
-    <!-- WIERSZ STANDARDOWY -->
-    <div v-if="!showProductSearch" class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-          @click="zamawiarkaView = 'menu'"
-          class="towary-icon-button"
-          title="Wróć"
-        >
-          ←
-        </button>
-
-        <h2 class="towary-title">ZRÓB ZAMÓWIENIE</h2>
-      </div>
-
-      <div class="towary-topbar-right">
-
-
-      <div style="position:relative;">
-
- <button
-  @click="zamawiarkaView = 'koszyk'"
-  class="towary-icon-button"
-  title="Koszyk"
->
-  <svg
-    :class="{ 'cart-bounce': cartBounce }"
-    xmlns="http://www.w3.org/2000/svg"
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#111827"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <circle cx="9" cy="20" r="1"></circle>
-    <circle cx="20" cy="20" r="1"></circle>
-    <path d="M1 1h4l2.68 13.39a1 1 0 0 0 1 .81h9.72a1 1 0 0 0 1-.76L23 6H6"></path>
-  </svg>
-</button>
-
-  <div
-  v-if="cartItems.length > 0"
-  style="
-    position:absolute;
-    top:-6px;
-    right:-6px;
-    background:#dc2626;
-    color:white;
-    font-size:11px;
-    min-width:18px;
-    height:18px;
-    border-radius:50%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-weight:700;
-    padding:0 4px;
-  "
->
-  {{ cartItems.length }}
-</div>
-</div>
-
-
-
-        <button
-          @click="showProductSearch = true"
-          class="towary-icon-button"
-          title="Szukaj"
-        >
-          🔍
-        </button>
-      </div>
-    </div>
-
-    <!-- WIERSZ WYSZUKIWANIA -->
-    <div v-else class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-          @click="showProductSearch = false; productSearch = ''"
-          class="towary-icon-button"
-          title="Zamknij wyszukiwanie"
-        >
-          ←
-        </button>
-      </div>
-
-      <div style="flex:1; display:flex; align-items:center; gap:8px;">
-        <input
-          v-model="productSearch"
-          type="text"
-          placeholder="Szukaj produktu..."
-          class="towary-search-input"
-        />
-
-        <button
-  @click="showFiltersModal = true"
-  class="towary-icon-button"
-  title="Filtry"
->
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"></polygon>
-  </svg>
-</button>
-      </div>
-    </div>
-  </div>
-
-
-
-
-
-
-
-
-
-
-  <!-- =========================
-       AKTYWNE FILTRY (CHMURKI)
-  ========================== -->
-  <div
-  v-if="
-    selectedDay !== 'wszystkie' ||
-    selectedWarehouse !== 'wszystkie' ||
-    selectedSupplier !== 'wszystkie' ||
-    selectedWhoOrders !== 'wszystkie'
-  "
-  style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"
->
-
-    <!-- KIEDY ZAMAWIANE -->
-    <div
-      v-if="selectedDay !== 'wszystkie'"
-      style="background:#eee; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px;"
-    >
-      {{ selectedDay }}
-      <span
-        @click="selectedDay = 'wszystkie'"
-        style="cursor:pointer; font-weight:bold;"
-      >
-        ×
-      </span>
-    </div>
-
-    <!-- MAGAZYN -->
-    <div
-      v-if="selectedWarehouse !== 'wszystkie'"
-      style="background:#eee; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px;"
-    >
-      {{ selectedWarehouse }}
-      <span
-        @click="selectedWarehouse = 'wszystkie'"
-        style="cursor:pointer; font-weight:bold;"
-      >
-        ×
-      </span>
-    </div>
-
-
-    <!-- HURTOWNIA -->
-<div
-  v-if="selectedSupplier !== 'wszystkie'"
-  style="background:#eee; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px;"
->
-  {{ selectedSupplier }}
-  <span
-    @click="selectedSupplier = 'wszystkie'"
-    style="cursor:pointer; font-weight:bold;"
-  >
-    ×
-  </span>
-</div>
-
-
-<!-- KTO ZAMAWIA -->
-<div
-  v-if="selectedWhoOrders !== 'wszystkie'"
-  style="background:#eee; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px;"
->
-  {{ selectedWhoOrders }}
-  <span
-    @click="selectedWhoOrders = 'wszystkie'"
-    style="cursor:pointer; font-weight:bold;"
-  >
-    ×
-  </span>
-</div>
-
-
-
-
-  </div>
-
-
-
-    <!-- =========================
-       LISTA PRODUKTÓW
-  ========================== -->
-  <div class="towary-list-wrap scroll-area">
-    <div v-if="filteredProducts.length === 0" class="empty-state">
-      <div class="empty-title">Brak produktów</div>
-      <div class="empty-subtitle">Zmień wyszukiwanie lub filtry</div>
-    </div>
-
-   <div
-  v-for="product in filteredProducts"
-  :key="product.id"
-  :class="[
-    'towary-row-fixed',
-    cart[product.id] > 0 ? 'zamowienie-active' : ''
-  ]"
-  style="grid-template-columns: 4fr 1fr 1.4fr auto;"
-  @click="openQtyModal(product)"
->
-     <!-- NAZWA + HURTOWNIA -->
-  <div
-    :title="product.name"
-    style="min-width:0; overflow:hidden;"
-  >
-    <div class="towary-col-name">
-      {{ product.name }}
-    </div>
-
-    <div
-      style="
-        font-size:11px;
-        color:#6b7280;
-        line-height:1.2;
-        white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        margin-top:2px;
-      "
-      :title="product.supplier"
-    >
-      {{ product.supplier || '' }}
-    </div>
-  </div>
-
-  <!-- JM -->
-  <div class="towary-col-unit">
-    {{ product.unit || '-' }}
-  </div>
-
-  <!-- ILOŚĆ MAX -->
-  <div
-  class="towary-col-price"
-  :title="product.maxQtyLabel"
-  :style="{
-    textAlign: 'center',
-    color: product.maxQtyLabel === 'kiedy?' ? '#6b7280' : '#111827',
-    fontStyle: product.maxQtyLabel === 'kiedy?' ? 'italic' : 'normal'
-  }"
->
-  {{ product.maxQtyLabel }}
-</div>
-
-  <!-- ILOŚĆ -->
-  <div
-    style="display:flex; align-items:center; justify-content:flex-end; gap:8px;"
-  >
-    <button
-      @click.stop="removeFromCart(product.id)"
-      class="towary-icon-button"
-      style="width:32px; height:32px; font-size:18px;"
-    >
-      -
+      <template v-if="authorizationStore.hasPermission('can_edit_menu')">
+  <template v-if="authorizationStore.hasPermission('can_edit_menu')">
+  <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+    <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <span>📑</span> Powiel
     </button>
-
-    <div style="min-width:24px; text-align:center; font-weight:600; color:#111827;">
-      {{ cart[product.id] || 0 }}
-    </div>
-
-    <button
-      @click.stop="addToCart(product.id)"
-      class="towary-icon-button"
-      style="width:32px; height:32px; font-size:18px;"
-    >
-      +
+    <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <span>🗑️</span> Usuń
     </button>
   </div>
-</div>
-  </div>
-  <!-- =========================
-       MODAL FILTRÓW
-  ========================== -->
-  <div
-  v-if="showFiltersModal"
-  style="position:fixed; inset:0; z-index:400; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; padding:20px;"
->
-    <div style="background:white; width:100%; max-width:420px; border-radius:16px; padding:20px;">
-      
-      <h3 style="margin-top:0;">FILTRY</h3>
 
-      <!-- KIEDY ZAMAWIANE -->
-      <div style="margin-bottom:15px;">
-        <div style="font-size:13px; margin-bottom:4px;">Kiedy zamawiane</div>
-        <select v-model="selectedDay" style="width:100%; padding:10px;">
-          <option value="wszystkie">Wszystkie</option>
-
-          <option
-            v-for="item in orderTimings"
-            :key="item.id"
-            :value="item.name"
-          >
-            {{ item.name }}
-          </option>
-        </select>
-      </div>
-
-      <!-- MAGAZYN -->
-      <div style="margin-bottom:15px;">
-        <div style="font-size:13px; margin-bottom:4px;">Magazyn</div>
-        <select v-model="selectedWarehouse" style="width:100%; padding:10px;">
-          <option value="wszystkie">Wszystkie</option>
-
-          <option
-            v-for="warehouse in warehouses"
-            :key="warehouse.id"
-            :value="warehouse.name"
-          >
-            {{ warehouse.name }}
-          </option>
-        </select>
-      </div>
-
-
-      <!-- HURTOWNIA -->
-<div style="margin-bottom:15px;">
-  <div style="font-size:13px; margin-bottom:4px;">Hurtownia</div>
-  <select v-model="selectedSupplier" style="width:100%; padding:10px;">
-    <option value="wszystkie">Wszystkie</option>
-
-    <option
-      v-for="supplier in suppliers"
-      :key="supplier.id"
-      :value="supplier.name"
-    >
-      {{ supplier.name }}
-    </option>
-  </select>
-</div>
-
-
-<!-- KTO ZAMAWIA -->
-<div style="margin-bottom:15px;">
-  <div style="font-size:13px; margin-bottom:4px;">Kto zamawia</div>
-  <select v-model="selectedWhoOrders" style="width:100%; padding:10px;">
-    <option value="wszystkie">Wszystkie</option>
-
-    <option
-      v-for="item in whoOrders"
-      :key="item.id"
-      :value="item.name"
-    >
-      {{ item.name }}
-    </option>
-  </select>
-</div>
-
-
-
-
-      <!-- PRZYCISK -->
-      <div style="display:flex;">
-  <button
-  @click="showFiltersModal = false; showProductSearch = false"
-  :style="{
-    flex: 1,
-    padding: '12px',
-    borderRadius: '10px',
-    border: 'none',
-    background:
-      selectedDay !== 'wszystkie' ||
-selectedWarehouse !== 'wszystkie' ||
-selectedSupplier !== 'wszystkie' ||
-selectedWhoOrders !== 'wszystkie'
-        ? '#28a745'
-        : '#e0e0e0',
-    color: '#000',
-    fontWeight: '600',
-    cursor: 'pointer'
-  }"
->
-  {{
-    selectedDay !== 'wszystkie' ||
-selectedWarehouse !== 'wszystkie' ||
-selectedSupplier !== 'wszystkie' ||
-selectedWhoOrders !== 'wszystkie'
-  ? 'Wybierz'
-  : 'Zamknij'
-  }}
-</button>
-      </div>
-
-    </div>
-  </div>
-
-
-
-   
-
-
-
-
-
-  <!-- =========================
-       PRZYCISK HOME
-  ========================== -->
-  <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-    <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-  </div>
-
-</div>
-
-
-
-
-
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'koszyk'" class="screen-with-topbar">
-  <div class="towary-topbar">
-    <div v-if="!showCartSearch" class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-          @click="zamawiarkaView = 'produkty'"
-          class="towary-icon-button"
-          title="Wróć"
-        >
-          ←
-        </button>
-
-        <h2 class="towary-title">KOSZYK</h2>
-      </div>
-
-      <div class="towary-topbar-right">
-      <button
-          @click="handleGenerateOrder"
-          class="towary-icon-button"
-          title="Generuj PDF"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
-            <path d="M14 2v6h6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
-            <rect x="2.5" y="12.5" width="19" height="7.5" rx="1.5" fill="#dc2626" stroke="#b91c1c" stroke-width="0.5"/>
-            <text x="12" y="17.8" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="5.5" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">PDF</text>
-          </svg>
-        </button>
-
-        <button
-          @click="showCartSearch = true"
-          class="towary-icon-button"
-          title="Szukaj"
-        >
-          🔍
-        </button>
-
-        <button
-          @click="
-            tempSelectedCartSupplier = selectedCartSupplier;
-            tempSelectedCartCategories = [...selectedCartCategories];
-            showCartFiltersModal = true
-          "
-          class="towary-icon-button"
-          title="Filtry"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#111827"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"></polygon>
-          </svg>
-        </button>
-
-        <button
-          @click="clearCart()"
-          class="towary-icon-button"
-          title="Wyczyść koszyk"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#dc2626"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6" />
-            <path d="M14 11v6" />
-            <path d="M9 6V4h6v2" />
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- WIERSZ WYSZUKIWANIA -->
-    <div v-else class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-          @click="showCartSearch = false; cartSearch = ''"
-          class="towary-icon-button"
-          title="Zamknij wyszukiwanie"
-        >
-          ←
-        </button>
-      </div>
-
-      <div style="flex:1; display:flex; align-items:center; gap:8px;">
-        <input
-          v-model="cartSearch"
-          type="text"
-          placeholder="Szukaj towaru..."
-          class="towary-search-input"
-        />
-
-        <button
-          @click="clearCart()"
-          class="towary-icon-button"
-          title="Wyczyść koszyk"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#dc2626"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6" />
-            <path d="M14 11v6" />
-            <path d="M9 6V4h6v2" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-
-
-   <!-- MODAL: FILTRY KOSZYKA -->
-<div
-  v-if="showCartFiltersModal"
-  class="supplier-modal-overlay"
->
-  <div class="supplier-modal-card">
-    <h3 class="supplier-modal-title">FILTRY KOSZYKA</h3>
-
-    <div style="margin-bottom:15px;">
-      <div
-        @click="showCartSupplierFilterOptions = !showCartSupplierFilterOptions"
-        class="supplier-click-field"
-        style="background:#dbeafe; color:#1e3a8a;"
-      >
-        Hurtownia
-      </div>
-
-      <div
-        v-if="showCartSupplierFilterOptions"
-        class="towary-checkbox-list"
-        style="margin-top:8px;"
-      >
-        <label class="towary-checkbox-option">
-          <input
-            v-model="tempSelectedCartSupplier"
-            type="radio"
-            value="wszystkie"
-          />
-          <span>Wszystkie</span>
-        </label>
-
-        <label
-          v-for="name in availableCartSuppliers"
-          :key="name"
-          class="towary-checkbox-option"
-        >
-          <input
-            v-model="tempSelectedCartSupplier"
-            type="radio"
-            :value="name"
-          />
-          <span>{{ name }}</span>
-        </label>
-
-        <div
-          v-if="availableCartSuppliers.length === 0"
-          style="font-size:13px; color:#6b7280;"
-        >
-          Brak hurtowni
-        </div>
-      </div>
-    </div>
-
-    <div style="margin-bottom:15px;">
-      <div
-        @click="showCartCategoryFilterOptions = !showCartCategoryFilterOptions"
-        class="supplier-click-field"
-        style="background:#fee2e2; color:#7f1d1d;"
-      >
-        Kategoria
-      </div>
-
-      <div
-        v-if="showCartCategoryFilterOptions"
-        class="towary-checkbox-list"
-        style="margin-top:8px;"
-      >
-        <label
-          v-for="name in availableTempCartCategories"
-          :key="name"
-          class="towary-checkbox-option"
-        >
-          <input
-            v-model="tempSelectedCartCategories"
-            type="checkbox"
-            :value="name"
-          />
-          <span>{{ name }}</span>
-        </label>
-
-        <div
-          v-if="availableTempCartCategories.length === 0"
-          style="font-size:13px; color:#6b7280;"
-        >
-          Brak kategorii
-        </div>
-      </div>
-    </div>
-
-    <div class="supplier-modal-actions">
-      <button
-        @click="showCartFiltersModal = false"
-        class="supplier-cancel-button"
-        type="button"
-      >
-        Anuluj
-      </button>
-
-      <button
-        @click="
-          selectedCartSupplier = tempSelectedCartSupplier;
-          selectedCartCategories = [...tempSelectedCartCategories];
-          showCartFiltersModal = false
-        "
-        class="supplier-save-button"
-        type="button"
-      >
-        Zastosuj
-      </button>
-    </div>
-  </div>
-</div>
-
-<div v-if="cartItems.length === 0" class="scroll-area">
-  Koszyk jest pusty
-</div>
-
-<div v-else class="scroll-area">
-  <!-- CHMURKI FILTRÓW KOSZYKA -->
-  <div
-    v-if="
-      selectedCartSupplier !== 'wszystkie' ||
-      selectedCartCategories.length > 0
-    "
-    style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"
-  >
-    <!-- HURTOWNIA -->
-    <div
-      v-if="selectedCartSupplier !== 'wszystkie'"
-      style="background:#dbeafe; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px; color:#1e3a8a;"
-    >
-      {{ selectedCartSupplier }}
-      <span
-        @click="
-          selectedCartSupplier = 'wszystkie';
-          tempSelectedCartSupplier = 'wszystkie'
-        "
-        style="cursor:pointer; font-weight:bold;"
-      >
-        ×
-      </span>
-    </div>
-
-    <!-- KATEGORIE -->
-    <div
-      v-for="categoryName in selectedCartCategories"
-      :key="categoryName"
-      style="background:#fee2e2; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px; color:#7f1d1d;"
-    >
-      {{ categoryName }}
-      <span
-        @click="
-          selectedCartCategories = selectedCartCategories.filter(item => item !== categoryName);
-          tempSelectedCartCategories = tempSelectedCartCategories.filter(item => item !== categoryName)
-        "
-        style="cursor:pointer; font-weight:bold;"
-      >
-        ×
-      </span>
-    </div>
-  </div>
-
-  <div v-if="filteredCartItems.length === 0" class="empty-state">
-    <div class="empty-title">Brak wyników</div>
-    <div class="empty-subtitle">Zmień wyszukiwanie lub filtr</div>
-  </div>
-
-  <div
-    v-for="item in filteredCartItems"
-    :key="item.id"
-    class="towary-row-fixed zamowienie-active"
-    style="grid-template-columns: 4fr 1fr 1.4fr auto;"
-    @click="openQtyModal(item)"
-  >
-    <div style="min-width:0; overflow:hidden;">
-      <div class="towary-col-name">
-        {{ item.name }}
-      </div>
-
-      <div
-        style="
-          font-size:11px;
-          color:#6b7280;
-          line-height:1.2;
-          white-space:nowrap;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          margin-top:2px;
-        "
-      >
-        {{ item.supplier || '' }}
-      </div>
-    </div>
-
-    <div class="towary-col-unit">
-      {{ item.unit || '-' }}
-    </div>
-
-    <div class="towary-col-price">
-      {{ item.value.toFixed(2) }}
-    </div>
-
-    <div
-      style="
-        display:flex;
-        align-items:center;
-        justify-content:flex-end;
-        min-width:40px;
-        font-weight:700;
-        color:#111827;
-      "
-    >
-      {{ item.qty }}
-    </div>
-  </div>
-
-  <div
-    style="
-      margin-top:12px;
-      padding-top:12px;
-      border-top:1px solid #ddd;
-      display:flex;
-      justify-content:space-between;
-      font-weight:700;
-      font-size:16px;
-    "
-  >
-    <div>Suma</div>
-    <div>{{ cartTotal.toFixed(2) }}</div>
-  </div>
-</div>
-
-
-
- <!-- MODAL: DODAJ POZYCJĘ RĘCZNĄ DO KOSZYKA -->
-<div
-  v-if="showCustomCartItemModal"
-  class="supplier-modal-overlay"
->
-  <div class="supplier-modal-card">
-    <h3 class="supplier-modal-title">DODAJ POZYCJĘ DO KOSZYKA</h3>
-
-    <div class="supplier-form-group">
-      <label class="supplier-form-label">Nazwa</label>
-      <input
-        v-model="customCartItemForm.name"
-        type="text"
-        placeholder="Np. Cytryny"
-        class="supplier-form-input"
-      />
-    </div>
-
-    <div class="supplier-form-group">
-      <label class="supplier-form-label">Jednostka miary</label>
-      <select
-        v-model="customCartItemForm.unit"
-        class="supplier-form-input"
-      >
-        <option value="">Wybierz jednostkę miary</option>
-
-        <option
-          v-for="item in units"
-          :key="item.id"
-          :value="item.name"
-        >
-          {{ item.name }}
-        </option>
-      </select>
-    </div>
-
-    <div class="supplier-form-group">
-      <label class="supplier-form-label">Ilość</label>
-      <input
-        v-model="customCartItemForm.qty"
-        type="number"
-        min="0"
-        step="0.01"
-        placeholder="Np. 2"
-        class="supplier-form-input"
-      />
-    </div>
-
-
-    <div class="supplier-form-group">
-  <label class="supplier-form-label">Cena netto</label>
-  <input
-    v-model="customCartItemForm.price"
-    type="number"
-    min="0"
-    step="0.01"
-    placeholder="Np. 5.50"
-    class="supplier-form-input"
-  />
-</div>
-
-
-
-
-    <div class="supplier-form-group">
-      <label class="supplier-form-label">Hurtownia</label>
-      <select
-        v-model="customCartItemForm.supplier"
-        class="supplier-form-input"
-      >
-        <option value="">Wybierz hurtownię</option>
-
-        <option
-          v-for="item in suppliers"
-          :key="item.id"
-          :value="item.name"
-        >
-          {{ item.name }}
-        </option>
-      </select>
-    </div>
-
-    <div class="supplier-modal-actions">
-      <button
-        @click="closeCustomCartItemModal"
-        class="supplier-cancel-button"
-        type="button"
-      >
-        Anuluj
-      </button>
-
-      <button
-  @click="saveCustomCartItem"
-  class="supplier-save-button"
-  type="button"
->
-  Zapisz
-</button>
-    </div>
-  </div>
-</div>
-
-
-
-<button
-  @click="openCustomCartItemModal"
-  class="fab-add-button"
-  aria-label="Dodaj pozycję"
->
-  +
-</button>
-
-
-
-
-
-
-  <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-    <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-  </div>
-</div>
-
-    <!-- =========================
-     WIDOK: REJESTR ZAMÓWIEŃ
-========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'historia'" class="screen-with-topbar">
-  <div class="towary-topbar">
-    <div class="towary-topbar-row">
-      <div class="towary-topbar-left">
-        <button
-          @click="zamawiarkaView = 'menu'"
-          class="towary-icon-button"
-          title="Wróć"
-        >
-          ←
-        </button>
-
-        <h2 class="towary-title towary-title-center">REJESTR ZAMÓWIEŃ</h2>
-      </div>
-    </div>
-  </div>
-
-  <div class="towary-list-wrap scroll-area">
-    <div v-if="ordersRegister.length === 0" class="empty-state">
-      <div class="empty-title">Brak zamówień</div>
-      <div class="empty-subtitle">Wygenerowane zamówienia pojawią się tutaj</div>
-    </div>
-
-    <div
-      v-for="order in ordersRegister"
-      :key="order.id"
-      class="item-card"
-      style="padding:0; overflow:hidden; cursor:pointer;"
-      @click="toggleOrderDetails(order.id)"
-    >
-      <div
-        style="
-          padding:14px;
-          display:grid;
-          grid-template-columns:minmax(0, 1fr) auto;
-          gap:12px;
-          align-items:start;
-        "
-      >
-        <div style="min-width:0;">
-          <div
-            style="
-              font-size:16px;
-              font-weight:700;
-              color:#111827;
-              white-space:nowrap;
-              overflow:hidden;
-              text-overflow:ellipsis;
-            "
-          >
-            {{ order.supplier || 'Brak hurtowni' }}
-          </div>
-
-          <div style="font-size:12px; color:#6b7280; margin-top:4px;">
-            {{ order.date || '-' }} {{ order.time || '' }}
-          </div>
-        </div>
-
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-  <div
-    style="
-      font-size:15px;
-      font-weight:700;
-      color:#111827;
-      white-space:nowrap;
-      margin-right:4px;
-    "
-  >
-    {{ Number(order.total || 0).toFixed(2) }}
-  </div>
-
-  <button
-  @click.stop="generatePdfFromRegister(order)"
-  title="Generuj PDF"
-  class="towary-icon-button"
-  style="
-    width:40px;
-    height:40px;
-    border-color:#93c5fd;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:0;
-  "
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#2563eb"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="M14 2H6a2 2 0 0 0-2 2v16l4-3 4 3 4-3 4 3V8z"/>
-  </svg>
-</button>
-
-  <button
-    @click.stop="deleteOrderFromRegister(order.id)"
-    title="Usuń zamówienie"
-    class="towary-icon-button"
-    style="width:34px; height:34px; border-color:#fecaca;"
-  >
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-      <path d="M9 6V4h6v2" />
-    </svg>
+  <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+    Edytuj danie / Recepturę
   </button>
+</template>
 
-  <div style="font-size:16px; color:#6b7280; margin-left:2px;">
-    {{ expandedOrderId === order.id ? '▴' : '▾' }}
-  </div>
-</div>
-      </div>
+<template v-else>
+  <button @click="closeDishDetails" style="width: 100%; padding: 16px; border: 1px solid #d1d5db; border-radius: 12px; background: #f3f4f6; color: #374151; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    Zamknij
+  </button>
+</template>
+</template>
 
-      <div
-        v-if="expandedOrderId === order.id"
-        style="
-          border-top:1px solid #e5e7eb;
-          padding:12px 14px 14px 14px;
-          display:flex;
-          flex-direction:column;
-          gap:8px;
-          background:#f9fafb;
-        "
-      >
-        <div
-          v-if="!order.items || order.items.length === 0"
-          style="font-size:14px; color:#6b7280;"
-        >
-          Brak pozycji
-        </div>
-
-        <div
-          v-for="item in order.items"
-          :key="item.id"
-          style="
-            display:grid;
-            grid-template-columns:minmax(0, 1fr) auto;
-            gap:10px;
-            align-items:start;
-          "
-        >
-          <div style="min-width:0;">
-            <div
-              style="
-                font-size:14px;
-                color:#111827;
-                white-space:nowrap;
-                overflow:hidden;
-                text-overflow:ellipsis;
-              "
-            >
-              {{ item.name }}
-            </div>
-
-            <div style="font-size:12px; color:#6b7280; margin-top:2px;">
-              {{ item.qty }} {{ item.unit || '' }}
-            </div>
-          </div>
-
-          <div
-            style="
-              font-size:13px;
-              font-weight:600;
-              color:#374151;
-              white-space:nowrap;
-            "
-          >
-            {{ Number(item.value || 0).toFixed(2) }}
-          </div>
-        </div>
-      </div>
+<template v-else>
+  <button @click="closeDishDetails" style="width: 100%; padding: 16px; border: 1px solid #d1d5db; border-radius: 12px; background: #f3f4f6; color: #374151; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    Zamknij
+  </button>
+</template>
     </div>
   </div>
 
-  <div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-    <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-  </div>
-</div>
-
-<!-- =========================
-     MODAL: ILOŚĆ ZAMÓWIENIA
-========================== -->
-<div
-  v-if="showQtyModal"
-  class="supplier-modal-overlay"
->
-  <div class="supplier-modal-card">
-    <h3 class="supplier-modal-title">USTAW ILOŚĆ</h3>
-
-    <div style="margin-bottom:14px; font-size:16px; font-weight:600; color:#111827;">
-      {{ selectedProductForQty?.name || '' }}
-    </div>
-
-    <div class="supplier-form-group">
-      <label class="supplier-form-label">Ilość</label>
-      <input
-        v-model="tempQty"
-        type="number"
-        min="0"
-        class="supplier-form-input"
-        placeholder="Wpisz ilość"
-        ref="qtyInput"
-        @keydown.enter.prevent="saveQtyModal()"
-      />
-    </div>
-
-    <div
-      class="supplier-modal-actions"
-      style="display:flex; justify-content:space-between; align-items:center;"
-    >
-      <!-- LEWA STRONA -->
-      <div style="display:flex; gap:8px;">
-        <!-- USUŃ -->
-        <button
-          @click="deleteCartItemFromQtyModal()"
-          class="towary-icon-button"
-          type="button"
-          title="Usuń z koszyka"
-          style="width:40px; height:40px; border-color:#fecaca;"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6" />
-            <path d="M14 11v6" />
-            <path d="M9 6V4h6v2" />
-          </svg>
-        </button>
-
-        <!-- EDYTUJ TOWAR -->
-        <button
-  v-if="selectedProductForQty"
-  @click="selectedProductForQty?.isCustom ? openCustomCartItemModal(selectedProductForQty) : editTowarFromQtyModal()"
-          class="towary-icon-button"
-          type="button"
-          title="Edytuj towar"
-          style="width:40px; height:40px;"
-        >
-          ✏️
-        </button>
+  <div
+    v-if="appDialog.show"
+    class="app-dialog-overlay"
+  >
+    <div class="app-dialog-card">
+      <div class="app-dialog-icon">
+        {{ appDialog.icon }}
       </div>
 
-      <!-- PRAWA STRONA -->
-      <div style="display:flex; gap:8px;">
+      <div class="app-dialog-title">
+        {{ appDialog.title }}
+      </div>
+
+      <div class="app-dialog-message">
+        {{ appDialog.message }}
+      </div>
+
+      <div class="app-dialog-actions">
         <button
-          @click="closeQtyModal()"
-          class="supplier-cancel-button"
+          v-if="appDialog.type === 'confirm'"
+          @click="cancelAppDialog"
+          class="app-dialog-button app-dialog-cancel"
           type="button"
         >
           Anuluj
         </button>
 
         <button
-          @click="saveQtyModal()"
-          class="supplier-save-button"
+          @click="confirmAppDialog"
+          class="app-dialog-button app-dialog-ok"
           type="button"
         >
-          Zapisz
+          OK
         </button>
       </div>
     </div>
   </div>
-</div>
 
-<!-- =========================
-     WIDOK: TOWARY / LISTA + FORMULARZ
-========================== -->
-<div v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'towary'">
-
-      <!-- =========================
-           LISTA TOWARÓW
-      ========================== -->
-
-      <div v-if="towaryView === 'list'" class="screen-with-topbar">
-
-        <!-- GÓRNY PASEK -->
-        <div class="towary-topbar" style="background:#dbeafe; border-bottom:1px solidrgb(52, 122, 209);">
-          <!-- WIERSZ 1 -->
-          <div class="towary-topbar-row">
-            <div class="towary-topbar-left">
-              <button
-                @click="zamawiarkaView = 'menu'"
-                class="towary-icon-button"
-                title="Wróć"
-              >
-                ←
-              </button>
-
-              <h2 class="towary-title">TOWARY</h2>
-            </div>
-
-            <div class="towary-topbar-right">
-
-
-  <button
-  @click="openTowaryPdfModal"
-  class="towary-icon-button"
-  title="Generuj PDF"
->
-  📄
-</button>
-
-
-
-              <button
-  v-if="selectedTowaryIds.length > 0"
-  @click="removeSelectedTowary()"
-  class="towary-icon-button danger"
-  title="Usuń zaznaczone"
->
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="3 6 5 6 21 6"></polyline>
-    <path d="M19 6l-1 14H6L5 6"></path>
-    <path d="M10 11v6"></path>
-    <path d="M14 11v6"></path>
-    <path d="M9 6V4h6v2"></path>
-  </svg>
-</button>
-
-              <button
-                @click="toggleTowarySelectionMode()"
-                :class="[
-                  'towary-icon-button',
-                  towarySelectionMode ? 'active' : ''
-                ]"
-                title="Tryb zaznaczania"
-              >
-                ☑️
-              </button>
-
-<button
-  @click="showTowaryFiltersModal = true"
-  class="towary-icon-button"
-  title="Filtry"
->
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"></polygon>
-  </svg>
-</button>
-            </div>
-          </div>
-
-          <!-- WIERSZ 2 -->
-          <div style="margin-top:12px;">
-           <div style="position:relative;">
-  <input
-    v-model="towarySearch"
-    type="text"
-    placeholder="Szukaj towaru po nazwie..."
-    class="towary-search-input"
-    style="padding-right:30px;"
-  />
-
-<span
-  v-if="towarySearch"
-  @click="towarySearch = ''"
-  style="
-    position:absolute;
-    right:8px;
-    top:50%;
-    transform:translateY(-50%);
-    cursor:pointer;
-    width:24px;
-    height:24px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-radius:50%;
-    background:#e5e7eb;
-    transition:all 0.15s ease;
-  "
-  onmouseover="this.style.background='#d1d5db'"
-  onmouseout="this.style.background='#e5e7eb'"
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#374151"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-</span>
-</div>
-          </div>
-        </div>
-
-
-
-        <!-- AKTYWNE FILTRY TOWARÓW -->
-
-        <!-- CHMURKI: HURTOWNIE -->
-<div
-  v-if="selectedSuppliersFilter.length > 0"
-  style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"
->
+  <!-- =========================
+       UKRYTY SZABLON PDF TOWARÓW
+  ========================== -->
   <div
-    v-for="supplierName in selectedSuppliersFilter"
-    :key="supplierName"
-    style="background:#bfdbfe; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px; color:#111827;"
-  >
-    {{ supplierName }}
-    <span
-    @click="
-  selectedSuppliersFilter = selectedSuppliersFilter.filter(item => item !== supplierName);
-  tempSelectedSuppliersFilter = tempSelectedSuppliersFilter.filter(item => item !== supplierName)
-" 
-      style="cursor:pointer; font-weight:bold;"
-    >
-      ×
-    </span>
-  </div>
-</div>
-
-
-<!-- CHMURKI: MAGAZYN -->
-<div
-  v-if="selectedWarehousesFilter.length > 0"
-  style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"
->
-  <div
-    v-for="warehouseName in selectedWarehousesFilter"
-    :key="warehouseName"
-    style="background:#bbf7d0; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px; color:#111827;"
-  >
-    {{ warehouseName }}
-    <span
-      @click="
-        selectedWarehousesFilter = selectedWarehousesFilter.filter(item => item !== warehouseName);
-        tempSelectedWarehousesFilter = tempSelectedWarehousesFilter.filter(item => item !== warehouseName)
-      "
-      style="cursor:pointer; font-weight:bold;"
-    >
-      ×
-    </span>
-  </div>
-</div>
-
-
-<!-- CHMURKI: KATEGORIA -->
-<div
-  v-if="selectedCategoriesFilter.length > 0"
-  style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"
->
-  <div
-    v-for="categoryName in selectedCategoriesFilter"
-    :key="categoryName"
-    style="background:#fecaca; padding:6px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; font-size:13px; color:#7f1d1d;"
-  >
-    {{ categoryName }}
-    <span
-      @click="
-        selectedCategoriesFilter = selectedCategoriesFilter.filter(item => item !== categoryName);
-        tempSelectedCategoriesFilter = tempSelectedCategoriesFilter.filter(item => item !== categoryName)
-      "
-      style="cursor:pointer; font-weight:bold;"
-    >
-      ×
-    </span>
-  </div>
-</div>
-
-
-
-
-
-
-        <!-- LISTA -->
-        <div class="towary-list-wrap scroll-area" ref="towaryListRef">
-          <div v-if="filteredTowary.length === 0" class="empty-state">
-            <div class="empty-title">Brak towarów</div>
-            <div class="empty-subtitle">Kliknij + aby dodać pierwszy</div>
-          </div>
-
-<div
-          v-for="item in filteredTowary"
-          :key="item.id"
-          :class="[
-  'towary-row-fixed',
-  !item.active ? 'towary-inactive' : ''
-]"
-          :style="{
-            gridTemplateColumns: towarySelectionMode
-              ? '28px 3fr 1fr 2fr 1.2fr'
-              : '3fr 1fr 2fr 1.2fr'
-          }"
-          @click="handleTowarRowClick(item)"
-        >
-          <div
-            v-if="towarySelectionMode"
-            class="towary-col-checkbox"
-            @click.stop
-          >
-            <input
-              type="checkbox"
-                :checked="selectedTowaryIds.includes(item.id)"
-                @change="toggleTowarSelection(item.id)"
-              />
-            </div>
-
-            <!-- NAZWA -->
-           <div
-  :class="[
-    'towary-col-name',
-    isTowarIncomplete(item) ? 'towary-col-name-incomplete' : ''
-  ]"
-  :title="item.name"
->
-  {{ item.name }}
-</div>
-
-            <!-- JM -->
-            <div class="towary-col-unit">
-              {{ item.unit }}
-            </div>
-
-            <!-- HURTOWNIA -->
-            <div class="towary-col-supplier" :title="item.supplier">
-              {{ item.supplier }}
-            </div>
-
-            <!-- CENA -->
-            <div class="towary-col-price">
-              {{ item.netPrice }}
-            </div>
-          </div>
-        </div>
-
-
-        <!-- MODAL: FILTRY TOWARÓW -->
-<div
-  v-if="showTowaryFiltersModal"
-  class="supplier-modal-overlay"
->
-  <div class="supplier-modal-card">
-    <h3 class="supplier-modal-title">FILTRY TOWARÓW</h3>
-
-   <div style="margin-bottom:15px;">
-  <div
-    @click="showSuppliersFilterOptions = !showSuppliersFilterOptions"
-    class="supplier-click-field"
-    style="background:#dbeafe; color:#1e3a8a;"
-  >
-    Hurtownia
-  </div>
-
-  <div
-    v-if="showSuppliersFilterOptions"
-    class="towary-checkbox-list"
-    style="margin-top:8px;"
-  >
-    <label
-  v-for="supplierName in availableTowarySuppliers"
-  :key="supplierName"
-  class="towary-checkbox-option"
->
-  <input
-    v-model="tempSelectedSuppliersFilter"
-    type="checkbox"
-    :value="supplierName"
-  />
-  <span>{{ supplierName }}</span>
-</label>
-
-<div
-  v-if="availableTowarySuppliers.length === 0"
-  style="font-size:13px; color:#6b7280;"
->
-  Brak hurtowni
-</div>
-</div>
-</div>
-
-
-<!-- =========================
-     FILTR: MAGAZYN
-========================= -->
-<div style="margin-bottom:15px;">
-  <div
-    @click="showWarehousesFilterOptions = !showWarehousesFilterOptions"
-    class="supplier-click-field"
-    style="background:#bbf7d0; color:#1e3a8a;"
-  >
-    Magazyn
-  </div>
-
-  <div
-    v-if="showWarehousesFilterOptions"
-    class="towary-checkbox-list"
-    style="margin-top:8px;"
-  >
-    <label
-      v-for="warehouseName in availableTowaryWarehouses"
-      :key="warehouseName"
-      class="towary-checkbox-option"
-    >
-      <input
-        v-model="tempSelectedWarehousesFilter"
-        type="checkbox"
-        :value="warehouseName"
-      />
-      <span>{{ warehouseName }}</span>
-    </label>
-
-    <div
-      v-if="availableTowaryWarehouses.length === 0"
-      style="font-size:13px; color:#6b7280;"
-    >
-      Brak magazynów
-    </div>
-  </div>
-</div>
-
-<!-- =========================
-     FILTR: KATEGORIA
-========================= -->
-<div style="margin-bottom:15px;">
-  <div
-    @click="showCategoriesFilterOptions = !showCategoriesFilterOptions"
-    class="supplier-click-field"
-    style="background:#fee2e2; color:#7f1d1d;"
-  >
-    Kategoria
-  </div>
-
-  <div
-    v-if="showCategoriesFilterOptions"
-    class="towary-checkbox-list"
-    style="margin-top:8px;"
-  >
-    <label
-      v-for="categoryName in availableTowaryCategories"
-      :key="categoryName"
-      class="towary-checkbox-option"
-    >
-      <input
-        v-model="tempSelectedCategoriesFilter"
-        type="checkbox"
-        :value="categoryName"
-      />
-      <span>{{ categoryName }}</span>
-    </label>
-
-    <div
-      v-if="availableTowaryCategories.length === 0"
-      style="font-size:13px; color:#6b7280;"
-    >
-      Brak kategorii
-    </div>
-  </div>
-</div>
-
-<div class="supplier-modal-actions">
-  <button
-    @click="showTowaryFiltersModal = false"
-    class="supplier-cancel-button"
-    type="button"
-  >
-    Anuluj
-  </button>
-
-  <button
-    @click="
-      selectedSuppliersFilter = [...tempSelectedSuppliersFilter];
-      selectedWarehousesFilter = [...tempSelectedWarehousesFilter];
-      selectedCategoriesFilter = [...tempSelectedCategoriesFilter];
-      showTowaryFiltersModal = false;
+    style="
+      position:fixed;
+      left:-99999px;
+      top:0;
+      width:794px;
+      background:#ffffff;
+      padding:32px;
+      box-sizing:border-box;
+      color:#111827;
+      font-family:Arial, sans-serif;
     "
-    class="supplier-save-button"
-    type="button"
   >
-    Zastosuj
-  </button>
-</div>
-</div>
-</div>
-
-
-<!-- MODAL: PDF TOWARÓW -->
-<div
-  v-if="showTowaryPdfModal"
-  class="supplier-modal-overlay"
->
-  <div class="supplier-modal-card">
-    <h3 class="supplier-modal-title">PDF Z TOWARÓW</h3>
-
-    <div style="font-size:14px; color:#6b7280; margin-bottom:14px;">
-      Wygenerować PDF z aktualnie widocznej listy towarów?
-    </div>
-
-    <div class="towary-checkbox-list">
-      <label
-        v-for="option in towaryPdfOptions"
-        :key="option.key"
-        class="towary-checkbox-option"
-      >
-        <input
-          v-model="selectedTowaryPdfFields"
-          type="checkbox"
-          :value="option.key"
-        />
-        <span>{{ option.label }}</span>
-      </label>
-    </div>
-
-    <div class="supplier-modal-actions">
-      <button
-        @click="showTowaryPdfModal = false"
-        class="supplier-cancel-button"
-        type="button"
-      >
-        Anuluj
-      </button>
-
-      <button
-        @click="handleGenerateTowaryPdf"
-        class="supplier-save-button"
-        type="button"
-      >
-        Generuj
-      </button>
-    </div>
-  </div>
-</div>
-
-
-
-
-
-<!-- FAB + -->
-<button
-  @click="openTowarAdd()"
-  class="fab-add-button"
-  aria-label="Dodaj towar"
->
-  +
-</button>
-
-<!-- HOME -->
-<div style="position:fixed; bottom:20px; left:0; right:0; display:flex; justify-content:center;">
-  <button
-  @click="currentScreen = 'zamawiarka'; zamawiarkaView = 'menu'"
-  class="ios-home-pill"
->
-  <span class="ios-home-pill-icon">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+    <div
+      v-if="towaryPdfPreviewItems.length > 0"
+      ref="towaryPdfTemplateRef"
+      style="width:100%; background:#ffffff; color:#111827;"
     >
-      <path d="M3 10.5 12 3l9 7.5"/>
-      <path d="M5 10v10h14V10"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  </span>
-  <span>Menu</span>
-</button>
-</div>
-</div>
-
-      <!-- =========================
-           FORMULARZ TOWARU
-      ========================== -->
-      <div v-if="towaryView === 'form'">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:12px; border-bottom:1px solid #ddd; margin-bottom:20px;">
-  <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-    <button
-  @click="closeTowarForm()"
-  class="zamawiarka-menu-back"
->
-  ←
-</button>
-
-    <h2 style="margin:0;">
-      {{ towarFormMode === 'edit' ? 'EDYTUJ TOWAR' : 'DODAJ TOWAR' }}
-    </h2>
-  </div>
-
-  <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
-    <label style="display:flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap;">
-      <input
-  v-model="towarForm.active"
-  type="checkbox"
-  @change="handleTowarActiveChange"
-/>
-     <span :class="{ 'inactive-label': !towarForm.active }">aktywne</span>
-    </label>
-
-    <button
-      v-if="towarFormMode === 'edit'"
-      @click="deleteTowar()"
-      class="towary-icon-button"
-      title="Usuń towar"
-      type="button"
-      style="width:40px; height:40px; border-color:#fecaca; flex-shrink:0;"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6l-1 14H6L5 6" />
-        <path d="M10 11v6" />
-        <path d="M14 11v6" />
-        <path d="M9 6V4h6v2" />
-      </svg>
-    </button>
-  </div>
-</div>
-
-        <!-- SZKIELET FORMULARZA -->
-        <div style="display:flex; flex-direction:column; gap:14px; padding-bottom:120px;">
-
-          
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Nazwa</label>
-            <input
-  v-model="towarForm.name"
-  type="text"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.name)"
-/>
-          </div>
-
-            <div class="supplier-form-group">
-            <label class="supplier-form-label">Jednostka miary</label>
-
-            <select
-  v-model="towarForm.unit"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.unit)"
->
-              <option value="">Wybierz jednostkę miary</option>
-
-              <option
-                v-for="item in units"
-                :key="item.id"
-                :value="item.name"
-              >
-                {{ item.name }}
-              </option>
-            </select>
-          </div>
-
-            <div class="supplier-form-group">
-            <label class="supplier-form-label">Hurtownia</label>
-
-            <select
-  v-model="towarForm.supplier"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.supplier)"
->
-              <option value="">Wybierz hurtownię</option>
-
-              <option
-                v-for="item in suppliers"
-                :key="item.id"
-                :value="item.name"
-              >
-                {{ item.name }}
-              </option>
-            </select>
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Cena netto</label>
-            <input
-  v-model="towarForm.netPrice"
-  type="text"
-  inputmode="decimal"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.netPrice)"
-/>
-          </div>
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Stawka VAT</label>
-           <input
-  v-model="towarForm.vat"
-  type="text"
-  inputmode="numeric"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.vat)"
-/>
-          </div>
-
-                    <div class="supplier-form-group">
-            <label class="supplier-form-label">Magazyn</label>
-
-            <select
-  v-model="towarForm.warehouse"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.warehouse)"
->
-              <option value="">Wybierz magazyn</option>
-
-              <option
-                v-for="item in warehouses"
-                :key="item.id"
-                :value="item.name"
-              >
-                {{ item.name }}
-              </option>
-            </select>
-          </div>
-
-            <div class="supplier-form-group">
-            <label class="supplier-form-label">Kiedy zamówienie</label>
-
-            <div
-  @click="openOrderTimingModal()"
-  class="supplier-click-field"
-  :class="fieldFilledClass(towarForm.orderTimings)"
->
-  <span v-if="towarForm.orderTimings.length === 0" style="color:#111827;">
-    Wybierz pozycje
-  </span>
-
-  <span v-else>
-    {{ towarForm.orderTimings.join(', ') }}
-  </span>
-</div>
-          </div>
-
-
-            <div class="supplier-form-group">
-            <label class="supplier-form-label">Kto zamawia</label>
-
-            <div
-  @click="openWhoOrdersModal()"
-  class="supplier-click-field"
-  :class="fieldFilledClass(towarForm.whoOrders)"
->
-  <span v-if="towarForm.whoOrders.length === 0" style="color:#111827;">
-    Wybierz pozycje
-  </span>
-
-  <span v-else>
-    {{ towarForm.whoOrders.join(', ') }}
-  </span>
-</div>
-          </div>
-
-
-
-
-           <div class="supplier-form-group">
-  <label class="supplier-form-label">Kategoria towaru</label>
-
-  <div
-    @click="openCategoriesModal()"
-    class="supplier-click-field"
-    :class="fieldFilledClass(towarForm.categories)"
-  >
-    <span v-if="towarForm.categories.length === 0" style="color:#111827;">
-      Wybierz pozycje
-    </span>
-
-    <span v-else>
-      {{ towarForm.categories.join(', ') }}
-    </span>
-  </div>
-</div>
-
-<div class="supplier-form-group">
-  <label class="supplier-form-label">Pozycja wyświetlania w zrób zamówienie</label>
-  <input
-  v-model="towarForm.displayOrder"
-  type="number"
-  class="supplier-form-input"
-  :class="fieldFilledClass(towarForm.displayOrder)"
-/>
-</div>
-
-<div class="supplier-form-group">
-  <label class="supplier-form-label">Ilość max</label>
-
-  <div
-  @click="openMaxQtyField()"
-  class="supplier-click-field"
-  :class="fieldFilledClass(getMaxQtySummary())"
->
-    {{
-      !towarForm.orderTimings || towarForm.orderTimings.length === 0
-        ? 'Niedostępne'
-        : !getMaxQtySummary()
-          ? 'Ustaw ilości'
-          : getMaxQtySummary()
-    }}
-  </div>
-</div>
-
-
-
-  
-
-          <div class="supplier-form-group">
-            <label class="supplier-form-label">Notatka</label>
-            <textarea
-              v-model="towarForm.note"
-              rows="4"
-              class="supplier-form-input"
-              style="resize:vertical;"
-            ></textarea>
-          </div>
-
-
-          
-
-
-
-
-
-                    <div class="supplier-modal-actions">
-            <button
-              @click="closeTowarForm()"
-              class="supplier-cancel-button"
-            >
-              Wróć
-            </button>
-
-            <button
-              @click="saveTowar()"
-              class="supplier-save-button"
-              type="button"
-            >
-              Zapisz
-            </button>
-          </div>
+      <!-- NAGŁÓWEK -->
+      <div style="margin-bottom:22px;">
+        <div style="font-size:28px; font-weight:800; margin-bottom:8px;">
+          Lista towarów
         </div>
 
-                <!-- MODAL: KIEDY ZAMÓWIENIE -->
-        <div
-          v-if="showOrderTimingModal"
-          class="supplier-modal-overlay"
-        >
-          <div class="supplier-modal-card">
-            <h3 class="supplier-modal-title">WYBIERZ: KIEDY ZAMÓWIENIE</h3>
-
-            <div class="towary-checkbox-list">
-              <label
-                v-for="item in orderTimings"
-                :key="item.id"
-                class="towary-checkbox-option"
-              >
-                <input
-                  v-model="tempOrderTimings"
-                  type="checkbox"
-                  :value="item.name"
-                />
-                <span>{{ item.name }}</span>
-              </label>
-
-              <div
-                v-if="orderTimings.length === 0"
-                style="font-size:13px; color:#6b7280;"
-              >
-                Brak pozycji w ustawieniach
-              </div>
-            </div>
-
-            <div class="supplier-modal-actions">
-              <button
-                @click="closeOrderTimingModal()"
-                class="supplier-cancel-button"
-                type="button"
-              >
-                Anuluj
-              </button>
-
-              <button
-                @click="confirmOrderTimingModal()"
-                class="supplier-save-button"
-                type="button"
-              >
-                Zatwierdź
-              </button>
-            </div>
-          </div>
-        </div>
-
-
-
-        <!-- MODAL: KTO ZAMAWIA -->
-        <div
-          v-if="showWhoOrdersModal"
-          class="supplier-modal-overlay"
-        >
-          <div class="supplier-modal-card">
-            <h3 class="supplier-modal-title">WYBIERZ: KTO ZAMAWIA</h3>
-
-            <div class="towary-checkbox-list">
-              <label
-                v-for="item in whoOrders"
-                :key="item.id"
-                class="towary-checkbox-option"
-              >
-                <input
-                  v-model="tempWhoOrders"
-                  type="checkbox"
-                  :value="item.name"
-                />
-                <span>{{ item.name }}</span>
-              </label>
-
-              <div
-                v-if="whoOrders.length === 0"
-                style="font-size:13px; color:#6b7280;"
-              >
-                Brak pozycji w ustawieniach
-              </div>
-            </div>
-
-            <div class="supplier-modal-actions">
-              <button
-                @click="closeWhoOrdersModal()"
-                class="supplier-cancel-button"
-                type="button"
-              >
-                Anuluj
-              </button>
-
-              <button
-                @click="confirmWhoOrdersModal()"
-                class="supplier-save-button"
-                type="button"
-              >
-                Zatwierdź
-              </button>
-            </div>
-          </div>
-        </div>
-
-        
-        
-        
-        
-        <!-- MODAL: KATEGORIA TOWARU -->
-        <div
-          v-if="showCategoriesModal"
-          class="supplier-modal-overlay"
-        >
-          <div class="supplier-modal-card">
-            <h3 class="supplier-modal-title">WYBIERZ: KATEGORIA TOWARU</h3>
-
-            <div class="towary-checkbox-list">
-              <label
-                v-for="item in categories"
-                :key="item.id"
-                class="towary-checkbox-option"
-              >
-                <input
-                  v-model="tempCategories"
-                  type="checkbox"
-                  :value="item.name"
-                />
-                <span>{{ item.name }}</span>
-              </label>
-
-              <div
-                v-if="categories.length === 0"
-                style="font-size:13px; color:#6b7280;"
-              >
-                Brak pozycji w ustawieniach
-              </div>
-            </div>
-
-            <div class="supplier-modal-actions">
-              <button
-                @click="closeCategoriesModal()"
-                class="supplier-cancel-button"
-                type="button"
-              >
-                Anuluj
-              </button>
-
-              <button
-                @click="confirmCategoriesModal()"
-                class="supplier-save-button"
-                type="button"
-              >
-                Zatwierdź
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- MODAL: ILOŚĆ MAX -->
-        <div
-          v-if="showMaxQtyModal"
-          class="supplier-modal-overlay"
-        >
-          <div class="supplier-modal-card">
-            <h3 class="supplier-modal-title">USTAW: ILOŚĆ MAX</h3>
-
-            <div class="towary-checkbox-list">
-              <div
-                v-for="itemName in towarForm.orderTimings"
-                :key="itemName"
-                style="display:flex; align-items:center; justify-content:space-between; gap:12px;"
-              >
-                <div style="font-size:14px; color:#111827;">
-                  {{ itemName }}
-                </div>
-
-                <input
-                v-model="tempMaxQtyByOrderTiming[itemName]"
-                type="text"
-                class="supplier-form-input"
-                placeholder="Np. 15 kg / według potrzeb"
-                style="width:160px; padding:8px 10px;"
-                />
-              </div>
-            </div>
-
-            <div class="supplier-modal-actions">
-              <button
-                @click="closeMaxQtyModal()"
-                class="supplier-cancel-button"
-                type="button"
-              >
-                Anuluj
-              </button>
-
-              <button
-                @click="confirmMaxQtyModal()"
-                class="supplier-save-button"
-                type="button"
-              >
-                Zatwierdź
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-
-
-
-    <!-- =========================
-     WIDOK: USTAWIENIA
-========================== -->
-<ZamawiarkaUstawieniaView
-  v-if="currentScreen === 'zamawiarka' && zamawiarkaView === 'ustawienia'"
-  :suppliers="suppliers"
-  :showSupplierForm="showSupplierForm"
-  :supplierFormMode="supplierFormMode"
-  :supplierForm="supplierForm"
-  :warehouses="warehouses"
-  :showWarehouseForm="showWarehouseForm"
-  :warehouseFormMode="warehouseFormMode"
-  :warehouseForm="warehouseForm"
-  :units="units"
-  :showUnitForm="showUnitForm"
-  :unitFormMode="unitFormMode"
-  :unitForm="unitForm"
-  :whoOrders="whoOrders"
-  :showWhoOrderForm="showWhoOrderForm"
-  :whoOrderFormMode="whoOrderFormMode"
-  :whoOrderForm="whoOrderForm"
-  :orderTimings="orderTimings"
-  :showOrderTimingForm="showOrderTimingForm"
-  :orderTimingFormMode="orderTimingFormMode"
-  :orderTimingForm="orderTimingForm"
-  :categories="categories"
-  :showCategoryForm="showCategoryForm"
-  :categoryFormMode="categoryFormMode"
-  :categoryForm="categoryForm"
-  @close="zamawiarkaView = 'menu'"
-  @openSupplierForm="openSupplierForm"
-  @editSupplier="editSupplier"
-  @closeSupplierForm="closeSupplierForm"
-  @saveSupplier="saveSupplier"
-  @deleteSupplier="deleteSupplier"
-  @openWarehouseForm="openWarehouseForm"
-  @editWarehouse="editWarehouse"
-  @closeWarehouseForm="closeWarehouseForm"
-  @saveWarehouse="saveWarehouse"
-  @deleteWarehouse="deleteWarehouse"
-  @openUnitForm="openUnitForm"
-  @editUnit="editUnit"
-  @closeUnitForm="closeUnitForm"
-  @saveUnit="saveUnit"
-  @deleteUnit="deleteUnit"
-  @openWhoOrderForm="openWhoOrderForm"
-  @editWhoOrder="editWhoOrder"
-  @closeWhoOrderForm="closeWhoOrderForm"
-  @saveWhoOrder="saveWhoOrder"
-  @deleteWhoOrder="deleteWhoOrder"
-  @openOrderTimingForm="openOrderTimingForm"
-  @editOrderTiming="editOrderTiming"
-  @closeOrderTimingForm="closeOrderTimingForm"
-  @saveOrderTiming="saveOrderTiming"
-  @deleteOrderTiming="deleteOrderTiming"
-  @openCategoryForm="openCategoryForm"
-  @editCategory="editCategory"
-  @closeCategoryForm="closeCategoryForm"
-  @saveCategory="saveCategory"
-  @deleteCategory="deleteCategory"
-/>
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-
-  <!-- =========================
-     PODGLĄD PDF
-========================== -->
-
-
-  <div v-if="showPdfViewerModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; box-sizing: border-box;">
-  <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
-    
-    <div style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f9fafb;">
-      <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #111827;">Podgląd zamówienia</h3>
-      <button @click="closePdfViewer" style="background: none; border: none; font-size: 28px; line-height: 1; cursor: pointer; color: #6b7280; padding: 0;">&times;</button>
-    </div>
-    
-    <div style="flex-grow: 1; background: #e5e7eb; position: relative; height: 65vh; width: 100%;">
-      <iframe :src="pdfViewerUrl" style="width: 100%; height: 100%; border: none;" title="Podgląd PDF"></iframe>
-    </div>
-    
-    <div style="padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;">
-      <button @click="closePdfViewer" style="padding: 10px 20px; border-radius: 8px; border: 1px solid #d1d5db; background: #ffffff; color: #374151; font-weight: bold; cursor: pointer;">
-        Zamknij
-      </button>
-      <button @click="sharePdf" style="padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        <span style="font-size: 16px;">📤</span> Udostępnij / Zapisz
-      </button>
-    </div>
-
-  </div>
-</div>
-
-
-
-
-  <!-- =========================
-     MODAL POWIADOMIEŃ iOS
-========================== -->
-<div v-if="showDishDetailsModal" class="supplier-modal-overlay">
-  <div class="supplier-modal-card" style="max-width: 450px;">
-    
-    <div style="position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10; margin: -20px -20px 20px -20px; padding: 20px 20px 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h3 style="margin: 0; font-size: 22px; color: #111827; font-weight: 800; line-height: 1.2;">
-          {{ selectedDishDetails?.name }}
-        </h3>
-        <div style="font-size: 13px; color: #6b7280; margin-top: 4px; font-weight: 600;">
-          Kategoria: <span style="color: #2563eb;">{{ selectedDishDetails?.category || 'Brak' }}</span>
-        </div>
-      </div>
-      <button @click="closeDishDetails" style="background: #f3f4f6; border: none; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; color: #4b5563; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">&times;</button>
-    </div>
-
-   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;">
-      
-      <div style="background: #f8fafc; padding: 8px 6px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center;">
-        <div style="margin-bottom: 6px;">
-          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Cena:</div>
-          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.cena || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
-        </div>
-        <div>
-          <div style="font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; text-align: left;">Koszt:</div>
-          <div style="font-size: 13px; font-weight: 800; color: #111827; text-align: center; line-height: 1;">{{ Number(selectedDishDetails?.koszt || 0).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span></div>
+        <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+          <div><strong>Data wygenerowania:</strong> {{ getTodayLabel() }}</div>
+          <div><strong>Liczba pozycji:</strong> {{ towaryPdfPreviewItems.length }}</div>
+          <div><strong>Zakres:</strong> aktywne towary z aktualnie przefiltrowanego widoku</div>
         </div>
       </div>
 
-      <div :style="{ background: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#fecaca' : '#bbf7d0', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
-        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#991b1b' : '#166534' }">FC Rzecz.</div>
-        <div :style="{ fontSize: '16px', fontWeight: '800', marginTop: '2px', color: selectedDishDetails && isDishFcExceeded(selectedDishDetails) ? '#dc2626' : '#16a34a' }">
-          {{ (selectedDishDetails?.cena && selectedDishDetails?.cena > 0) ? ((selectedDishDetails?.koszt / (selectedDishDetails.cena / (1 + (Number(selectedDishDetails.vat || 0) / 100)))) * 100).toFixed(1) : 0 }}%
-        </div>
-      </div>
-
-      <div :style="{ background: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#f0fdf4' : '#fef2f2', border: '1px solid', borderColor: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#bbf7d0' : '#fecaca', padding: '8px 6px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }">
-        <div :style="{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#166534' : '#991b1b' }">Zysk</div>
-        <div :style="{ fontSize: '15px', fontWeight: '800', marginTop: '2px', color: ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt) >= 0 ? '#16a34a' : '#dc2626' }">
-          {{ ((selectedDishDetails?.cena / (1 + (Number(selectedDishDetails?.vat || 0) / 100))) - selectedDishDetails?.koszt).toFixed(2) }} <span style="font-size: 10px; font-weight: 600;">zł</span>
-        </div>
-      </div>
-
-    </div>
-
-    <div style="margin-bottom: 24px;">
-      <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #111827; text-transform: uppercase; letter-spacing: 0.5px;">Receptura (Składniki)</h4>
-      
-      <div v-if="!selectedDishDetails?.recipe || selectedDishDetails.recipe.length === 0" style="background: #f9fafb; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.4;">
-        Brak wprowadzonych składników.<br>Kliknij edytuj, aby zbudować kalkulację.
-      </div>
-
-      <div v-else style="display: flex; flex-direction: column; gap: 8px;">
-        <div
-          v-for="ing in selectedDishDetails.recipe"
-          :key="ing.id"
-          style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;"
-        >
-          <div style="min-width: 0;">
-            <div style="font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ getIngredientLiveName(ing) }}</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Zużycie: {{ ing.qty }} {{ getIngredientLiveUnit(ing) }}</div>
-          </div>
-          <div style="text-align: right; font-weight: 800; color: #111827; font-size: 15px;">
-            {{ (ing.qty * getIngredientLivePrice(ing)).toFixed(2) }} <span style="font-size: 11px; font-weight: 600; color: #6b7280;">zł</span>
-          </div>
-        </div>
-        
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
-          <div style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase;">Suma składników:</div>
-          <div style="font-size: 16px; font-weight: 800; color: #dc2626;">
-            {{ selectedDishDetails.recipe.reduce((sum, ing) => sum + (ing.qty * getIngredientLivePrice(ing)), 0).toFixed(2) }} <span style="font-size: 12px; color: #64748b;">zł</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-      <button @click="duplicateDishToForm" style="flex: 1; padding: 14px; border: 1px solid #d1d5db; border-radius: 12px; background: #ffffff; color: #1f2937; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-        <span>📑</span> Powiel
-      </button>
-      <button @click="handleDeleteFromDetails" style="flex: 1; padding: 14px; border: none; border-radius: 12px; background: #fee2e2; color: #dc2626; font-weight: 700; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-        <span>🗑️</span> Usuń
-      </button>
-    </div>
-
-    <button @click="openDishForm(selectedDishDetails)" style="width: 100%; padding: 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-      Edytuj danie / Recepturę
-    </button>
-  </div>
-</div>
-
-
-
-
-<div
-  v-if="appDialog.show"
-  class="app-dialog-overlay"
->
-  <div class="app-dialog-card">
-    <div class="app-dialog-icon">
-      {{ appDialog.icon }}
-    </div>
-
-    <div class="app-dialog-title">
-      {{ appDialog.title }}
-    </div>
-
-    <div class="app-dialog-message">
-      {{ appDialog.message }}
-    </div>
-
-    <div class="app-dialog-actions">
-      <button
-        v-if="appDialog.type === 'confirm'"
-        @click="cancelAppDialog"
-        class="app-dialog-button app-dialog-cancel"
-        type="button"
+      <!-- TABELA -->
+      <table
+        style="
+          width:100%;
+          border-collapse:collapse;
+          table-layout:fixed;
+          font-size:12px;
+        "
       >
-        Anuluj
-      </button>
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th
+              v-for="field in selectedTowaryPdfFields"
+              :key="field"
+              :style="getTowaryPdfColumnStyle(field, true)"
+            >
+              {{ getTowaryPdfFieldLabel(field) }}
+            </th>
+          </tr>
+        </thead>
 
-      <button
-        @click="confirmAppDialog"
-        class="app-dialog-button app-dialog-ok"
-        type="button"
-      >
-        OK
-      </button>
+        <tbody>
+          <tr
+    v-for="item in towaryPdfPreviewItems"
+    :key="item.id"
+  >
+            <td
+              v-for="field in selectedTowaryPdfFields"
+              :key="field"
+              :style="getTowaryPdfColumnStyle(field, false)"
+            >
+              {{ getTowaryPdfFieldValue(item, field) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
-</div>
 
-
-<!-- =========================
-     UKRYTY SZABLON PDF TOWARÓW
-========================== -->
-<div
-  style="
-    position:fixed;
-    left:-99999px;
-    top:0;
-    width:794px;
-    background:#ffffff;
-    padding:32px;
-    box-sizing:border-box;
-    color:#111827;
-    font-family:Arial, sans-serif;
-  "
->
-  <div
-    v-if="towaryPdfPreviewItems.length > 0"
-    ref="towaryPdfTemplateRef"
-    style="width:100%; background:#ffffff; color:#111827;"
+    <div
+    style="
+      position:fixed;
+      left:-99999px;
+      top:0;
+      width:794px;
+      background:#ffffff;
+      padding:32px;
+      box-sizing:border-box;
+      color:#111827;
+      font-family:Arial, sans-serif;
+    "
   >
-    <!-- NAGŁÓWEK -->
-    <div style="margin-bottom:22px;">
-      <div style="font-size:28px; font-weight:800; margin-bottom:8px;">
-        Lista towarów
-      </div>
-
-      <div style="font-size:13px; color:#6b7280; line-height:1.5;">
-        <div><strong>Data wygenerowania:</strong> {{ getTodayLabel() }}</div>
-        <div><strong>Liczba pozycji:</strong> {{ towaryPdfPreviewItems.length }}</div>
-        <div><strong>Zakres:</strong> aktywne towary z aktualnie przefiltrowanego widoku</div>
-      </div>
-    </div>
-
-    <!-- TABELA -->
-    <table
+    <div
+      v-if="pdfPreviewOrder"
+      ref="pdfTemplateRef"
       style="
         width:100%;
-        border-collapse:collapse;
-        table-layout:fixed;
-        font-size:12px;
+        background:#ffffff;
+        color:#111827;
       "
     >
-      <thead>
-        <tr style="background:#f3f4f6;">
-          <th
-            v-for="field in selectedTowaryPdfFields"
-            :key="field"
-            :style="getTowaryPdfColumnStyle(field, true)"
-          >
-            {{ getTowaryPdfFieldLabel(field) }}
-          </th>
-        </tr>
-      </thead>
+      <div style="margin-bottom:24px;">
+        <div style="font-size:28px; font-weight:700; margin-bottom:10px;">
+          Zamówienie
+        </div>
 
-      <tbody>
-        <tr
-  v-for="item in towaryPdfPreviewItems"
-  :key="item.id"
->
-          <td
-            v-for="field in selectedTowaryPdfFields"
-            :key="field"
-            :style="getTowaryPdfColumnStyle(field, false)"
-          >
-            {{ getTowaryPdfFieldValue(item, field) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</div>
+        <div style="font-size:16px; margin-bottom:6px;">
+          <strong>Hurtownia:</strong> {{ pdfPreviewOrder.supplier || '-' }}
+        </div>
 
-
-
-  <div
-  style="
-    position:fixed;
-    left:-99999px;
-    top:0;
-    width:794px;
-    background:#ffffff;
-    padding:32px;
-    box-sizing:border-box;
-    color:#111827;
-    font-family:Arial, sans-serif;
-  "
->
-  <div
-    v-if="pdfPreviewOrder"
-    ref="pdfTemplateRef"
-    style="
-      width:100%;
-      background:#ffffff;
-      color:#111827;
-    "
-  >
-    <div style="margin-bottom:24px;">
-      <div style="font-size:28px; font-weight:700; margin-bottom:10px;">
-        Zamówienie
+        <div style="font-size:16px;">
+          <strong>Data:</strong> {{ pdfPreviewOrder.date || '-' }} {{ pdfPreviewOrder.time || '' }}
+        </div>
       </div>
 
-      <div style="font-size:16px; margin-bottom:6px;">
-        <strong>Hurtownia:</strong> {{ pdfPreviewOrder.supplier || '-' }}
-      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:15px; text-align:left;">
+        <thead>
+          <tr>
+            <th style="padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Nazwa</th>
+            <th style="width:90px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Ilość</th>
+            <th style="width:80px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">JM</th>
+            <th style="width:120px; text-align:right; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Wartość</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in pdfPreviewOrder.items" :key="item.id">
+            <td style="padding:10px 0; border-bottom:1px solid #e5e7eb; word-break:break-word;">
+              {{ item.name }}
+            </td>
+            <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ item.qty }}
+            </td>
+            <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ item.unit || '' }}
+            </td>
+            <td style="text-align:right; padding:10px 0; border-bottom:1px solid #e5e7eb;">
+              {{ Number(item.value || 0).toFixed(2) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      <div style="font-size:16px;">
-        <strong>Data:</strong> {{ pdfPreviewOrder.date || '-' }} {{ pdfPreviewOrder.time || '' }}
+      <div
+        style="
+          margin-top:20px;
+          display:flex;
+          justify-content:flex-end;
+          font-size:20px;
+          font-weight:700;
+        "
+      >
+        Suma: {{ Number(pdfPreviewOrder.total || 0).toFixed(2) }}
       </div>
     </div>
-
-    <table style="width:100%; border-collapse:collapse; font-size:15px; text-align:left;">
-      <thead>
-        <tr>
-          <th style="padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Nazwa</th>
-          <th style="width:90px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Ilość</th>
-          <th style="width:80px; text-align:center; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">JM</th>
-          <th style="width:120px; text-align:right; padding:10px 0; border-top:2px solid #111827; border-bottom:2px solid #111827;">Wartość</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in pdfPreviewOrder.items" :key="item.id">
-          <td style="padding:10px 0; border-bottom:1px solid #e5e7eb; word-break:break-word;">
-            {{ item.name }}
-          </td>
-          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ item.qty }}
-          </td>
-          <td style="text-align:center; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ item.unit || '' }}
-          </td>
-          <td style="text-align:right; padding:10px 0; border-bottom:1px solid #e5e7eb;">
-            {{ Number(item.value || 0).toFixed(2) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div
-      style="
-        margin-top:20px;
-        display:flex;
-        justify-content:flex-end;
-        font-size:20px;
-        font-weight:700;
-      "
-    >
-      Suma: {{ Number(pdfPreviewOrder.total || 0).toFixed(2) }}
-    </div>
   </div>
-</div>
 
-
-
-
-
-
-
-
+  </div>
+  </template>
 </template>
 
 
@@ -3802,11 +945,9 @@ selectedWhoOrders !== 'wszystkie'
 
 
 <script>
-
-
 import ZamawiarkaPomocView from './views/ZamawiarkaPomocView.vue'
 import ZamawiarkaUstawieniaView from './views/ZamawiarkaUstawieniaView.vue'
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, provide } from 'vue'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { products } from './src/data.js'
@@ -3825,6 +966,33 @@ import {
 } from 'firebase/firestore'
 
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from './stores/authStore.js'
+import { useEmployeeAuthStore } from './stores/employeeAuthStore.js'
+import { useAccountSessionStore } from './stores/accountSessionStore.js'
+import { useAuthorizationStore } from './stores/authorizationStore.js'
+import {
+  createLocalPinRedirector,
+  hasStoredLegacyPinSession,
+  isPublicAuthFlowRoute,
+  LOCAL_PIN_LOCK_PATH,
+  resolveAppAuthenticationRedirect,
+  resolveAccountActionPath,
+  resolveRouteAuthenticationRedirect,
+  shouldDeferAccountBootstrapForActivation
+} from './utils/routeAccess.js'
+import { accessContextCanOpenRoute } from './utils/accessControl.js'
+import { clearPiniaBusinessSessionData } from './utils/businessSessionCleanup.js'
+import {
+  buildRestaurantHydrationDiagnostic,
+  isRestaurantContextCurrent,
+  isRestaurantSnapshotCurrent,
+  normalizeRestaurantList,
+  persistRestaurantDataWhenReady,
+  persistRestaurantListChange,
+  RESTAURANT_DATA_STATUS,
+  serializeRestaurantList
+} from './utils/restaurantDataContext.js'
 
 export default {
   components: {
@@ -3832,16 +1000,30 @@ export default {
     ZamawiarkaUstawieniaView
   },
   setup() {
+    const router = useRouter()
+    const route = useRoute()
+    const redirectToLocalPin = createLocalPinRedirector(router)
+    const authStore = useAuthStore()
+    const employeeAuthStore = useEmployeeAuthStore()
+    const accountSessionStore = useAccountSessionStore()
+    const authorizationStore = useAuthorizationStore()
+
+    const getCurrentRestaurantId = () => (
+      authorizationStore.requireRestaurantId()
+    )
+
+    // =========================
+    // STAN APLIKACJI - EKRAN ŁADOWANIA (Flash of Initial State)
+    // =========================
+    const isAppReady = ref(false)
 
     // =========================
     // wersja aplikacji    
     // =========================
-    
-
-       const appVersion = ref('3.1.0')
+    const appVersion = ref('4.1.3')
 
 
-       // =========================
+    // =========================
     // FEATURE FLAGS (UPRAWNIENIA)
     // =========================
     const aktywneModuly = ref(['zamawiarka', 'rentownosc'])
@@ -3851,6 +1033,9 @@ export default {
     // LOGOWANIE - STAN SESJI
     // =========================
     const isLoggedIn = ref(false)
+    const isPublicAuthRoute = computed(() => (
+      isPublicAuthFlowRoute(route)
+    ))
     const authError = ref('')
     const isLoggingIn = ref(false)
     const currentCompany = ref(null)
@@ -3926,12 +1111,18 @@ const loadUserStateFromFirestore = async (uid) => {
   const snapshot = await getDoc(stateRef)
 
   if (!snapshot.exists()) {
-    return createEmptyCloudState()
+    return {
+      exists: false,
+      state: null
+    }
   }
 
   return {
-    ...createEmptyCloudState(),
-    ...snapshot.data()
+    exists: true,
+    state: {
+      ...createEmptyCloudState(),
+      ...snapshot.data()
+    }
   }
 }
 
@@ -3941,14 +1132,42 @@ const saveUserStateToFirestore = async (uid, state) => {
   await setDoc(stateRef, state, { merge: true })
 }
 
+const persistAppStateList = async (field, stateRef, nextValue) => {
+  const previousValue = stateRef.value
 
-        
+  try {
+    authorizationStore.requirePermission('can_edit_products')
+    const restaurantId = authorizationStore.requireRestaurantId()
+
+    await persistRestaurantListChange({
+      previousValue,
+      nextValue,
+      applyValue: value => { stateRef.value = value },
+      persistValue: value => persistRestaurantDataWhenReady({
+        status: restaurantDataStatus.value,
+        loadedRestaurantId: loadedRestaurantDataId.value,
+        currentRestaurantId: authorizationStore.restaurantId,
+        persistValue: () => setDoc(
+          getUserStateDocRef(restaurantId),
+          { [field]: serializeRestaurantList(field, value) },
+          { merge: true }
+        )
+      })
+    })
+    return true
+  } catch (error) {
+    console.error(`Błąd zapisu pola ${field} w Firestore:`, error)
+    await showAlert(
+      'Nie udało się zapisać zmiany. Przywrócono poprzedni stan.',
+      'Błąd zapisu',
+      '❌'
+    )
+    return false
+  }
+}
 
 
-
-    
-
-  const handleLogin = async () => {
+const handleLogin = async () => {
   const email = String(authForm.value.email || '').trim().toLowerCase()
   const password = String(authForm.value.password || '').trim()
 
@@ -3980,15 +1199,52 @@ const saveUserStateToFirestore = async (uid, state) => {
 }
 
 const handleLogout = async () => {
-  // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
-  if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null; }
-  if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null; }
-  if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null; }
-  if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null; }
-  if (typeof unsubscribeMenuItems !== 'undefined' && unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null; }
+  // Zatwierdzony pracownik Firebase nie kończy sesji konta. Główny przycisk
+  // uruchamia dokładnie tę samą lokalną blokadę co timeout bezczynności.
+  if (
+    auth.currentUser &&
+    accountSessionStore.isEmployeeMembership &&
+    accountSessionStore.localPinConfigured
+  ) {
+    const result = accountSessionStore.lockApplication()
+    if (result.locked) return
+  }
 
-  // 2. Wylogowanie z Firebase
-  await signOut(auth)
+  // === SCENARIUSZ 1: WYLOGOWUJE SIĘ PRACOWNIK ===
+  const employeeAuthStore = useEmployeeAuthStore()
+  if (
+    !auth.currentUser &&
+    (employeeAuthStore.currentEmployee || localStorage.getItem('gm_emp_id'))
+  ) {
+    
+    // 1. Zdejmujemy dostęp w sklepie
+    employeeAuthStore.logout() 
+    
+    // 2. TWARDY RESET - Niszczymy wszystkie pobrane dane!
+    stopCompanyDataListeners()
+    resetCompanyDataState() 
+
+    // 3. Wymuszamy ukrycie interfejsu (żeby Vue zniszczyło komponenty)
+    if (!auth.currentUser) {
+      isLoggedIn.value = false 
+    }
+    
+    // 4. Nadpisujemy historię, żeby przycisk Wstecz nie miał do czego wracać
+    router.replace('/logowanie')  
+    return // PRZERYWAMY
+  }
+
+  // Właściciel nie ma obecnie lokalnego PIN-u. Zachowujemy dla niego oraz dla
+  // niekompletnej sesji pracownika dotychczasowe pełne wylogowanie Firebase.
+  // 1. ZABICIE WSZYSTKICH NASŁUCHÓW ZANIM STRACIMY UPRAWNIENIA!
+  stopCompanyDataListeners()
+
+  // 2. Wylogowanie z Firebase i usunięcie lokalnego PIN-u urządzenia
+  if (accountSessionStore.authUser || auth.currentUser) {
+    await accountSessionStore.logoutCurrentDevice()
+  } else {
+    await signOut(auth)
+  }
 
   // 3. Czyszczenie stanu aplikacji
   isDataLoaded.value = false
@@ -4004,6 +1260,68 @@ const handleLogout = async () => {
   }
 }
 
+// Udostępniamy funkcję wylogowania globalnie
+authStore.logout = handleLogout
+
+
+// =========================
+// SYSTEM 1: AUTO-WYLOGOWANIE PO BEZCZYNNOŚCI (10 MINUT)
+// =========================
+let inactivityTimer = null
+const INACTIVITY_LIMIT = 10 * 60 * 1000 // 10 minut (w milisekundach) czas wylogowania po bezczynności
+
+const resetInactivityTimer = () => {
+  clearTimeout(inactivityTimer)
+  
+  // Włączamy stoper TYLKO wtedy, gdy zalogowany jest PRACOWNIK (przez PIN)
+  if (employeeAuthStore.currentEmployee) {
+    inactivityTimer = setTimeout(() => {
+      if (
+        auth.currentUser &&
+        accountSessionStore.localPinConfigured
+      ) {
+        const result = accountSessionStore.lockApplication()
+        if (result.locked) return
+        return
+      }
+
+      console.log('Brak aktywności. Wylogowywanie pracownika...')
+      handleLogout()
+    }, INACTIVITY_LIMIT)
+  }
+}
+
+// Obserwujemy zmiany w logowaniu, żeby włączyć/wyłączyć stoper ORAZ reagować na Kill Switch
+watch(() => employeeAuthStore.currentEmployee, (newEmployee, oldEmployee) => {
+  resetInactivityTimer()
+
+  // Firebase PIN korzysta z centralnego czyszczenia zarejestrowanego poniżej.
+  // Ten watcher zachowuje oddzielną obsługę sesji legacy oraz odebrania dostępu.
+  if (oldEmployee && !newEmployee) {
+    if (auth.currentUser && accountSessionStore.isPinLocked) {
+      return
+    }
+
+    console.log('Sesja pracownika zakończona. Czyszczę dane aplikacji...')
+
+    stopCompanyDataListeners()
+    resetCompanyDataState()
+
+    if (!auth.currentUser) {
+      isLoggedIn.value = false
+    }
+
+    const targetPath = auth.currentUser
+      ? resolveAccountActionPath({
+          isPinLocked: accountSessionStore.isPinLocked
+        })
+      : '/logowanie'
+    if (router.currentRoute.value.path !== targetPath) {
+      router.replace(targetPath)
+    }
+  }
+})
+
     
 
 
@@ -4011,13 +1329,13 @@ const handleLogout = async () => {
 
 
 const collectAppState = () => ({
-  suppliers: suppliers.value,
+  suppliers: serializeRestaurantList('suppliers', suppliers.value),
   towary: towary.value,
-  warehouses: warehouses.value,
-  orderTimings: orderTimings.value,
-  units: units.value,
-  categories: categories.value,
-  whoOrders: whoOrders.value,
+  warehouses: serializeRestaurantList('warehouses', warehouses.value),
+  orderTimings: serializeRestaurantList('orderTimings', orderTimings.value),
+  units: serializeRestaurantList('units', units.value),
+  categories: serializeRestaurantList('categories', categories.value),
+  whoOrders: serializeRestaurantList('whoOrders', whoOrders.value),
   fcSettings: fcSettings.value,
   dishCategories: dishCategories.value
   // Usunęliśmy menuItems z głównego stanu!
@@ -4029,13 +1347,13 @@ const applyAppState = (state) => {
     ...(state || {})
   }
 
-  suppliers.value = safeState.suppliers
+  suppliers.value = normalizeRestaurantList('suppliers', safeState.suppliers)
   towary.value = safeState.towary
-  warehouses.value = safeState.warehouses
-  orderTimings.value = safeState.orderTimings
-  units.value = safeState.units
-  categories.value = safeState.categories
-  whoOrders.value = safeState.whoOrders
+  warehouses.value = normalizeRestaurantList('warehouses', safeState.warehouses)
+  orderTimings.value = normalizeRestaurantList('orderTimings', safeState.orderTimings)
+  units.value = normalizeRestaurantList('units', safeState.units)
+  categories.value = normalizeRestaurantList('categories', safeState.categories)
+  whoOrders.value = normalizeRestaurantList('whoOrders', safeState.whoOrders)
   
   if (state?.fcSettings) {
     fcSettings.value = state.fcSettings
@@ -4049,12 +1367,31 @@ const applyAppState = (state) => {
 }
 
 
-const saveAllAppStateToCloud = async () => {
-  const uid = auth.currentUser?.uid
+const saveAllAppStateToCloud = async (expectedRestaurantId = null) => {
+  if (!authorizationStore.hasAnyPermission([
+    'can_edit_products',
+    'can_edit_menu'
+  ])) {
+    throw new Error('Nie masz uprawnienia do zapisywania ustawień aplikacji.')
+  }
 
-  if (!uid) return
+  const uid = getCurrentRestaurantId()
+
+  if (
+    expectedRestaurantId &&
+    !isRestaurantContextCurrent(expectedRestaurantId, uid)
+  ) {
+    throw new Error('Kontekst restauracji zmienił się przed zapisem.')
+  }
 
   try {
+    await persistRestaurantDataWhenReady({
+      status: restaurantDataStatus.value,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: uid,
+      persistValue: async () => true
+    })
+
     const appState = collectAppState()
 
     // ✂️ ODCIĘCIE: Wyrzucamy towary ze starego worka przed zapisem do bazy
@@ -4075,21 +1412,78 @@ const saveAllAppStateToCloud = async () => {
 
     if (isReallyEmptyState) {
       console.warn('🚫 Zablokowany zapis – stan wygląda na całkowicie pusty')
-      return
+      throw new Error('Zapis pustego, niezaładowanego stanu został zablokowany.')
     }
 
-    await saveUserStateToFirestore(uid, appState)
+    await persistRestaurantDataWhenReady({
+      status: restaurantDataStatus.value,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: authorizationStore.restaurantId,
+      persistValue: () => saveUserStateToFirestore(uid, appState)
+    })
   } catch (error) {
     console.error('Błąd zapisu do Firestore:', error)
+    throw error
   }
 }
 
 const isHydrating = ref(false)
 const isDataLoaded = ref(false)
+const restaurantDataStatus = ref(RESTAURANT_DATA_STATUS.IDLE)
+const restaurantDataLoadError = ref('')
+const loadedRestaurantDataId = ref(null)
+let restaurantDataLoadRevision = 0
 let saveTimeout = null
+
+const logRestaurantHydration = ({
+  event,
+  restaurantId = authorizationStore.restaurantId,
+  status = restaurantDataStatus.value,
+  reason = null
+}) => {
+  const diagnostic = buildRestaurantHydrationDiagnostic({
+    mode: import.meta.env.MODE,
+    event,
+    authUid: auth.currentUser?.uid,
+    restaurantId,
+    status,
+    reason
+  })
+
+  if (diagnostic) console.info('[dev:test][app/state]', diagnostic)
+}
 
 let unsubscribeCartItems = null
 let unsubscribeUserState = null
+
+const handleBusinessListenerError = async ({ error, restaurantId, source }) => {
+  if (!isRestaurantContextCurrent(
+    restaurantId,
+    authorizationStore.restaurantId
+  )) return
+
+  const accessWasRevoked = await accountSessionStore
+    .handleBusinessPermissionDenied({ error, restaurantId })
+  if (accessWasRevoked) return
+  if (!isRestaurantContextCurrent(
+    restaurantId,
+    authorizationStore.restaurantId
+  )) return
+
+  console.error(`Błąd nasłuchiwania ${source}:`, error)
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+  restaurantDataLoadError.value =
+    'Utracono dostęp do danych restauracji. Odśwież widok albo spróbuj ponownie.'
+  loadedRestaurantDataId.value = null
+  isHydrating.value = false
+  isDataLoaded.value = true
+  logRestaurantHydration({
+    event: 'listener-error',
+    restaurantId,
+    status: RESTAURANT_DATA_STATUS.ERROR,
+    reason: error?.code || error?.name || 'firestore-listener-failed'
+  })
+}
 
 
 const subscribeUserState = (uid) => {
@@ -4101,13 +1495,44 @@ const subscribeUserState = (uid) => {
   const stateRef = getUserStateDocRef(uid)
 
   unsubscribeUserState = onSnapshot(stateRef, (snapshot) => {
+    if (!isRestaurantSnapshotCurrent({
+      status: restaurantDataStatus.value,
+      listenerRestaurantId: uid,
+      loadedRestaurantId: loadedRestaurantDataId.value,
+      currentRestaurantId: authorizationStore.restaurantId
+    })) return
     if (!snapshot.exists()) return
 
     const data = snapshot.data()
 
+    if (Array.isArray(data.suppliers)) {
+      suppliers.value = normalizeRestaurantList('suppliers', data.suppliers)
+    }
+    if (Array.isArray(data.warehouses)) {
+      warehouses.value = normalizeRestaurantList('warehouses', data.warehouses)
+    }
+    if (Array.isArray(data.orderTimings)) {
+      orderTimings.value = normalizeRestaurantList('orderTimings', data.orderTimings)
+    }
+    if (Array.isArray(data.units)) {
+      units.value = normalizeRestaurantList('units', data.units)
+    }
+    if (Array.isArray(data.categories)) {
+      categories.value = normalizeRestaurantList('categories', data.categories)
+    }
+    if (Array.isArray(data.whoOrders)) {
+      whoOrders.value = normalizeRestaurantList('whoOrders', data.whoOrders)
+    }
+
     if (Array.isArray(data.ordersRegister)) {
       ordersRegister.value = data.ordersRegister
     }
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'app/state'
+    })
   })
 }
 
@@ -4122,6 +1547,7 @@ const subscribeCartItems = (uid) => {
   const cartItemsRef = getUserCartItemsCollectionRef(uid)
 
   unsubscribeCartItems = onSnapshot(cartItemsRef, (snapshot) => {
+  if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
   const nextCart = {}
   const nextCustomCartItems = []
 
@@ -4154,6 +1580,12 @@ const subscribeCartItems = (uid) => {
 
   cart.value = nextCart
   customCartItems.value = nextCustomCartItems
+}, error => {
+  void handleBusinessListenerError({
+    error,
+    restaurantId: uid,
+    source: 'koszyka'
+  })
 })
 }
 
@@ -4169,12 +1601,19 @@ const subscribeOrders = (uid) => {
   const ordersRef = getUserOrdersCollectionRef(uid)
 
   unsubscribeOrders = onSnapshot(ordersRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextOrders = []
     snapshot.forEach((docSnap) => {
       nextOrders.push(docSnap.data())
     })
     // Aktualizujemy listę i upewniamy się, że najnowsze są na górze
     ordersRegister.value = nextOrders.sort((a, b) => b.id - a.id)
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'zamówień'
+    })
   })
 }
 
@@ -4190,11 +1629,18 @@ const subscribeMenuItems = (uid) => {
   const menuRef = getUserMenuItemsCollectionRef(uid)
 
   unsubscribeMenuItems = onSnapshot(menuRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextMenuItems = []
     snapshot.forEach((docSnap) => {
       nextMenuItems.push(docSnap.data())
     })
     menuItems.value = nextMenuItems
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'menu'
+    })
   })
 }
 
@@ -4214,6 +1660,7 @@ const subscribeTowary = (uid) => {
 
   // Zaczynamy nasłuchiwać nowej kolekcji!
   unsubscribeTowary = onSnapshot(towaryRef, (snapshot) => {
+    if (!isRestaurantContextCurrent(uid, authorizationStore.restaurantId)) return
     const nextTowary = []
     
     snapshot.forEach((docSnap) => {
@@ -4222,25 +1669,50 @@ const subscribeTowary = (uid) => {
 
     // Aktualizujemy listę na ekranie w czasie rzeczywistym
     towary.value = nextTowary
+  }, error => {
+    void handleBusinessListenerError({
+      error,
+      restaurantId: uid,
+      source: 'towarów'
+    })
   })
 }
 
 const scheduleSave = () => {
   if (isHydrating.value) return
   if (!isDataLoaded.value) return
+  if (restaurantDataStatus.value !== RESTAURANT_DATA_STATUS.READY) return
+
+  const scheduledRestaurantId = loadedRestaurantDataId.value
+  if (!isRestaurantContextCurrent(
+    scheduledRestaurantId,
+    authorizationStore.restaurantId
+  )) return
 
   clearTimeout(saveTimeout)
 
   saveTimeout = setTimeout(() => {
-    saveAllAppStateToCloud()
+    void saveAllAppStateToCloud(scheduledRestaurantId).catch(async error => {
+      console.warn(
+        'Zapis ustawień aplikacji został zablokowany:',
+        error?.message || 'Brak uprawnienia.'
+      )
+      await loadSelectedRestaurantData().catch(reloadError => {
+        console.warn('Nie udało się ponownie pobrać danych:', reloadError?.message)
+      })
+      await showAlert(
+        'Nie udało się zapisać zmiany. Przywrócono dane zapisane w restauracji.',
+        'Błąd zapisu',
+        '❌'
+      )
+    })
   }, 500)
 }
 
 
 
-  const resetCompanyDataState = () => {
+const resetCompanyDataState = () => {
   suppliers.value = []
-
   towary.value = []
   warehouses.value = []
   orderTimings.value = []
@@ -4248,6 +1720,10 @@ const scheduleSave = () => {
   categories.value = []
   whoOrders.value = []
   ordersRegister.value = []
+
+  // DODANE: Resetowanie danych menu i receptur
+  menuItems.value = []
+  dishCategories.value = []
 
   cart.value = {}
   customCartItems.value = []
@@ -4263,33 +1739,115 @@ const scheduleSave = () => {
   tempSelectedCartCategories.value = []
 
   expandedOrderId.value = null
+
+  // DODANE: Resetowanie stanu interfejsu
+  selectedCategory.value = null
+  menuSearch.value = ''
 }
 
 
 
-const loadCompanyDataWithFallback = async () => {
+const loadSelectedRestaurantData = async () => {
+  const loadRevision = ++restaurantDataLoadRevision
   isHydrating.value = true
   isDataLoaded.value = false
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.LOADING
+  restaurantDataLoadError.value = ''
+  loadedRestaurantDataId.value = null
+  clearTimeout(saveTimeout)
+  saveTimeout = null
+  let restaurantId = null
 
   try {
-    const uid = auth.currentUser?.uid
+    restaurantId = authorizationStore.requireRestaurantId()
+    logRestaurantHydration({
+      event: 'loading',
+      restaurantId,
+      status: RESTAURANT_DATA_STATUS.LOADING
+    })
 
-    if (!uid) {
-      resetCompanyDataState()
-      return
+    resetCompanyDataState()
+
+    const result = await loadUserStateFromFirestore(restaurantId)
+
+    if (
+      loadRevision !== restaurantDataLoadRevision ||
+      !isRestaurantContextCurrent(
+      restaurantId,
+      authorizationStore.restaurantId
+      )
+    ) {
+      logRestaurantHydration({
+        event: 'ignored',
+        restaurantId,
+        reason: 'stale-restaurant-context'
+      })
+      return false
     }
 
-    const cloudState = await loadUserStateFromFirestore(uid)
+    if (!result.exists) {
+      restaurantDataStatus.value = RESTAURANT_DATA_STATUS.MISSING
+      restaurantDataLoadError.value =
+        'Nie znaleziono danych tej restauracji. Zapis pozostaje zablokowany.'
+      logRestaurantHydration({
+        event: 'missing',
+        restaurantId,
+        status: RESTAURANT_DATA_STATUS.MISSING,
+        reason: 'app-state-document-does-not-exist'
+      })
+      return false
+    }
 
-    resetCompanyDataState()
-    applyAppState(cloudState)
+    applyAppState(result.state)
+    loadedRestaurantDataId.value = restaurantId
+    restaurantDataStatus.value = RESTAURANT_DATA_STATUS.READY
+    logRestaurantHydration({
+      event: 'ready',
+      restaurantId,
+      status: RESTAURANT_DATA_STATUS.READY
+    })
+    return true
 
-    isDataLoaded.value = true
   } catch (error) {
+    if (
+      restaurantId &&
+      await accountSessionStore.handleBusinessPermissionDenied({
+        error,
+        restaurantId
+      })
+    ) return false
+
     console.error('Błąd ładowania z Firestore:', error)
-    resetCompanyDataState()
+    if (
+      loadRevision === restaurantDataLoadRevision &&
+      (!restaurantId || isRestaurantContextCurrent(
+        restaurantId,
+        authorizationStore.restaurantId
+      ))
+    ) {
+      restaurantDataStatus.value = RESTAURANT_DATA_STATUS.ERROR
+      restaurantDataLoadError.value =
+        'Nie udało się pobrać danych restauracji. Sprawdź połączenie i spróbuj ponownie.'
+      loadedRestaurantDataId.value = null
+      logRestaurantHydration({
+        event: 'error',
+        restaurantId,
+        status: RESTAURANT_DATA_STATUS.ERROR,
+        reason: error?.code || error?.name || 'firestore-read-failed'
+      })
+    }
+    return false
   } finally {
-    isHydrating.value = false
+    if (
+      loadRevision === restaurantDataLoadRevision &&
+      (!restaurantId || isRestaurantContextCurrent(
+        restaurantId,
+        authorizationStore.restaurantId
+      ))
+    ) {
+      isDataLoaded.value = true
+      isHydrating.value = false
+    }
   }
 }
 
@@ -4299,22 +1857,39 @@ const loadCompanyDataWithFallback = async () => {
 
 
 
-// --- KONFIGURACJA BACKUPU ---
+// --- KOLEKCJE ZAPISYWANE W KOPII ZAPASOWEJ ---
+// Główny dokument "state" jest zapisywany osobno.
+// Ta lista zawiera wyłącznie podkolekcje users/{uid}/...
 const COLLECTIONS_TO_BACKUP = [
-  'state',
   'towary',
-  'cartItems', // Dodałem, żebyś miał pełny obraz danych
-  'kategorie',
-  'magazyny',
-  'whoOrders',
-  'units',
-  'orderTimings'
-];
+  'cartItems',
+  'menuItems',
+
+  // Pracownicy i uprawnienia
+  'employees',
+  'permissionProfiles',
+  'employeeGroups',
+
+  // Moduł grafiku
+  'positions',
+  'scheduleDemandModels',
+  'grafik_profile_zatrudnienia',
+  'grafik_ustawienia',
+  'grafik_okresy_dyspozycji',
+  'dyspozycje_dni',
+  'grafik_dyspozycyjnosc',
+  'grafik_dyspozycyjnosc_wersje',
+  'grafiki',
+  'grafik_dni',
+  'grafik_aktualizacje'
+]
 
 // --- FUNKCJA EKSPORTU ---
 const eksportujBackup = async () => {
+  authorizationStore.requireOwner()
   const user = auth.currentUser;
-  if (!user) return;
+  const restaurantId = getCurrentRestaurantId()
+  if (!user || !restaurantId) return;
 
   const confirmed = await showConfirm('Czy chcesz utworzyć pełną kopię zapasową swoich danych?', 'Utworzyć kopię?', '💾');
   if (!confirmed) return;
@@ -4327,7 +1902,7 @@ const eksportujBackup = async () => {
     };
 
     // 1. Pobieramy główny dokument stanu
-    const stateDoc = await getDoc(getUserStateDocRef(user.uid));
+    const stateDoc = await getDoc(getUserStateDocRef(restaurantId));
     if (stateDoc.exists()) {
       backupData.state = stateDoc.data();
       
@@ -4338,16 +1913,23 @@ const eksportujBackup = async () => {
       }
     }
 
-    // 2. Pobieramy pozostałe kolekcje - Zapis kolekcji 
-    const collectionsToFetch = ['towary', 'cartItems', 'menuItems'];
-    for (const colName of collectionsToFetch) {
-      const colRef = collection(db, 'users', user.uid, colName);
-      const snapshot = await getDocs(colRef);
-      backupData.collections[colName] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    }
+    // 2. Pobieramy wszystkie podkolekcje objęte kopią zapasową
+for (const collectionName of COLLECTIONS_TO_BACKUP) {
+  const collectionRef = collection(
+    db,
+    'users',
+    restaurantId,
+    collectionName
+  )
+
+  const collectionSnapshot = await getDocs(collectionRef)
+
+  backupData.collections[collectionName] =
+    collectionSnapshot.docs.map(documentSnapshot => ({
+      id: documentSnapshot.id,
+      ...documentSnapshot.data()
+    }))
+}
 
     // 3. Generowanie poprawnej daty lokalnej (rozwiązuje problem "wczorajszej daty" po północy!)
     const now = new Date();
@@ -4370,24 +1952,21 @@ const eksportujBackup = async () => {
   }
 };
 
-const backupInputRef = ref(null);
 
-const triggerFileInput = () => {
-  if (backupInputRef.value) {
-    backupInputRef.value.click();
-  }
-};
+
+
 
 // --- FUNKCJA WCZYTYWANIA BACKUPU ---
 const wczytajBackup = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+  authorizationStore.requireOwner()
+  const file = event.target.files[0]
+  if (!file) return
 
-  const reader = new FileReader();
-  
+  const reader = new FileReader()
+
   reader.onload = async (e) => {
-    try {
-      const backupData = JSON.parse(e.target.result);
+  try {
+      const backupData = JSON.parse(e.target.result)
 
       if (!backupData.state || !backupData.collections) {
         await showAlert('Nieprawidłowy format pliku kopii zapasowej.', 'Błąd pliku', '❌');
@@ -4407,43 +1986,92 @@ const wczytajBackup = async (event) => {
       }
 
       const user = auth.currentUser;
-      if (!user) return;
+      const restaurantId = getCurrentRestaurantId()
+      if (!user || !restaurantId) return;
 
       isDataLoaded.value = false;
 
       // 1. Zapisujemy główny stan aplikacji (nie zawiera już starych towarów)
       if (backupData.state) {
-        await setDoc(getUserStateDocRef(user.uid), backupData.state);
-      }
+  await setDoc(
+    getUserStateDocRef(restaurantId),
+    backupData.state
+  )
+}
 
       // 2. Zapisujemy kolekcje (w tym 'towary')
-      if (backupData.collections) {
-        for (const [colName, docsArray] of Object.entries(backupData.collections)) {
-          
-          // Złota zasada: Najpierw w pełni czyścimy istniejącą kolekcję na żywo...
-          const currentCollectionSnapshot = await getDocs(collection(db, 'users', user.uid, colName));
-          for (const docSnap of currentCollectionSnapshot.docs) {
-            await deleteDoc(docSnap.ref);
-          }
+if (backupData.collections) {
+  for (
+    const [colName, docsArray]
+    of Object.entries(backupData.collections)
+  ) {
+    if (!Array.isArray(docsArray)) {
+      throw new Error(
+        `Kolekcja "${colName}" nie zawiera prawidłowej listy dokumentów.`
+      )
+    }
 
-          // ...a potem zapisujemy do niej idealnie odwzorowane dane z pliku.
-          for (const itemData of docsArray) {
-            const docRef = doc(db, 'users', user.uid, colName, String(itemData.id));
-            await setDoc(docRef, itemData);
-          }
-        }
+    const currentCollectionSnapshot = await getDocs(
+      collection(
+        db,
+        'users',
+        restaurantId,
+        colName
+      )
+    )
+
+    for (const documentSnapshot of currentCollectionSnapshot.docs) {
+      await deleteDoc(documentSnapshot.ref)
+    }
+
+    for (const itemData of docsArray) {
+      if (
+        !itemData ||
+        typeof itemData !== 'object' ||
+        itemData.id === undefined ||
+        itemData.id === null
+      ) {
+        throw new Error(
+          `Jeden z dokumentów w kolekcji "${colName}" nie ma identyfikatora.`
+        )
       }
 
-      await loadCompanyDataWithFallback();
+      const documentRef = doc(
+        db,
+        'users',
+        restaurantId,
+        colName,
+        String(itemData.id)
+      )
+
+      await setDoc(
+        documentRef,
+        itemData
+      )
+    }
+  }
+}
+
+      await loadSelectedRestaurantData();
       await showAlert('Kopia zapasowa wczytana pomyślnie! Aplikacja zostanie odświeżona.', 'Sukces', '✅');
       
       // Magiczna linijka – robi automatyczne F5, gwarantując idealne załadowanie widoku
       window.location.reload();
 
     } catch (error) {
-      console.error("Błąd odczytu pliku:", error);
-      await showAlert('Nie udało się odczytać pliku. Plik jest uszkodzony.', 'Błąd', '❌');
-    }
+  console.error(
+    'Błąd przywracania kopii zapasowej:',
+    error
+  )
+
+  await showAlert(
+    error?.message
+      ? `Nie udało się przywrócić kopii zapasowej.\n\n${error.message}`
+      : 'Nie udało się przywrócić kopii zapasowej.',
+    'Błąd przywracania danych',
+    '❌'
+  )
+}
     
     event.target.value = ''; 
   };
@@ -4455,9 +2083,9 @@ const wczytajBackup = async (event) => {
 
 
     // =========================
-// SKĄD OTWARTO FORMULARZ TOWARU
-// =========================
-const towarFormSource = ref('towary')
+    // SKĄD OTWARTO FORMULARZ TOWARU
+    // =========================
+    const towarFormSource = ref('towary')
 
 
 
@@ -4467,6 +2095,41 @@ const towarFormSource = ref('towary')
     // EKRAN GŁÓWNY APLIKACJI
     // =========================
     const currentScreen = ref('home')
+
+
+    // =========================
+    // STRAŻNIK ŚCIEŻEK (ROUTE GUARD) - Blokada przycisku Wstecz
+    // =========================
+    watch(() => [route.name, route.path, route.matched.length, isLoggedIn.value, employeeAuthStore.currentEmployee, accountSessionStore.isPinLocked, isAppReady.value], () => {
+      // 1. KLUCZOWE: Jeśli Firebase jeszcze sprawdza sesję (aplikacja ładuje dane), 
+      // NIE WYKONUJEMY ŻADNYCH RUCHÓW. Czekamy.
+      if (!isAppReady.value) return
+
+      if (
+        auth.currentUser &&
+        accountSessionStore.isPinLocked &&
+        route.matched.length > 0 &&
+        route.path !== LOCAL_PIN_LOCK_PATH
+      ) {
+        redirectToLocalPin()
+        return
+      }
+      
+      const authenticationRedirect = resolveAppAuthenticationRedirect({
+        route,
+        isAppReady: isAppReady.value,
+        hasFirebaseSession: Boolean(auth.currentUser),
+        hasLegacyPinSession: Boolean(employeeAuthStore.currentEmployee)
+      })
+
+      if (authenticationRedirect) {
+        console.log('Strażnik zablokował dostęp. Przekierowanie do logowania konta.')
+        router.replace(authenticationRedirect)
+      }
+    }, { immediate: true })
+
+
+
 
     // =========================
     // AKTYWNA ZAKŁADKA W ZAMAWIARCE
@@ -4661,6 +2324,7 @@ const towarFormSource = ref('towary')
     }
 
     const saveDishCategory = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       const name = cleanName(dishCategoryForm.value.name)
       if (!name) return
 
@@ -4684,14 +2348,15 @@ const towarFormSource = ref('towary')
 
           // MAGIA: Jeśli nazwa się zmieniła, aktualizujemy też wszystkie dania!
           if (oldName !== name) {
-            const user = auth.currentUser
-            if (user) {
+            // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+            const uid = getCurrentRestaurantId()
+            if (uid) {
               const batch = writeBatch(db) // Paczka aktualizacji dla Firestore
               
               menuItems.value.forEach(dish => {
                 if (dish.category === oldName) {
                   dish.category = name // Zmiana lokalna na ekranie
-                  const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+                  const docRef = getUserMenuItemDocRef(uid, dish.id) // POPRAWKA: używamy uid zamiast user.uid
                   batch.update(docRef, { category: name }) // Zmiana w chmurze
                 }
               })
@@ -4714,6 +2379,7 @@ const towarFormSource = ref('towary')
     }
 
     const deleteDishCategory = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       if (editedDishCategoryId.value === null) return
 
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę kategorię? (Dania w niej pozostaną bez kategorii)', 'Usuń kategorię', '🗑️')
@@ -4727,14 +2393,15 @@ const towarFormSource = ref('towary')
 
       // MAGIA: Wyrzucamy usuniętą kategorię ze wszystkich dań (robią się "Brak")
       if (categoryNameToDelete) {
-        const user = auth.currentUser
-        if (user) {
+        // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+        const uid = getCurrentRestaurantId()
+        if (uid) {
           const batch = writeBatch(db)
           
           menuItems.value.forEach(dish => {
             if (dish.category === categoryNameToDelete) {
               dish.category = '' // Czyścimy kategorię lokalnie
-              const docRef = getUserMenuItemDocRef(user.uid, dish.id)
+              const docRef = getUserMenuItemDocRef(uid, dish.id) // POPRAWKA: używamy uid zamiast user.uid
               batch.update(docRef, { category: '' }) // Czyścimy w chmurze
             }
           })
@@ -4749,6 +2416,7 @@ const towarFormSource = ref('towary')
 
     // --- FUNKCJE MENU ---
 const duplicateMenuItem = (item) => {
+  authorizationStore.requirePermission('can_edit_menu')
   const newItem = {
     ...item,
     id: Date.now(), 
@@ -4759,14 +2427,16 @@ const duplicateMenuItem = (item) => {
 }
 
 const deleteMenuItem = async (id) => {
+      authorizationStore.requirePermission('can_edit_menu')
       const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę pozycję z menu?', 'Usuń danie', '🗑️')
       if (!confirmed) return
       
-      const user = auth.currentUser
-      if (!user) return
+      // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji
+      const uid = getCurrentRestaurantId()
+      if (!uid) return
 
       try {
-        const docRef = getUserMenuItemDocRef(user.uid, id)
+        const docRef = getUserMenuItemDocRef(uid, id) // POPRAWKA: używamy uid zamiast user.uid
         await deleteDoc(docRef) // Usuwamy twardo z bazy
         
         // Nasłuch sam usunie danie z ekranu!
@@ -4822,28 +2492,34 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveDishForm = async () => { 
-      if (!editingDish.value.name || editingDish.value.name.trim() === '') {
-        await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
-        return 
-      }
+      authorizationStore.requirePermission('can_edit_menu')
+  if (!editingDish.value.name || editingDish.value.name.trim() === '') {
+    await showAlert('Musisz podać nazwę dania.', 'Brak nazwy', '⚠️')
+    return 
+  }
 
-      if (!editingDish.value.category || editingDish.value.category === '') {
-        await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
-        return 
-      }
-      
-      const user = auth.currentUser
-      if (!user) return
+  if (!editingDish.value.category || editingDish.value.category === '') {
+    await showAlert('Musisz wybrać kategorię dla tego dania.', 'Brak kategorii', '📁')
+    return 
+  }
+  
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd zapisu dania: Brak ID restauracji/managera!")
+    return
+  }
 
-      try {
-        const docRef = getUserMenuItemDocRef(user.uid, editingDish.value.id)
-        await setDoc(docRef, editingDish.value) // Twardy zapis do Firebase
-        closeDishForm()
-      } catch (error) {
-        console.error("Błąd przy zapisie dania:", error)
-        await showAlert('Wystąpił błąd przy zapisie dania do bazy.', 'Błąd', '❌')
-      }
-    }
+  try {
+    // POPRAWKA: Używamy nowego uid zamiast user.uid
+    const docRef = getUserMenuItemDocRef(uid, editingDish.value.id)
+    await setDoc(docRef, editingDish.value) // Twardy zapis do Firebase
+    closeDishForm()
+  } catch (error) {
+    console.error("Błąd przy zapisie dania:", error)
+    await showAlert('Wystąpił błąd przy zapisie dania do bazy.', 'Błąd', '❌')
+  }
+}
 
 
 
@@ -4966,6 +2642,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveIngredientToRecipe = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       if (!ingredientQty.value || ingredientQty.value <= 0) {
         await showAlert('Wpisz poprawną ilość zużycia.', 'Błąd', '⚠️')
         return
@@ -4995,6 +2672,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const removeIngredientFromRecipe = async () => {
+      authorizationStore.requirePermission('can_edit_menu')
       const confirmed = await showConfirm('Usunąć ten składnik z receptury?', 'Usuń składnik', '🗑️')
       if (!confirmed) return
       
@@ -5014,6 +2692,7 @@ const deleteMenuItem = async (id) => {
     }
 
     const saveSettings = () => {
+      authorizationStore.requirePermission('can_edit_menu')
       scheduleSave()
       isSettingsDirty.value = false
     }
@@ -5281,14 +2960,20 @@ const selectedTowaryPdfFields = ref([
 
 
 
-    // =========================
-    // FUNKCJE KOSZYKA
-    // =========================
-    const addToCart = async (productId) => {
-  const user = auth.currentUser
-  if (!user) return
+// =========================
+// FUNKCJE KOSZYKA
+// =========================
+const addToCart = async (productId) => {
+  authorizationStore.requirePermission('can_create_orders')
+  // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
+  const uid = getCurrentRestaurantId()
 
-  const ref = getUserCartItemDocRef(user.uid, productId)
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
+
+  const ref = getUserCartItemDocRef(uid, productId)
 
   await setDoc(
     ref,
@@ -5298,15 +2983,22 @@ const selectedTowaryPdfFields = ref([
 }
 
   const removeFromCart = async (productId) => {
-  const user = auth.currentUser
-  if (!user) return
+    authorizationStore.requirePermission('can_create_orders')
+  // Pobieramy ID: z sesji głównego Szefa (auth) LUB z sesji Pracownika (employeeAuthStore)
+  const uid = getCurrentRestaurantId()
 
-  if (Number(cart.value[productId] || 0) <= 1) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
     return
   }
 
-  const ref = getUserCartItemDocRef(user.uid, productId)
+  // Jeśli ilość wynosi 1 (lub mniej), kliknięcie minusa usunie towar z koszyka
+  if (Number(cart.value[productId] || 0) <= 1) {
+    await deleteDoc(getUserCartItemDocRef(uid, productId))
+    return
+  }
+
+  const ref = getUserCartItemDocRef(uid, productId)
 
   await setDoc(
     ref,
@@ -5316,25 +3008,30 @@ const selectedTowaryPdfFields = ref([
 }
 
   const clearCart = async () => {
+    authorizationStore.requirePermission('can_create_orders')
   const confirmed = await showConfirm(
-  'Czy na pewno chcesz wyczyścić koszyk?',
-  'Potwierdź akcję',
-  '🗑️'
-)
-if (!confirmed) return
+    'Czy na pewno chcesz wyczyścić koszyk?',
+    'Potwierdź akcję',
+    '🗑️'
+  )
+  if (!confirmed) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const batch = writeBatch(db)
 
   Object.keys(cart.value).forEach((productId) => {
-    batch.delete(getUserCartItemDocRef(user.uid, productId))
+    batch.delete(getUserCartItemDocRef(uid, productId)) // używamy nowego uid
   })
 
   customCartItems.value.forEach((item) => {
-  batch.delete(getUserCartItemDocRef(user.uid, item.id))
-})
+    batch.delete(getUserCartItemDocRef(uid, item.id)) // używamy nowego uid
+  })
 
   await batch.commit()
 
@@ -5374,18 +3071,22 @@ const closeCustomCartItemModal = () => {
   showCustomCartItemModal.value = false
 
   customCartItemForm.value = {
-  name: '',
-  unit: '',
-  qty: '',
-  supplier: '',
-  price: ''
+    name: '',
+    unit: '',
+    qty: '',
+    supplier: '',
+    price: ''
+  }
 }
-}
-
 
 const saveCustomCartItem = async () => {
-  const user = auth.currentUser
-  if (!user) return
+  authorizationStore.requirePermission('can_create_orders')
+  // POPRAWKA: Nowy strażnik ID
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const name = String(customCartItemForm.value.name || '').trim()
   const unit = String(customCartItemForm.value.unit || '').trim()
@@ -5394,9 +3095,9 @@ const saveCustomCartItem = async () => {
   const price = Number(customCartItemForm.value.price)
 
   if (!name) {
-  await showAlert('Wpisz nazwę', 'Brak nazwy', '✏️')
-  return
-}
+    await showAlert('Wpisz nazwę', 'Brak nazwy', '✏️')
+    return
+  }
 
   if (!unit) {
     await showAlert('Wybierz jednostkę miary', 'Brak danych', '⚠️')
@@ -5411,7 +3112,7 @@ const saveCustomCartItem = async () => {
   const customId = customCartItemForm.value.id || `custom-${Date.now()}`
 
   await setDoc(
-    getUserCartItemDocRef(user.uid, customId),
+    getUserCartItemDocRef(uid, customId), // POPRAWKA: uid
     {
       isCustom: true,
       name,
@@ -5426,16 +3127,14 @@ const saveCustomCartItem = async () => {
   closeCustomCartItemModal()
 }
 
+// =========================
+// MODAL_ILOŚĆ_ZAMÓWIENIA
+// =========================
+const showQtyModal = ref(false)
+const selectedProductForQty = ref(null)
+const tempQty = ref('')
 
-
-    // =========================
-    // MODAL_ILOŚĆ_ZAMÓWIENIA
-    // =========================
-    const showQtyModal = ref(false)
-    const selectedProductForQty = ref(null)
-    const tempQty = ref('')
-
-   const qtyInput = ref(null)
+const qtyInput = ref(null)
 
 const openQtyModal = async (product) => {
   selectedProductForQty.value = product
@@ -5452,54 +3151,59 @@ const openQtyModal = async (product) => {
   qtyInput.value?.focus()
 }
 
-    const closeQtyModal = () => {
-      showQtyModal.value = false
-      selectedProductForQty.value = null
-      tempQty.value = ''
-    }
+const closeQtyModal = () => {
+  showQtyModal.value = false
+  selectedProductForQty.value = null
+  tempQty.value = ''
+}
 
-    const saveQtyModal = async () => {
+const saveQtyModal = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (!selectedProductForQty.value) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Nowy strażnik ID
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const product = selectedProductForQty.value
   const productId = product.id
   const qty = Number(tempQty.value)
 
   if (product.isCustom) {
-  if (!tempQty.value || qty <= 0) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
-    closeQtyModal()
-    return
-  }
+    if (!tempQty.value || qty <= 0) {
+      await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
+      closeQtyModal()
+      return
+    }
 
     const itemToUpdate = customCartItems.value.find(item => item.id === productId)
 
     if (itemToUpdate) {
-  await setDoc(
-    getUserCartItemDocRef(user.uid, productId),
-    {
-      qty,
-      netPrice: itemToUpdate.netPrice || 0
-    },
-    { merge: true }
-  )
-}
+      await setDoc(
+        getUserCartItemDocRef(uid, productId), // POPRAWKA: uid
+        {
+          qty,
+          netPrice: itemToUpdate.netPrice || 0
+        },
+        { merge: true }
+      )
+    }
 
-closeQtyModal()
-return
+    closeQtyModal()
+    return
   }
 
   if (!tempQty.value || qty <= 0) {
-    await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+    await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
     closeQtyModal()
     return
   }
 
   await setDoc(
-    getUserCartItemDocRef(user.uid, productId),
+    getUserCartItemDocRef(uid, productId), // POPRAWKA: uid
     { qty },
     { merge: true }
   )
@@ -5512,23 +3216,23 @@ return
 // KOSZYK - USUWANIE POZYCJI Z MODALA ILOŚCI
 // =========================
 const deleteCartItemFromQtyModal = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (!selectedProductForQty.value) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Nowy strażnik ID
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd koszyka: Brak ID restauracji/managera!")
+    return
+  }
 
   const productId = selectedProductForQty.value.id
 
-  await deleteDoc(getUserCartItemDocRef(user.uid, productId))
+  await deleteDoc(getUserCartItemDocRef(uid, productId)) // POPRAWKA: uid
 
   closeQtyModal()
 }
 
-
-
-// =========================
-// KOSZYK - EDYCJA TOWARU Z MODALA ILOŚCI
-// =========================
 // =========================
 // KOSZYK / ZRÓB ZAMÓWIENIE - EDYCJA TOWARU Z MODALA ILOŚCI
 // =========================
@@ -5539,14 +3243,24 @@ const editTowarFromQtyModal = () => {
 
   if (product.isCustom) return
 
-  towarFormSource.value =
-    zamawiarkaView.value === 'koszyk' ? 'koszyk' : 'produkty'
+  // ZAPAMIĘTYWANIE SCROLLA PRZED PRZEJŚCIEM DO EDYCJI
+  if (zamawiarkaView.value === 'koszyk') {
+    towarFormSource.value = 'koszyk'
+    if (koszykListRef.value) {
+      savedKoszykScroll.value = koszykListRef.value.scrollTop
+    }
+  } else {
+    towarFormSource.value = 'produkty'
+    if (produktyListRef.value) {
+      savedProduktyScroll.value = produktyListRef.value.scrollTop
+    }
+  }
 
   const fullTowar = towary.value.find(item => item.id === product.id)
 
-closeQtyModal()
-zamawiarkaView.value = 'towary'
-openTowarEdit(fullTowar || product)
+  closeQtyModal()
+  zamawiarkaView.value = 'towary'
+  openTowarEdit(fullTowar || product)
 }
 
 
@@ -5597,6 +3311,7 @@ openTowarEdit(fullTowar || product)
     }
 
     const saveSupplier = async () => {
+      authorizationStore.requirePermission('can_edit_products')
       if (!supplierForm.value.name.trim()) return
 
       // =========================
@@ -5614,13 +3329,15 @@ openTowarEdit(fullTowar || product)
       // =========================
       // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
       // =========================
+      let nextSuppliers = [...suppliers.value]
+
       if (supplierFormMode.value === 'edit' && editedSupplierId.value !== null) {
         const index = suppliers.value.findIndex(
           supplier => supplier.id === editedSupplierId.value
         )
 
         if (index !== -1) {
-          suppliers.value[index] = {
+          nextSuppliers[index] = {
             ...suppliers.value[index],
             name: cleanName(supplierForm.value.name),
             phone: supplierForm.value.phone,
@@ -5631,13 +3348,15 @@ openTowarEdit(fullTowar || product)
         // =========================
         // TRYB DODAWANIA
         // =========================
-        suppliers.value.push({
+        nextSuppliers.push({
           id: Date.now(),
           name: cleanName(supplierForm.value.name),
           phone: supplierForm.value.phone,
           email: supplierForm.value.email
         })
       }
+
+      if (!await persistAppStateList('suppliers', suppliers, nextSuppliers)) return
 
       supplierForm.value = {
         name: '',
@@ -5648,13 +3367,13 @@ openTowarEdit(fullTowar || product)
       showSupplierForm.value = false
       supplierFormMode.value = 'add'
       editedSupplierId.value = null
-      scheduleSave()
     }
 
 // =========================
 // USUWANIE HURTOWNI (Z POTWIERDZENIEM)
 // =========================
 const deleteSupplier = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedSupplierId.value === null) return
 
   const supplierToDelete = suppliers.value.find(
@@ -5672,9 +3391,11 @@ const deleteSupplier = async () => {
 if (!confirmed) return
 
   // Aktualizacja listy metodą filter (Niemutowalność)
-  suppliers.value = suppliers.value.filter(
+  const nextSuppliers = suppliers.value.filter(
     supplier => supplier.id !== editedSupplierId.value
   )
+
+  if (!await persistAppStateList('suppliers', suppliers, nextSuppliers)) return
 
   if (supplierNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -5697,7 +3418,6 @@ if (!confirmed) return
     email: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
@@ -5755,6 +3475,7 @@ if (!confirmed) return
     }
 
     const saveWarehouse = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(warehouseForm.value.name)
 
   if (!name) return
@@ -5774,13 +3495,15 @@ if (!confirmed) return
   // =========================
   // TRYB EDYCJI (Bezpieczna podmiana obiektu - NIEMUTOWALNOŚĆ)
   // =========================
+  const nextWarehouses = [...warehouses.value]
+
   if (warehouseFormMode.value === 'edit' && editedWarehouseId.value !== null) {
     const index = warehouses.value.findIndex(
       warehouse => warehouse.id === editedWarehouseId.value
     )
 
     if (index !== -1) {
-      warehouses.value[index] = {
+      nextWarehouses[index] = {
         ...warehouses.value[index],
         name: name
       }
@@ -5789,11 +3512,13 @@ if (!confirmed) return
     // =========================
     // TRYB DODAWANIA
     // =========================
-    warehouses.value.push({
+    nextWarehouses.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('warehouses', warehouses, nextWarehouses)) return
 
   showWarehouseForm.value = false
   warehouseFormMode.value = 'add'
@@ -5803,13 +3528,13 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
     // USUWANIE MAGAZYNU (Z POTWIERDZENIEM)
     // =========================
     const deleteWarehouse = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedWarehouseId.value === null) return
 
   const warehouseToDelete = warehouses.value.find(
@@ -5825,9 +3550,11 @@ if (!confirmed) return
   )
   if (!confirmed) return
 
-  warehouses.value = warehouses.value.filter(
+  const nextWarehouses = warehouses.value.filter(
     warehouse => warehouse.id !== editedWarehouseId.value
   )
+
+  if (!await persistAppStateList('warehouses', warehouses, nextWarehouses)) return
 
   if (warehouseNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -5848,7 +3575,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -5908,6 +3634,7 @@ if (!confirmed) return
     }
 
     const saveOrderTiming = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(orderTimingForm.value.name)
 
   if (!name) return
@@ -5924,20 +3651,20 @@ if (!confirmed) return
     return
   }
 
-  if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
-    const itemToUpdate = orderTimings.value.find(
-      item => item.id === editedOrderTimingId.value
-    )
+  let nextOrderTimings = [...orderTimings.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (orderTimingFormMode.value === 'edit' && editedOrderTimingId.value !== null) {
+    nextOrderTimings = nextOrderTimings.map(item => (
+      item.id === editedOrderTimingId.value ? { ...item, name } : item
+    ))
   } else {
-    orderTimings.value.push({
+    nextOrderTimings.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('orderTimings', orderTimings, nextOrderTimings)) return
 
   showOrderTimingForm.value = false
   orderTimingFormMode.value = 'add'
@@ -5947,13 +3674,13 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
     // =========================
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteOrderTiming = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedOrderTimingId.value === null) return
 
   const timingToDelete = orderTimings.value.find(
@@ -5969,9 +3696,11 @@ if (!confirmed) return
 )
 if (!confirmed) return
 
-  orderTimings.value = orderTimings.value.filter(
+  const nextOrderTimings = orderTimings.value.filter(
     item => item.id !== editedOrderTimingId.value
   )
+
+  if (!await persistAppStateList('orderTimings', orderTimings, nextOrderTimings)) return
 
   if (timingNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -6006,7 +3735,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -6067,6 +3795,7 @@ if (!confirmed) return
     }
 
     const saveUnit = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(unitForm.value.name)
 
   if (!name) return
@@ -6083,20 +3812,20 @@ if (!confirmed) return
     return
   }
 
-  if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
-    const itemToUpdate = units.value.find(
-      item => item.id === editedUnitId.value
-    )
+  let nextUnits = [...units.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (unitFormMode.value === 'edit' && editedUnitId.value !== null) {
+    nextUnits = nextUnits.map(item => (
+      item.id === editedUnitId.value ? { ...item, name } : item
+    ))
   } else {
-    units.value.push({
+    nextUnits.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('units', units, nextUnits)) return
 
   showUnitForm.value = false
   unitFormMode.value = 'add'
@@ -6106,7 +3835,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -6115,6 +3843,7 @@ if (!confirmed) return
     // USUWANIE (Z POTWIERDZENIEM)
     // =========================
     const deleteUnit = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedUnitId.value === null) return
 
   const unitToDelete = units.value.find(
@@ -6130,9 +3859,11 @@ if (!confirmed) return
 )
 if (!confirmed) return
 
-  units.value = units.value.filter(
+  const nextUnits = units.value.filter(
     item => item.id !== editedUnitId.value
   )
+
+  if (!await persistAppStateList('units', units, nextUnits)) return
 
   if (unitNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -6153,7 +3884,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -6216,6 +3946,7 @@ const closeCategoryForm = () => {
 }
 
 const saveCategory = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(categoryForm.value.name)
 
   if (!name) return
@@ -6232,20 +3963,20 @@ const saveCategory = async () => {
     return
   }
 
-  if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
-    const itemToUpdate = categories.value.find(
-      item => item.id === editedCategoryId.value
-    )
+  let nextCategories = [...categories.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (categoryFormMode.value === 'edit' && editedCategoryId.value !== null) {
+    nextCategories = nextCategories.map(item => (
+      item.id === editedCategoryId.value ? { ...item, name } : item
+    ))
   } else {
-    categories.value.push({
+    nextCategories.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('categories', categories, nextCategories)) return
 
   showCategoryForm.value = false
   categoryFormMode.value = 'add'
@@ -6255,13 +3986,13 @@ const saveCategory = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 // =========================
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
 const deleteCategory = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedCategoryId.value === null) return
 
   const categoryToDelete = categories.value.find(
@@ -6277,9 +4008,11 @@ const deleteCategory = async () => {
   )
   if (!confirmed) return
 
-  categories.value = categories.value.filter(
+  const nextCategories = categories.value.filter(
     item => item.id !== editedCategoryId.value
   )
+
+  if (!await persistAppStateList('categories', categories, nextCategories)) return
 
   if (categoryNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -6304,7 +4037,6 @@ const deleteCategory = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -6363,6 +4095,7 @@ const closeWhoOrderForm = () => {
 }
 
 const saveWhoOrder = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const name = cleanName(whoOrderForm.value.name)
 
   if (!name) return
@@ -6379,20 +4112,20 @@ const saveWhoOrder = async () => {
     return
   }
 
-  if (whoOrderFormMode.value === 'edit' && editedWhoOrderId.value !== null) {
-    const itemToUpdate = whoOrders.value.find(
-      item => item.id === editedWhoOrderId.value
-    )
+  let nextWhoOrders = [...whoOrders.value]
 
-    if (itemToUpdate) {
-      itemToUpdate.name = name
-    }
+  if (whoOrderFormMode.value === 'edit' && editedWhoOrderId.value !== null) {
+    nextWhoOrders = nextWhoOrders.map(item => (
+      item.id === editedWhoOrderId.value ? { ...item, name } : item
+    ))
   } else {
-    whoOrders.value.push({
+    nextWhoOrders.push({
       id: Date.now(),
       name
     })
   }
+
+  if (!await persistAppStateList('whoOrders', whoOrders, nextWhoOrders)) return
 
   showWhoOrderForm.value = false
   whoOrderFormMode.value = 'add'
@@ -6402,13 +4135,13 @@ const saveWhoOrder = async () => {
     name: ''
   }
 
-  scheduleSave()
 }
 
 // =========================
 // USUWANIE (Z POTWIERDZENIEM)
 // =========================
 const deleteWhoOrder = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedWhoOrderId.value === null) return
 
   const whoOrderToDelete = whoOrders.value.find(
@@ -6424,9 +4157,11 @@ const deleteWhoOrder = async () => {
 )
 if (!confirmed) return
 
-  whoOrders.value = whoOrders.value.filter(
+  const nextWhoOrders = whoOrders.value.filter(
     item => item.id !== editedWhoOrderId.value
   )
+
+  if (!await persistAppStateList('whoOrders', whoOrders, nextWhoOrders)) return
 
   if (whoOrderNameToDelete) {
     towary.value = towary.value.map(item => {
@@ -6451,7 +4186,6 @@ if (!confirmed) return
     name: ''
   }
 
-  scheduleSave()
 }
 
 
@@ -6466,6 +4200,10 @@ if (!confirmed) return
     // Zmienne do zapamiętywania scrolla
     const towaryListRef = ref(null)
     const savedTowaryScroll = ref(0)
+    const produktyListRef = ref(null)
+    const savedProduktyScroll = ref(0)
+    const koszykListRef = ref(null)
+    const savedKoszykScroll = ref(0)
 
     const towarySearch = ref('')
     const towarySelectionMode = ref(false)
@@ -6565,6 +4303,7 @@ if (!confirmed) return
 }
 
 const handleTowarActiveChange = () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (towarFormMode.value !== 'edit') return
   if (editedTowarId.value === null) return
 
@@ -6655,9 +4394,11 @@ const closeTowarForm = async () => {
   editedTowarId.value = null
   resetTowarForm()
 
-  if (towarFormSource.value === 'koszyk') {
+  const source = towarFormSource.value // zapamiętujemy przed resetem
+
+  if (source === 'koszyk') {
     zamawiarkaView.value = 'koszyk'
-  } else if (towarFormSource.value === 'produkty') {
+  } else if (source === 'produkty') {
     zamawiarkaView.value = 'produkty'
   } else {
     zamawiarkaView.value = 'towary'
@@ -6665,9 +4406,13 @@ const closeTowarForm = async () => {
 
   towarFormSource.value = 'towary'
 
-  // PRZYWRACAMY SCROLL PO WYRENDEROWANIU LISTY
+  // PRZYWRACAMY SCROLL PO WYRENDEROWANIU WŁAŚCIWEJ LISTY
   await nextTick()
-  if (towaryListRef.value) {
+  if (source === 'koszyk' && koszykListRef.value) {
+    koszykListRef.value.scrollTop = savedKoszykScroll.value
+  } else if (source === 'produkty' && produktyListRef.value) {
+    produktyListRef.value.scrollTop = savedProduktyScroll.value
+  } else if (source === 'towary' && towaryListRef.value) {
     towaryListRef.value.scrollTop = savedTowaryScroll.value
   }
 }
@@ -6688,7 +4433,11 @@ const closeTowarForm = async () => {
       }
     }
 
-    const removeSelectedTowary = async () => {
+// =========================
+// TOWARY - USUWANIE GRUPOWE
+// =========================
+const removeSelectedTowary = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   const confirmed = await showConfirm(
     'Czy na pewno chcesz usunąć zaznaczone towary?',
     'Usuń towary',
@@ -6696,15 +4445,19 @@ const closeTowarForm = async () => {
   )
   if (!confirmed) return
 
-  const uid = auth.currentUser?.uid
-  if (!uid) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd usuwania grupowego: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
     // 1. Przygotowujemy paczkę (batch) z poleceniami usunięcia w chmurze
     const batch = writeBatch(db)
 
     selectedTowaryIds.value.forEach(id => {
-      const docRef = getUserTowarDocRef(uid, String(id))
+      const docRef = getUserTowarDocRef(uid, String(id)) // POPRAWKA: używamy nowego uid
       batch.delete(docRef)
     })
 
@@ -6721,6 +4474,7 @@ const closeTowarForm = async () => {
     // scheduleSave() zostało stąd całkowicie usunięte
   } catch (error) {
     console.error('Błąd podczas grupowego usuwania towarów:', error)
+    await showAlert('Nie udało się usunąć zaznaczonych towarów.', 'Błąd', '❌')
   }
 }
 
@@ -6867,96 +4621,98 @@ const closeTowarForm = async () => {
 
 
       const saveTowar = async () => {
-             // =========================
-             // PROSTA WALIDACJA
-              // =========================
-              if (!towarForm.value.name.trim()) return
+  authorizationStore.requirePermission('can_edit_products')
+  // =========================
+  // PROSTA WALIDACJA
+  // =========================
+  if (!towarForm.value.name.trim()) return
 
-const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
-const vatNormalized = normalizeVat(towarForm.value.vat)
+  const netPriceNormalized = normalizeNetPrice(towarForm.value.netPrice)
+  const vatNormalized = normalizeVat(towarForm.value.vat)
 
-if (netPriceNormalized === null) {
-  await showAlert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku', 'Błąd danych', '⚠️')
-  return
-}
+  if (netPriceNormalized === null) {
+    await showAlert('Cena netto musi być liczbą z maksymalnie 2 miejscami po przecinku', 'Błąd danych', '⚠️')
+    return
+  }
 
-if (vatNormalized === null) {
-  await showAlert('Stawka VAT musi być liczbą całkowitą', 'Błąd danych', '⚠️')
-  return
-}
+  if (vatNormalized === null) {
+    await showAlert('Stawka VAT musi być liczbą całkowitą', 'Błąd danych', '⚠️')
+    return
+  }
 
-// =========================
-// PORZĄDKOWANIE DANYCH Z FORMULARZA
-// =========================
-const preparedTowar = {
-               id:
-               towarFormMode.value === 'edit' && editedTowarId.value !== null
-               ? editedTowarId.value
-                : Date.now(),
+  // =========================
+  // PORZĄDKOWANIE DANYCH Z FORMULARZA
+  // =========================
+  const preparedTowar = {
+    id:
+      towarFormMode.value === 'edit' && editedTowarId.value !== null
+        ? editedTowarId.value
+        : Date.now(),
+    name: towarForm.value.name.trim(),
+    unit: towarForm.value.unit.trim(),
+    supplier: towarForm.value.supplier.trim(),
+    netPrice: netPriceNormalized,
+    vat: vatNormalized,
+    warehouse: towarForm.value.warehouse.trim(),
+    orderTimings: Array.isArray(towarForm.value.orderTimings)
+      ? [...towarForm.value.orderTimings]
+      : [],
+    whoOrders: Array.isArray(towarForm.value.whoOrders)
+      ? [...towarForm.value.whoOrders]
+      : [],
+    categories: Array.isArray(towarForm.value.categories)
+      ? [...towarForm.value.categories]
+      : [],
+    displayOrder: String(towarForm.value.displayOrder ?? '').trim(),
+    maxQtyByOrderTiming:
+      towarForm.value.maxQtyByOrderTiming &&
+      typeof towarForm.value.maxQtyByOrderTiming === 'object'
+        ? { ...towarForm.value.maxQtyByOrderTiming }
+        : {},
+    active: !!towarForm.value.active,
+    note: towarForm.value.note.trim()
+  }
 
-        name: towarForm.value.name.trim(),
-        unit: towarForm.value.unit.trim(),
-        supplier: towarForm.value.supplier.trim(),
-        netPrice: netPriceNormalized,
-         vat: vatNormalized,
+  // =========================
+  // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
+  // =========================
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
 
-        warehouse: towarForm.value.warehouse.trim(),
-
-          orderTimings: Array.isArray(towarForm.value.orderTimings)
-          ? [...towarForm.value.orderTimings]
-          : [],
-
-          whoOrders: Array.isArray(towarForm.value.whoOrders)
-          ? [...towarForm.value.whoOrders]
-          : [],
-
-          categories: Array.isArray(towarForm.value.categories)
-          ? [...towarForm.value.categories]
-          : [],
-        displayOrder: String(towarForm.value.displayOrder ?? '').trim(),
-          maxQtyByOrderTiming:
-          towarForm.value.maxQtyByOrderTiming &&
-          typeof towarForm.value.maxQtyByOrderTiming === 'object'
-            ? { ...towarForm.value.maxQtyByOrderTiming }
-            : {},
-        active: !!towarForm.value.active,
-        note: towarForm.value.note.trim()
-      }
-
-      // =========================
-      // ZAPIS DO FIRESTORE (KOLEKCJA TOWARY)
-      // =========================
-      const user = auth.currentUser
-      if (user) {
-        try {
-          await setDoc(getUserTowarDocRef(user.uid, preparedTowar.id), preparedTowar)
-        } catch (error) {
-          console.error("Błąd przy zapisie towaru:", error)
-          await showAlert('Nie udało się zapisać towaru', 'Błąd', '❌')
-          return
-        }
-      }
-
-      // Aktualizacja lokalnego stanu (żeby widok się odświeżył)
-      const index = towary.value.findIndex(item => item.id === preparedTowar.id)
-      if (index !== -1) {
-        towary.value[index] = preparedTowar
-      } else {
-        towary.value.push(preparedTowar)
-      }
-
-      // =========================
-      // ZAMKNIĘCIE FORMULARZA I ZAPIS
-      // =========================
-      closeTowarForm()
-      scheduleSave()
+  if (uid) {
+    try {
+      await setDoc(getUserTowarDocRef(uid, preparedTowar.id), preparedTowar)
+    } catch (error) {
+      console.error("Błąd przy zapisie towaru:", error)
+      await showAlert('Nie udało się zapisać towaru', 'Błąd', '❌')
+      return
     }
+  } else {
+    console.warn("Błąd zapisu: Brak ID restauracji/managera!")
+    return
+  }
+
+  // Aktualizacja lokalnego stanu (żeby widok się odświeżył)
+  const index = towary.value.findIndex(item => item.id === preparedTowar.id)
+  if (index !== -1) {
+    towary.value[index] = preparedTowar
+  } else {
+    towary.value.push(preparedTowar)
+  }
+
+  // =========================
+  // ZAMKNIĘCIE FORMULARZA I ZAPIS
+  // =========================
+  closeTowarForm()
+  scheduleSave()
+}
 
 
-    // =========================
+// =========================
 // TOWARY - USUWANIE
 // =========================
 const deleteTowar = async () => {
+  authorizationStore.requirePermission('can_edit_products')
   if (editedTowarId.value === null) return
 
   const confirmed = await showConfirm(
@@ -6966,8 +4722,12 @@ const deleteTowar = async () => {
   )
   if (!confirmed) return
 
-  const uid = auth.currentUser?.uid
-  if (!uid) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd usuwania: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
     // 1. Usuwamy dokument bezpośrednio z nowej kolekcji w chmurze
@@ -6981,6 +4741,7 @@ const deleteTowar = async () => {
     // Odcięto scheduleSave() – nie jest już tutaj potrzebne!
   } catch (error) {
     console.error('Błąd podczas usuwania towaru:', error)
+    await showAlert('Nie udało się usunąć towaru', 'Błąd', '❌')
   }
 }
 
@@ -6991,12 +4752,12 @@ const deleteTowar = async () => {
 
 
     const normalizeName = (value) => {
-  return String(value || '').trim().toLowerCase()
-}
+     return String(value || '').trim().toLowerCase()
+    }
 
-const cleanName = (value) => {
-  return String(value || '').trim()
-}
+  const cleanName = (value) => {
+    return String(value || '').trim()
+  }
 
 
 
@@ -7409,13 +5170,18 @@ const bValid = !isNaN(bOrder) && bOrder > 0
 // ZAPIS AKTUALNEGO ZAMÓWIENIA DO REJESTRU (OSOBNA KOLEKCJA)
 // =========================
 const saveCurrentOrderToRegister = async () => {
+  authorizationStore.requirePermission('can_create_orders')
   if (filteredCartItems.value.length === 0) {
     await showAlert('Brak pozycji do zapisania w aktualnym widoku koszyka', 'Brak pozycji', '⚠️')
     return null
   }
 
-  const user = auth.currentUser
-  if (!user) return null
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd zapisu zamówienia: Brak ID restauracji/managera!")
+    return null
+  }
 
   const now = new Date()
 
@@ -7468,8 +5234,8 @@ const saveCurrentOrderToRegister = async () => {
   }
 
   try {
-    // 1. TWARDY ZAPIS: Aplikacja musi poczekać, aż baza w chmurze potwierdzi zapis.
-    const docRef = getUserOrderDocRef(user.uid, orderRecord.id)
+    // POPRAWKA: Używamy nowego uid
+    const docRef = getUserOrderDocRef(uid, orderRecord.id)
     await setDoc(docRef, orderRecord)
     
     // Zwracamy obiekt dla mechanizmu PDF. Nasłuch onSnapshot sam zaktualizuje widok historii.
@@ -7485,6 +5251,7 @@ const saveCurrentOrderToRegister = async () => {
 // REJESTR ZAMÓWIEŃ - USUWANIE (Z CHMURY)
 // =========================
 const deleteOrderFromRegister = async (orderId) => {
+  authorizationStore.requirePermission('can_edit_products')
   const confirmed = await showConfirm(
     'Czy na pewno chcesz usunąć to zamówienie?',
     'Potwierdź usunięcie',
@@ -7493,11 +5260,16 @@ const deleteOrderFromRegister = async (orderId) => {
 
   if (!confirmed) return
 
-  const user = auth.currentUser
-  if (!user) return
+  // POPRAWKA: Pobieramy ID Szefa LUB ID Restauracji ze sklepu pracownika
+  const uid = getCurrentRestaurantId()
+  if (!uid) {
+    console.warn("Błąd usuwania zamówienia: Brak ID restauracji/managera!")
+    return
+  }
 
   try {
-    const docRef = getUserOrderDocRef(user.uid, orderId)
+    // POPRAWKA: Używamy nowego uid
+    const docRef = getUserOrderDocRef(uid, orderId)
     await deleteDoc(docRef)
 
     if (expandedOrderId.value === orderId) {
@@ -7508,8 +5280,6 @@ const deleteOrderFromRegister = async (orderId) => {
     await showAlert('Nie udało się usunąć zamówienia.', 'Błąd', '❌')
   }
 }
-
-
 
 // =========================
 // GENEROWANIE ZAMÓWIENIA (FLOW POD PDF)
@@ -7524,8 +5294,8 @@ const handleGenerateOrder = async () => {
   'Wygenerować PDF i zapisać zamówienie?',
   'Zapis zamówienia',
   '📄'
-)
-if (!confirmed) return
+  )
+    if (!confirmed) return
 
   const order = await saveCurrentOrderToRegister()
 
@@ -7537,7 +5307,6 @@ if (!confirmed) return
     await showAlert('Nie udało się wygenerować PDF', 'Błąd', '❌')
     return
   }
-
 
   zamawiarkaView.value = 'historia'
 }
@@ -7894,8 +5663,8 @@ const generatePdfFromRegister = async (order) => {
   'Wygenerować PDF tego zamówienia?',
   'Generowanie PDF',
   '📄'
-)
-if (!confirmed) return
+  )
+   if (!confirmed) return
 
   const pdfResult = await generateOrderPdf(order)
 
@@ -7913,79 +5682,355 @@ if (!confirmed) return
 // =========================
 let unsubscribeAuth = null
 
+
+// === OBSERWATOR LOGOWANIA PRACOWNIKA (Pobiera dane wg uprawnień) ===
+let activatedLegacyRestaurantId = null
+
+const activateLegacyPinRestaurant = async newEmployee => {
+  if (
+    !newEmployee ||
+    employeeAuthStore.sessionMode !== 'legacy_pin' ||
+    auth.currentUser ||
+    authStore.currentUser ||
+    authStore.user
+  ) {
+    activatedLegacyRestaurantId = null
+    return
+  }
+
+  const companyUid = employeeAuthStore.requireRestaurantId()
+  if (
+    activatedLegacyRestaurantId === companyUid &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.READY &&
+    isRestaurantContextCurrent(companyUid, loadedRestaurantDataId.value)
+  ) return
+
+  activatedLegacyRestaurantId = companyUid
+  isLoggedIn.value = true
+
+  await loadSelectedRestaurantData()
+  if (typeof subscribeUserState === 'function') subscribeUserState(companyUid)
+
+  const uprawnienia = newEmployee.uprawnienia || {}
+  if (uprawnienia.can_view_zamawiarka || uprawnienia.can_edit_products) {
+    if (typeof subscribeTowary === 'function') subscribeTowary(companyUid)
+    if (typeof subscribeCartItems === 'function') subscribeCartItems(companyUid)
+    if (typeof subscribeOrders === 'function') subscribeOrders(companyUid)
+  }
+
+  if (uprawnienia.can_view_foodcost || uprawnienia.can_edit_menu) {
+    if (typeof subscribeMenuItems === 'function') subscribeMenuItems(companyUid)
+  }
+}
+
+watch(() => employeeAuthStore.currentEmployee, async newEmployee => {
+  await activateLegacyPinRestaurant(newEmployee)
+})
+// ==============================================================================
+
+
+const stopCompanyDataListeners = () => {
+  restaurantDataLoadRevision += 1
+  restaurantDataStatus.value = RESTAURANT_DATA_STATUS.IDLE
+  restaurantDataLoadError.value = ''
+  loadedRestaurantDataId.value = null
+  isHydrating.value = false
+  isDataLoaded.value = false
+  clearTimeout(saveTimeout)
+  saveTimeout = null
+  if (unsubscribeCartItems) { unsubscribeCartItems(); unsubscribeCartItems = null }
+  if (unsubscribeTowary) { unsubscribeTowary(); unsubscribeTowary = null }
+  if (unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null }
+  if (unsubscribeUserState) { unsubscribeUserState(); unsubscribeUserState = null }
+  if (unsubscribeMenuItems) { unsubscribeMenuItems(); unsubscribeMenuItems = null }
+}
+
+const unregisterApplicationLockCleanup =
+  accountSessionStore.registerApplicationLockCleanup(() => {
+    activatedLegacyRestaurantId = null
+    activatedRestaurantId = null
+    activatedBusinessDataAccess = false
+    stopCompanyDataListeners()
+    resetCompanyDataState()
+    clearPiniaBusinessSessionData()
+    currentCompany.value = null
+    authStore.isLoggedIn = false
+    authStore.currentCompany = null
+    isDataLoaded.value = true
+    isLoggedIn.value = false
+  })
+
+let activatedRestaurantId = null
+let activatedBusinessDataAccess = false
+
+const hasAccountBusinessDataAccess = computed(() => (
+  authorizationStore.isOwner || [
+    'can_view_zamawiarka',
+    'can_create_orders',
+    'can_edit_products',
+    'can_view_foodcost',
+    'can_edit_menu'
+  ].some(permission => authorizationStore.hasPermission(permission))
+))
+
+const activateAccountRestaurant = async () => {
+  const user = auth.currentUser
+  const restaurantId = authorizationStore.restaurantId
+  const needsBusinessData = hasAccountBusinessDataAccess.value
+  if (!user || !restaurantId || !accountSessionStore.hasActiveContext) return
+  if (
+    activatedRestaurantId === restaurantId &&
+    activatedBusinessDataAccess === needsBusinessData &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.LOADING
+  ) return
+  if (
+    activatedRestaurantId === restaurantId &&
+    activatedBusinessDataAccess === needsBusinessData &&
+    restaurantDataStatus.value === RESTAURANT_DATA_STATUS.READY &&
+    isRestaurantContextCurrent(restaurantId, loadedRestaurantDataId.value)
+  ) return
+
+  logRestaurantHydration({ event: 'context-ready', restaurantId })
+  stopCompanyDataListeners()
+  activatedRestaurantId = restaurantId
+  activatedBusinessDataAccess = needsBusinessData
+  const email = String(user.email || '').trim().toLowerCase()
+  currentCompany.value = {
+    uid: restaurantId,
+    authUid: user.uid,
+    username: email,
+    companyName:
+      accountSessionStore.currentRestaurant?.name ||
+      (email ? email.split('@')[0] : 'restauracja')
+  }
+  authStore.isLoggedIn = true
+  authStore.currentCompany = currentCompany.value
+  isLoggedIn.value = true
+
+  const employeePermissions = accountSessionStore.permissions || {}
+  if (needsBusinessData) {
+    await loadSelectedRestaurantData()
+    subscribeUserState(restaurantId)
+  } else {
+    resetCompanyDataState()
+    isDataLoaded.value = true
+  }
+
+  if (authorizationStore.isOwner) {
+    subscribeCartItems(restaurantId)
+    subscribeTowary(restaurantId)
+    subscribeOrders(restaurantId)
+    subscribeMenuItems(restaurantId)
+  } else {
+    if (
+      employeePermissions.can_view_zamawiarka ||
+      employeePermissions.can_create_orders ||
+      employeePermissions.can_edit_products
+    ) {
+      subscribeCartItems(restaurantId)
+      subscribeTowary(restaurantId)
+      subscribeOrders(restaurantId)
+    }
+    if (
+      employeePermissions.can_view_foodcost ||
+      employeePermissions.can_edit_menu
+    ) {
+      subscribeMenuItems(restaurantId)
+    }
+  }
+}
+
+const retryRestaurantDataLoad = async () => {
+  restaurantDataLoadError.value = ''
+  isDataLoaded.value = false
+  await activateAccountRestaurant()
+}
+
+watch(
+  () => [
+    accountSessionStore.isInitialized,
+    accountSessionStore.isMembershipContextReady,
+    accountSessionStore.hasActiveContext,
+    accountSessionStore.currentRestaurantId,
+    authorizationStore.restaurantId,
+    hasAccountBusinessDataAccess.value,
+    accountSessionStore.isLoading
+  ],
+  async ([initialized, contextReady, hasAccess, , , , contextLoading]) => {
+    if (!auth.currentUser || !initialized) return
+
+    if (accountSessionStore.isPinLocked) {
+      activatedRestaurantId = null
+      activatedBusinessDataAccess = false
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = false
+      return
+    }
+
+    if (!hasAccess) {
+      if (
+        accountSessionStore.currentMembership?.status === 'active' &&
+        !contextReady &&
+        contextLoading &&
+        !accountSessionStore.accessRevoked
+      ) {
+        activatedRestaurantId = null
+        activatedBusinessDataAccess = false
+        stopCompanyDataListeners()
+        resetCompanyDataState()
+        isDataLoaded.value = false
+        return
+      }
+
+      activatedRestaurantId = null
+      activatedBusinessDataAccess = false
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = true
+      if (
+        router.currentRoute.value.path !== '/konto' &&
+        !isPublicAuthFlowRoute(router.currentRoute.value)
+      ) {
+        await router.replace('/konto')
+      }
+      return
+    }
+
+    await activateAccountRestaurant()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [authorizationStore.context, route.path],
+  async ([accessContext, currentPath]) => {
+    if (
+      isAppReady.value &&
+      !accessContextCanOpenRoute(accessContext, currentPath)
+    ) {
+      await router.replace('/')
+    }
+  },
+  { deep: true }
+)
+
+
+
+
 onMounted(() => {
+
+  // Nasłuchiwacze aktywności dla auto-wylogowania
+  window.addEventListener('mousemove', resetInactivityTimer)
+  window.addEventListener('keydown', resetInactivityTimer)
+  window.addEventListener('touchstart', resetInactivityTimer)
+  window.addEventListener('click', resetInactivityTimer)
+
+
   unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      if (unsubscribeCartItems) {
-        unsubscribeCartItems()
-        unsubscribeCartItems = null
-      }
-
-      // Odpięcie nasłuchiwania towarów przy wylogowaniu
-      if (typeof unsubscribeTowary !== 'undefined' && unsubscribeTowary) {
-        unsubscribeTowary()
-        unsubscribeTowary = null
-      }
-      
-      if (typeof unsubscribeOrders !== 'undefined' && unsubscribeOrders) {
-        unsubscribeOrders()
-        unsubscribeOrders = null
-      }
-
-
-      if (unsubscribeUserState) {
-        unsubscribeUserState()
-        unsubscribeUserState = null
-      }
-
-      isDataLoaded.value = false
+      await accountSessionStore.initializeForUser(null, { force: true })
+      activatedRestaurantId = null
+      activatedBusinessDataAccess = false
+      stopCompanyDataListeners()
       isLoggedIn.value = false
       currentCompany.value = null
+      
+      // Czyszczenie Pinii
+      authStore.isLoggedIn = false
+      authStore.currentCompany = null
+      
       resetCompanyDataState()
+
+      // === NOWA WSPÓŁPRACA STRAŻNIKÓW (WOLNOŚĆ DLA PRACOWNIKA) ===
+      const currentPath = window.location.pathname
+      
+      // Odtwarzamy stare logowanie PIN wyłącznie wtedy, gdy istnieje kompletna
+      // zapisana sesja pracownika. Świeża przeglądarka pozostaje w Firebase Auth.
+      if (
+        hasStoredLegacyPinSession(localStorage) &&
+        !employeeAuthStore.isInitialized
+      ) {
+        await employeeAuthStore.initSession()
+      }
+
+      // 2. Sprawdzamy czy mamy zalogowanego PRACOWNIKA
+      if (employeeAuthStore.currentEmployee) {
+        await activateLegacyPinRestaurant(employeeAuthStore.currentEmployee)
+      } 
+      else {
+        const authenticationRedirect = resolveRouteAuthenticationRedirect({
+          route: {
+            name: router.currentRoute.value.name,
+            path: currentPath
+          },
+          hasFirebaseSession: false,
+          hasLegacyPinSession: false
+        })
+        if (authenticationRedirect) {
+          await router.replace(authenticationRedirect)
+        }
+      }
+      // === KONIEC POPRAWKI ===
+
+      isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA DOPIERO PO POBRANIU DANYCH!
+
       return
     }
 
     isLoggedIn.value = true
 
-    const email = String(user.email || '').trim().toLowerCase()
-    const name = email ? email.split('@')[0] : 'użytkownik'
-
-    currentCompany.value = {
-      uid: user.uid,
-      username: email,
-      companyName: name
+    if (shouldDeferAccountBootstrapForActivation({
+      route: router.currentRoute.value,
+      user
+    })) {
+      stopCompanyDataListeners()
+      await accountSessionStore.initializeForUser(null, { force: true })
+      isDataLoaded.value = true
+      isAppReady.value = true
+      return
     }
 
-    await loadCompanyDataWithFallback()
-    subscribeCartItems(user.uid)
-    subscribeUserState(user.uid)
-    
-   // Uruchomienie nasłuchiwania na żywo po zalogowaniu
-    subscribeTowary(user.uid)
-    subscribeOrders(user.uid)
-    subscribeMenuItems(user.uid)
+    await accountSessionStore.initializeForUser(user)
+
+    if (accountSessionStore.isPinLocked) {
+      stopCompanyDataListeners()
+      resetCompanyDataState()
+      isDataLoaded.value = true
+      isLoggedIn.value = false
+    } else if (accountSessionStore.hasActiveContext) {
+      await activateAccountRestaurant()
+    } else {
+      isDataLoaded.value = true
+      if (
+        router.currentRoute.value.path !== '/konto' &&
+        !isPublicAuthFlowRoute(router.currentRoute.value)
+      ) {
+        await router.replace('/konto')
+      }
+    }
+
+    isAppReady.value = true // ZDJĘCIE EKRANU ŁADOWANIA
   })
 })
 
 onUnmounted(() => {
+  // Czyszczenie nasłuchiwaczy aktywności
+  window.removeEventListener('mousemove', resetInactivityTimer)
+  window.removeEventListener('keydown', resetInactivityTimer)
+  window.removeEventListener('touchstart', resetInactivityTimer)
+  window.removeEventListener('click', resetInactivityTimer)
+  clearTimeout(inactivityTimer)
+
+
   if (unsubscribeAuth) {
     unsubscribeAuth()
   }
 
-  if (unsubscribeCartItems) {
-    unsubscribeCartItems()
-    unsubscribeCartItems = null
-  }
-
-  if (unsubscribeUserState) {
-    unsubscribeUserState()
-    unsubscribeUserState = null
-  }
-
-  if (unsubscribeMenuItems) {
-    unsubscribeMenuItems()
-    unsubscribeMenuItems = null
-  }
+  unregisterApplicationLockCleanup()
+  stopCompanyDataListeners()
 })
 
 
@@ -8166,13 +6211,16 @@ const openZamawiarkaMenuFromHome = () => {
 
 
 
-    return {
+    const appContext = {
+      isAppReady, // <-- DODANA ZMIENNA DLA EKRANU ŁADOWANIA
       settingsView,
       appVersion,
       aktywneModuly,
       eksportujBackup,
+      wczytajBackup,
       recepturyView,
       isLoggedIn,
+      isPublicAuthRoute,
       isLoggingIn,
       authForm,
       authError,
@@ -8386,8 +6434,14 @@ const openZamawiarkaMenuFromHome = () => {
       getTowaryPdfColumnStyle,
 
       towaryListRef,
+      produktyListRef,
+      koszykListRef,
 
       isDataLoaded,
+      restaurantDataLoadError,
+      retryRestaurantDataLoad,
+      employeeAuthStore,
+      authorizationStore,
 
       fieldFilledClass,
 
@@ -8431,9 +6485,7 @@ const openZamawiarkaMenuFromHome = () => {
       deleteDishCategory,
       duplicateMenuItem,
       deleteMenuItem,
-        backupInputRef,
-      triggerFileInput,
-      wczytajBackup,
+      
 
       isSettingsDirty,
       markSettingsDirty,
@@ -8470,10 +6522,10 @@ const openZamawiarkaMenuFromHome = () => {
       dashboardBestFC,
       dashboardGoldenShots,
       dashboardCategoryHealth,
-      
-
-
     }
+
+    provide('appContext', appContext)
+    return appContext
   }
 }
 </script>
@@ -8715,6 +6767,19 @@ const openZamawiarkaMenuFromHome = () => {
 .zamowienie-active {
   background: #93c5fd;
   border-color: #2563eb;
+}
+
+.item-card-active {
+  background-color: #eff6ff !important;
+  border: 2px solid #2563eb !important;
+}
+.item-card-sub {
+  margin-left: 16px !important;
+  width: calc(100% - 16px) !important;
+  background-color: #f5f3ff !important; /* Pastelowy fiolet */
+  border: 1px dashed #c798f7 !important; /* Delikatnie fioletowa przerywana ramka */
+  font-size: 14px !important;
+  padding: 12px !important;
 }
 
 

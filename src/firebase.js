@@ -1,14 +1,24 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import {
+  browserLocalPersistence,
+  connectAuthEmulator,
+  getAuth,
+  setPersistence
+} from "firebase/auth";
+// Zmieniony import pod nowy standard offline
+import {
+  connectFirestoreEmulator,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "firebase/firestore";
+import emulatorConfig from '../firebase-emulators.json' with { type: 'json' };
+import { resolveFirebaseRuntimeConfig } from './utils/firebaseRuntimeConfig.js';
 
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+const productionFirebaseConfig = {
   apiKey: "AIzaSyCnhw0cwcQMuKbrpPH-YpCp-CsAL2w70lo",
   authDomain: "gastromanager-ddcc9.firebaseapp.com",
   projectId: "gastromanager-ddcc9",
@@ -18,8 +28,69 @@ const firebaseConfig = {
   measurementId: "G-W8G2DZPXKQ"
 };
 
+const viteEnvironment = import.meta.env || {};
+const emulatorRequested =
+  viteEnvironment.VITE_USE_FIREBASE_EMULATORS === 'true';
+
+if (emulatorRequested && viteEnvironment.DEV !== true) {
+  console.warn(
+    'Tryb Emulatorów Firebase jest dostępny wyłącznie podczas lokalnego uruchomienia Vite.'
+  );
+}
+
+const {
+  firebaseConfig,
+  useFirebaseEmulators,
+  useFirebaseTestProject
+} = resolveFirebaseRuntimeConfig({
+  environment: viteEnvironment,
+  productionConfig: productionFirebaseConfig,
+  emulatorConfig
+});
+
+if (useFirebaseTestProject) {
+  console.info(`Lokalny tryb Firebase Test: ${firebaseConfig.projectId}`);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
-export { auth, db };
+
+if (useFirebaseEmulators) {
+  connectAuthEmulator(
+    auth,
+    `http://${emulatorConfig.host}:${emulatorConfig.authPort}`,
+    { disableWarnings: true }
+  );
+}
+
+auth.languageCode = 'pl';
+const authPersistenceReady = setPersistence(
+  auth,
+  browserLocalPersistence
+).catch((error) => {
+  console.error('Nie udało się ustawić trwałej sesji logowania:', error)
+})
+
+// NOWY SPOSÓB: Inicjalizacja bazy od razu z nowym trybem offline
+const db = initializeFirestore(app, {
+  localCache: useFirebaseEmulators || useFirebaseTestProject
+    ? memoryLocalCache()
+    : persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
+if (useFirebaseEmulators) {
+  connectFirestoreEmulator(
+    db,
+    emulatorConfig.host,
+    emulatorConfig.firestorePort
+  );
+}
+
+export {
+  auth,
+  authPersistenceReady,
+  db,
+  useFirebaseEmulators,
+  useFirebaseTestProject
+};

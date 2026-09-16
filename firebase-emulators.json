@@ -1,0 +1,7 @@
+{
+  "projectId": "demo-gastromanager",
+  "host": "127.0.0.1",
+  "authPort": 9099,
+  "firestorePort": 8080,
+  "uiPort": 4000
+}

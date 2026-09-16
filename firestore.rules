@@ -1,0 +1,1243 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasVerifiedEmail() {
+      return isSignedIn() &&
+        request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.get('email', null) is string;
+    }
+
+    // Jedyny przejściowy wyjątek UID -> restaurantId. Obsługuje wyłącznie
+    // istniejącego właściciela z danymi starej aplikacji pod users/{uid}/app/state.
+    function isLegacyOwnerBootstrapRestaurant(restaurantId) {
+      return hasVerifiedEmail() &&
+        restaurantId == request.auth.uid &&
+        exists(/databases/$(database)/documents/users/$(restaurantId)/app/state) &&
+        !exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    // Odczyt markera musi być możliwy przed utworzeniem członkostwa i podczas
+    // równoległego, idempotentnego bootstrapu. Sam odczyt nie nadaje żadnych
+    // uprawnień właściciela ani prawa zapisu danych restauracji.
+    function canReadOwnLegacyBootstrapMarker(restaurantId) {
+      return isLegacyOwnerBootstrapRestaurant(restaurantId);
+    }
+
+    function memberDocument(restaurantId) {
+      return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    function memberDocumentExists(restaurantId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    function employeeDocument(restaurantId, employeeId) {
+      return get(/databases/$(database)/documents/users/$(restaurantId)/employees/$(employeeId));
+    }
+
+    function permissionProfileDocument(restaurantId, profileId) {
+      return get(/databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId));
+    }
+
+    function approvedEmployeeSessionMatches(restaurantId, member, authTime) {
+      let sessionPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime);
+      let session = get(sessionPath);
+      return exists(sessionPath) &&
+        session.data.authUid == request.auth.uid &&
+        session.data.restaurantId == restaurantId &&
+        session.data.employeeId == member.data.employeeId &&
+        session.data.authTime == authTime &&
+        session.data.status == 'active';
+    }
+
+    function hasApprovedEmployeeSession(restaurantId, member) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      return authTime is int &&
+        authTime > 0 &&
+        approvedEmployeeSessionMatches(restaurantId, member, authTime);
+    }
+
+    function activeEmployeeMembershipMatches(restaurantId, member) {
+      let employeePath = /databases/$(database)/documents/users/$(restaurantId)/employees/$(member.data.employeeId);
+      let employee = get(employeePath);
+      return member.data.employeeId is string &&
+        exists(employeePath) &&
+        hasApprovedEmployeeSession(restaurantId, member) &&
+        employee.data.aktywny != false &&
+        employee.data.permissionProfileId == member.data.permissionProfileId;
+    }
+
+    function activeMembershipMatches(restaurantId) {
+      let member = memberDocument(restaurantId);
+      return member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.status == 'active' &&
+        (
+          member.data.role == 'owner' ||
+          (
+            member.data.role == 'employee' &&
+            member.data.employeeId is string &&
+            activeEmployeeMembershipMatches(restaurantId, member)
+          )
+        );
+    }
+
+    function hasActiveMembership(restaurantId) {
+      return hasVerifiedEmail() &&
+        memberDocumentExists(restaurantId) &&
+        activeMembershipMatches(restaurantId);
+    }
+
+    function isRestaurantOwner(restaurantId) {
+      return hasActiveMembership(restaurantId) &&
+        memberDocument(restaurantId).data.role == 'owner';
+    }
+
+    function permissionProfileGrants(restaurantId, profileId, permissionKey) {
+      let profilePath = /databases/$(database)/documents/users/$(restaurantId)/permissionProfiles/$(profileId);
+      return exists(profilePath) &&
+        get(profilePath).data.uprawnienia[permissionKey] == true;
+    }
+
+    function activeMembershipGrantsPermission(restaurantId, permissionKey) {
+      let member = memberDocument(restaurantId);
+      return member.data.role == 'owner' ||
+        (
+          member.data.role == 'employee' &&
+          member.data.permissionProfileId is string &&
+          permissionProfileGrants(
+            restaurantId,
+            member.data.permissionProfileId,
+            permissionKey
+          )
+        );
+    }
+
+    function hasPermission(restaurantId, permissionKey) {
+      return hasActiveMembership(restaurantId) &&
+        activeMembershipGrantsPermission(restaurantId, permissionKey);
+    }
+
+    function canViewSchedule(restaurantId) {
+      return hasPermission(restaurantId, 'can_view_schedule');
+    }
+
+    function canManageSchedule(restaurantId) {
+      return hasActiveMembership(restaurantId) &&
+        activeMembershipGrantsPermission(
+          restaurantId,
+          'can_view_schedule'
+        ) &&
+        activeMembershipGrantsPermission(
+          restaurantId,
+          'can_manage_schedule'
+        );
+    }
+
+    function availabilityDayIsOpen(restaurantId, dateKey) {
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(dateKey);
+      let day = get(dayPath);
+      return dateKey is string &&
+        exists(dayPath) &&
+        day.data.date == dateKey &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true;
+    }
+
+    function ownAvailabilityEntryIsValid(entry, employeeId) {
+      return entry is map &&
+        entry.keys().hasOnly([
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'enteredById',
+          'enteredByName',
+          'enteredAt'
+        ]) &&
+        entry.periodId is string &&
+        entry.type in ['full', 'partial', 'preferred_off', 'unavailable'] &&
+        entry.get('timeFrom', null) == (
+          entry.type == 'partial' ? entry.timeFrom : null
+        ) &&
+        entry.get('timeTo', null) == (
+          entry.type == 'partial' ? entry.timeTo : null
+        ) &&
+        (entry.type != 'partial' || (
+          entry.timeFrom is string &&
+          entry.timeTo is string &&
+          entry.timeFrom != entry.timeTo
+        )) &&
+        entry.note is string &&
+        entry.note.size() <= 60 &&
+        entry.enteredById == employeeId &&
+        entry.enteredByName is string &&
+        entry.enteredAt is timestamp;
+    }
+
+    function ownAvailabilityPayloadIsValid(
+      restaurantId,
+      availabilityId,
+      incoming
+    ) {
+      let member = memberDocument(restaurantId);
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(incoming.date);
+      let day = get(dayPath);
+      return incoming.keys().hasOnly([
+          'employeeId',
+          'date',
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'effectiveSource',
+          'employeeEntry',
+          'updatedAt'
+        ]) &&
+        incoming.employeeId == member.data.employeeId &&
+        availabilityId == incoming.employeeId + '_' + incoming.date &&
+        exists(dayPath) &&
+        day.data.date == incoming.date &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true &&
+        incoming.periodId == day.data.sourcePeriodId &&
+        incoming.employeeEntry.periodId == incoming.periodId &&
+        incoming.type == incoming.employeeEntry.type &&
+        incoming.get('timeFrom', null) == incoming.employeeEntry.get('timeFrom', null) &&
+        incoming.get('timeTo', null) == incoming.employeeEntry.get('timeTo', null) &&
+        incoming.note == incoming.employeeEntry.note &&
+        incoming.effectiveSource == 'employee' &&
+        ownAvailabilityEntryIsValid(
+          incoming.employeeEntry,
+          incoming.employeeId
+        ) &&
+        incoming.updatedAt is timestamp;
+    }
+
+    function ownAvailabilityManagerEntryIsPreserved(
+      restaurantId,
+      availabilityId,
+      incoming,
+      existing
+    ) {
+      let member = memberDocument(restaurantId);
+      let dayPath = /databases/$(database)/documents/users/$(restaurantId)/dyspozycje_dni/$(incoming.date);
+      let day = get(dayPath);
+      return existing.keys().hasAny(['managerEntry']) &&
+        incoming.keys().hasOnly([
+          'employeeId',
+          'date',
+          'periodId',
+          'type',
+          'timeFrom',
+          'timeTo',
+          'note',
+          'effectiveSource',
+          'employeeEntry',
+          'managerEntry',
+          'updatedAt'
+        ]) &&
+        incoming.employeeId == member.data.employeeId &&
+        incoming.employeeId == existing.employeeId &&
+        incoming.date == existing.date &&
+        availabilityId == incoming.employeeId + '_' + incoming.date &&
+        exists(dayPath) &&
+        day.data.date == incoming.date &&
+        day.data.availabilityStatus == 'open' &&
+        day.data.availabilityClosesAt is timestamp &&
+        day.data.availabilityClosesAt >= request.time &&
+        day.data.get('availabilityDisabled', false) != true &&
+        incoming.periodId == day.data.sourcePeriodId &&
+        incoming.employeeEntry.periodId == incoming.periodId &&
+        incoming.type == existing.type &&
+        incoming.get('timeFrom', null) == existing.get('timeFrom', null) &&
+        incoming.get('timeTo', null) == existing.get('timeTo', null) &&
+        incoming.note == existing.note &&
+        incoming.effectiveSource == existing.effectiveSource &&
+        incoming.managerEntry == existing.managerEntry &&
+        ownAvailabilityEntryIsValid(
+          incoming.employeeEntry,
+          incoming.employeeId
+        ) &&
+        incoming.updatedAt is timestamp;
+    }
+
+    function canManageEmployees(restaurantId) {
+      return hasPermission(restaurantId, 'can_manage_employees');
+    }
+
+    function canManageRoles(restaurantId) {
+      return hasPermission(restaurantId, 'can_manage_roles');
+    }
+
+    function canUpdateZamawiarkaSettings(restaurantId) {
+      return hasPermission(restaurantId, 'can_edit_products') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'suppliers',
+          'warehouses',
+          'orderTimings',
+          'units',
+          'categories',
+          'whoOrders'
+        ]);
+    }
+
+    function canUpdateMenuSettings(restaurantId) {
+      return hasPermission(restaurantId, 'can_edit_menu') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fcSettings',
+          'dishCategories'
+        ]);
+    }
+
+    function isOwnEmployee(restaurantId, employeeId) {
+      return hasActiveMembership(restaurantId) &&
+        memberDocument(restaurantId).data.employeeId == employeeId;
+    }
+
+    function invitationMatchesAuthenticatedEmail(invitation) {
+      return hasVerifiedEmail() &&
+        invitation.emailNormalized == request.auth.token.get('email', null);
+    }
+
+    function activeDeviceInvitationTargetMatches(
+      restaurantId,
+      employeeId,
+      targetAuthUid
+    ) {
+      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(targetAuthUid);
+      let member = getAfter(memberPath);
+      return targetAuthUid is string &&
+        existsAfter(memberPath) &&
+        member.data.authUid == targetAuthUid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.employeeId == employeeId &&
+        member.data.role == 'employee' &&
+        member.data.status == 'active';
+    }
+
+    function invitationWindowIsValid(invitation) {
+      return invitation.createdAt is timestamp &&
+        invitation.expiresAt is timestamp &&
+        invitation.createdAt >= request.time - duration.value(5, 'm') &&
+        invitation.createdAt <= request.time + duration.value(5, 'm') &&
+        invitation.expiresAt > request.time &&
+        invitation.expiresAt <= request.time + duration.value(10085, 'm') &&
+        invitation.expiresAt ==
+          invitation.createdAt + duration.value(7, 'd');
+    }
+
+    function pendingInvitationIsValid(invitation, invitationId) {
+      return invitation.id == invitationId &&
+        invitation.tokenHash == invitationId &&
+        invitation.status == 'pending' &&
+        invitation.expiresAt > request.time &&
+        invitationMatchesAuthenticatedEmail(invitation);
+    }
+
+    function invitationWasConsumedAtomically(invitationId) {
+      let invitationPath = /databases/$(database)/documents/identityInvitations/$(invitationId);
+      let invitation = get(invitationPath);
+      let publicPath = /databases/$(database)/documents/activationInvitations/$(invitationId);
+      let slotPath = /databases/$(database)/documents/restaurants/$(invitation.data.restaurantId)/identityInvitationSlots/$(invitation.data.slotId);
+      return pendingInvitationIsValid(invitation.data, invitationId) &&
+        !existsAfter(invitationPath) &&
+        !existsAfter(publicPath) &&
+        !existsAfter(slotPath);
+    }
+
+    function invitationArtifactsWereRemoved(invitation, invitationId) {
+      let publicPath = /databases/$(database)/documents/activationInvitations/$(invitationId);
+      let slotPath = /databases/$(database)/documents/restaurants/$(invitation.restaurantId)/identityInvitationSlots/$(invitation.slotId);
+      return !existsAfter(publicPath) &&
+        (
+          !existsAfter(slotPath) ||
+          getAfter(slotPath).data.tokenHash != invitationId
+        );
+    }
+
+    function approvedSessionExistsAfter(restaurantId, employeeId, invitationId) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      let sessionPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)/deviceSessions/$(authTime);
+      let session = getAfter(sessionPath);
+      return authTime is int &&
+        existsAfter(sessionPath) &&
+        session.data.authUid == request.auth.uid &&
+        session.data.restaurantId == restaurantId &&
+        session.data.employeeId == employeeId &&
+        session.data.authTime == authTime &&
+        session.data.invitationId == invitationId &&
+        session.data.status == 'active';
+    }
+
+    function isValidInvitedMembership(restaurantId, memberId) {
+      let incoming = request.resource.data;
+      let employee = employeeDocument(restaurantId, incoming.employeeId);
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
+      return memberId == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'authUid',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'invitationId',
+          'role',
+          'status',
+          'createdAt',
+          'acceptedAt'
+        ]) &&
+        incoming.authUid == request.auth.uid &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId is string &&
+        incoming.permissionProfileId == employee.data.permissionProfileId &&
+        incoming.invitationId is string &&
+        incoming.role == 'employee' &&
+        incoming.status == 'active' &&
+        incoming.createdAt is timestamp &&
+        incoming.acceptedAt is timestamp &&
+        employee.data.aktywny != false &&
+        invitation.data.purpose == 'ACCOUNT_ACTIVATION' &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.employeeId == incoming.employeeId &&
+        invitation.data.permissionProfileId == incoming.permissionProfileId &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        approvedSessionExistsAfter(
+          restaurantId,
+          incoming.employeeId,
+          incoming.invitationId
+        );
+    }
+
+    function ownerBootstrapCompanionsAreValidAfter(restaurantId) {
+      let accountPath = /databases/$(database)/documents/accounts/$(request.auth.uid);
+      let memberPath = /databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid);
+      let account = getAfter(accountPath);
+      let member = getAfter(memberPath);
+      return existsAfter(accountPath) &&
+        existsAfter(memberPath) &&
+        account.data.authUid == request.auth.uid &&
+        account.data.email == request.auth.token.get('email', null) &&
+        account.data.status == 'active' &&
+        member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        member.data.employeeId == null &&
+        member.data.permissionProfileId == null &&
+        member.data.invitationId == null &&
+        member.data.role == 'owner' &&
+        member.data.status == 'active';
+    }
+
+    function isValidOwnerBootstrap(restaurantId, memberId) {
+      let restaurant = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId));
+      let account = getAfter(/databases/$(database)/documents/accounts/$(request.auth.uid));
+      let incoming = request.resource.data;
+      return isLegacyOwnerBootstrapRestaurant(restaurantId) &&
+        memberId == request.auth.uid &&
+        account.data.authUid == request.auth.uid &&
+        account.data.email == request.auth.token.get('email', null) &&
+        account.data.status == 'active' &&
+        restaurant.data.ownerAuthUid == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'authUid',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'invitationId',
+          'role',
+          'status',
+          'createdAt',
+          'acceptedAt'
+        ]) &&
+        incoming.authUid == request.auth.uid &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == null &&
+        incoming.permissionProfileId == null &&
+        incoming.invitationId == null &&
+        incoming.role == 'owner' &&
+        incoming.status == 'active' &&
+        incoming.createdAt is timestamp &&
+        incoming.acceptedAt is timestamp;
+    }
+
+    function membershipIdentityIsUnchanged() {
+      return request.resource.data.authUid == resource.data.authUid &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.invitationId == resource.data.invitationId &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.acceptedAt == resource.data.acceptedAt;
+    }
+
+    function isValidDeviceSessionCreate(restaurantId, memberId) {
+      let incoming = request.resource.data;
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
+      let memberAfter = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(memberId));
+      return hasVerifiedEmail() &&
+        memberId == request.auth.uid &&
+        incoming.keys().hasOnly([
+          'deviceId',
+          'restaurantId',
+          'employeeId',
+          'authUid',
+          'deviceName',
+          'platform',
+          'authTime',
+          'status',
+          'addedAt',
+          'lastActiveAt',
+          'approvedAt',
+          'approvedByAuthUid',
+          'invitationId',
+          'disconnectedAt',
+          'disconnectedByAuthUid'
+        ]) &&
+        incoming.deviceId is string &&
+        incoming.deviceId.size() >= 16 &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == invitation.data.employeeId &&
+        incoming.authUid == request.auth.uid &&
+        incoming.deviceName is string &&
+        incoming.deviceName.size() > 0 &&
+        incoming.deviceName.size() <= 80 &&
+        incoming.platform is string &&
+        incoming.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.status == 'active' &&
+        incoming.addedAt is timestamp &&
+        incoming.lastActiveAt is timestamp &&
+        incoming.approvedAt is timestamp &&
+        incoming.approvedByAuthUid == invitation.data.createdByAuthUid &&
+        incoming.disconnectedAt == null &&
+        incoming.disconnectedByAuthUid == null &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.targetAuthUid in [null, request.auth.uid] &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        memberAfter.data.authUid == request.auth.uid &&
+        memberAfter.data.restaurantId == restaurantId &&
+        memberAfter.data.employeeId == invitation.data.employeeId &&
+        memberAfter.data.status == 'active' &&
+        (
+          (
+            invitation.data.purpose == 'ACCOUNT_ACTIVATION' &&
+            invitation.data.targetAuthUid == null &&
+            memberAfter.data.invitationId == incoming.invitationId
+          ) ||
+          (
+            invitation.data.purpose == 'DEVICE_ENROLLMENT' &&
+            invitation.data.targetAuthUid == request.auth.uid
+          )
+        );
+    }
+
+    function isValidDisconnectedDeviceSessionReactivation(
+      restaurantId,
+      memberId
+    ) {
+      let incoming = request.resource.data;
+      let invitation = get(/databases/$(database)/documents/identityInvitations/$(incoming.invitationId));
+      let memberAfter = getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(memberId));
+      return hasVerifiedEmail() &&
+        memberId == request.auth.uid &&
+        resource.data.status == 'disconnected' &&
+        resource.data.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.keys().hasOnly([
+          'deviceId',
+          'restaurantId',
+          'employeeId',
+          'authUid',
+          'deviceName',
+          'platform',
+          'authTime',
+          'status',
+          'addedAt',
+          'lastActiveAt',
+          'approvedAt',
+          'approvedByAuthUid',
+          'invitationId',
+          'disconnectedAt',
+          'disconnectedByAuthUid'
+        ]) &&
+        incoming.deviceId == resource.data.deviceId &&
+        incoming.restaurantId == resource.data.restaurantId &&
+        incoming.restaurantId == restaurantId &&
+        incoming.employeeId == resource.data.employeeId &&
+        incoming.authUid == resource.data.authUid &&
+        incoming.authUid == request.auth.uid &&
+        incoming.authTime == resource.data.authTime &&
+        incoming.authTime == request.auth.token.get('auth_time', 0) &&
+        incoming.addedAt == resource.data.addedAt &&
+        incoming.deviceName is string &&
+        incoming.deviceName.size() > 0 &&
+        incoming.deviceName.size() <= 80 &&
+        incoming.platform is string &&
+        incoming.status == 'active' &&
+        incoming.lastActiveAt is timestamp &&
+        incoming.approvedAt is timestamp &&
+        incoming.approvedByAuthUid == invitation.data.createdByAuthUid &&
+        incoming.invitationId is string &&
+        incoming.disconnectedAt == null &&
+        incoming.disconnectedByAuthUid == null &&
+        invitation.data.purpose == 'DEVICE_ENROLLMENT' &&
+        invitation.data.restaurantId == restaurantId &&
+        invitation.data.employeeId == incoming.employeeId &&
+        invitation.data.targetAuthUid == request.auth.uid &&
+        invitationWasConsumedAtomically(incoming.invitationId) &&
+        memberAfter.data.authUid == request.auth.uid &&
+        memberAfter.data.restaurantId == restaurantId &&
+        memberAfter.data.employeeId == incoming.employeeId &&
+        memberAfter.data.status == 'active';
+    }
+
+    function deviceIdentityIsUnchanged() {
+      return request.resource.data.deviceId == resource.data.deviceId &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.authUid == resource.data.authUid &&
+        request.resource.data.authTime == resource.data.authTime &&
+        request.resource.data.addedAt == resource.data.addedAt &&
+        request.resource.data.approvedAt == resource.data.approvedAt &&
+        request.resource.data.approvedByAuthUid == resource.data.approvedByAuthUid &&
+        request.resource.data.invitationId == resource.data.invitationId;
+    }
+
+    function isOwnCurrentDeviceSession(restaurantId, memberId, sessionId) {
+      let authTime = request.auth.token.get('auth_time', 0);
+      let member = memberDocument(restaurantId);
+      return hasVerifiedEmail() &&
+        authTime is int &&
+        authTime > 0 &&
+        memberId == request.auth.uid &&
+        sessionId == string(authTime) &&
+        hasActiveMembership(restaurantId) &&
+        member.data.authUid == request.auth.uid &&
+        member.data.restaurantId == restaurantId &&
+        resource.data.authUid == request.auth.uid &&
+        resource.data.restaurantId == restaurantId &&
+        resource.data.employeeId == member.data.employeeId &&
+        resource.data.authTime == authTime &&
+        resource.data.status == 'active';
+    }
+
+    match /accounts/{authUid} {
+      allow read: if isSignedIn() && request.auth.uid == authUid;
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == authUid &&
+        request.resource.data.keys().hasOnly([
+          'authUid',
+          'email',
+          'displayName',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.authUid == authUid &&
+        request.resource.data.email == request.auth.token.get('email', null) &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /restaurants/{restaurantId} {
+      allow get: if hasActiveMembership(restaurantId) || (
+        isLegacyOwnerBootstrapRestaurant(restaurantId)
+      );
+      allow list: if hasActiveMembership(restaurantId);
+      allow create: if isLegacyOwnerBootstrapRestaurant(restaurantId) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'name',
+          'ownerAuthUid',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.id == restaurantId &&
+        request.resource.data.ownerAuthUid == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        ownerBootstrapCompanionsAreValidAfter(restaurantId);
+      allow update: if (
+        isRestaurantOwner(restaurantId) ||
+          (
+          isLegacyOwnerBootstrapRestaurant(restaurantId) &&
+          resource.data.ownerAuthUid == request.auth.uid
+        )
+      ) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.ownerAuthUid == resource.data.ownerAuthUid;
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow get: if (
+          isSignedIn() && memberId == request.auth.uid
+        ) || canManageEmployees(restaurantId);
+        allow list: if canManageEmployees(restaurantId);
+        allow create: if isSignedIn() && (
+          isValidOwnerBootstrap(restaurantId, memberId) ||
+          isValidInvitedMembership(restaurantId, memberId)
+        );
+        allow update: if membershipIdentityIsUnchanged() && (
+          isRestaurantOwner(restaurantId) ||
+          (
+            canManageEmployees(restaurantId) &&
+            memberId != request.auth.uid
+          )
+        );
+        allow delete: if isRestaurantOwner(restaurantId) || (
+          canManageEmployees(restaurantId) &&
+          memberId != request.auth.uid
+        );
+
+        match /deviceSessions/{sessionId} {
+          allow get: if (
+            isSignedIn() && memberId == request.auth.uid
+          ) || canManageEmployees(restaurantId);
+          allow list: if canManageEmployees(restaurantId);
+          allow create: if isValidDeviceSessionCreate(restaurantId, memberId);
+          allow update: if (
+            deviceIdentityIsUnchanged() && (
+              (
+                canManageEmployees(restaurantId) &&
+                memberId != request.auth.uid &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status',
+                  'disconnectedAt',
+                  'disconnectedByAuthUid'
+                ]) &&
+                request.resource.data.status == 'disconnected' &&
+                request.resource.data.disconnectedAt is timestamp &&
+                request.resource.data.disconnectedByAuthUid == request.auth.uid
+              ) ||
+              (
+                memberId == request.auth.uid &&
+                resource.data.status == 'active' &&
+                resource.data.authTime == request.auth.token.get('auth_time', 0) &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'lastActiveAt'
+                ]) &&
+                request.resource.data.lastActiveAt is timestamp
+              )
+            )
+          ) || isValidDisconnectedDeviceSessionReactivation(
+            restaurantId,
+            memberId
+          );
+          allow delete: if (
+            canManageEmployees(restaurantId) &&
+            memberId != request.auth.uid
+          ) || isOwnCurrentDeviceSession(
+            restaurantId,
+            memberId,
+            sessionId
+          );
+        }
+      }
+
+      match /invitations/{invitationId} {
+        allow read, write: if false;
+      }
+
+      match /identityInvitationSlots/{slotId} {
+        allow get: if canManageEmployees(restaurantId) ||
+          invitationMatchesAuthenticatedEmail(
+            get(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)).data
+          );
+        allow list: if canManageEmployees(restaurantId);
+        allow create: if canManageEmployees(restaurantId) &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'tokenHash',
+            'restaurantId',
+            'employeeId',
+            'purpose',
+            'createdAt',
+            'expiresAt'
+          ]) &&
+          request.resource.data.id == slotId &&
+          request.resource.data.restaurantId == restaurantId &&
+          slotId == restaurantId + '__' + request.resource.data.employeeId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.purpose == request.resource.data.purpose &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.createdAt == request.resource.data.createdAt &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.expiresAt == request.resource.data.expiresAt;
+        allow update: if canManageEmployees(restaurantId) &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'tokenHash',
+            'restaurantId',
+            'employeeId',
+            'purpose',
+            'createdAt',
+            'expiresAt'
+          ]) &&
+          request.resource.data.id == slotId &&
+          request.resource.data.restaurantId == restaurantId &&
+          slotId == restaurantId + '__' + request.resource.data.employeeId &&
+          request.resource.data.employeeId == resource.data.employeeId &&
+          request.resource.data.tokenHash != resource.data.tokenHash &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.slotId == slotId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.employeeId == request.resource.data.employeeId &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.purpose == request.resource.data.purpose &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.createdAt == request.resource.data.createdAt &&
+          getAfter(/databases/$(database)/documents/identityInvitations/$(request.resource.data.tokenHash)).data.expiresAt == request.resource.data.expiresAt &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)) &&
+          !existsAfter(/databases/$(database)/documents/activationInvitations/$(resource.data.tokenHash));
+        allow delete: if (
+          canManageEmployees(restaurantId) &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)) &&
+          !existsAfter(/databases/$(database)/documents/activationInvitations/$(resource.data.tokenHash))
+        ) || (
+          invitationMatchesAuthenticatedEmail(
+            get(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash)).data
+          ) &&
+          !existsAfter(/databases/$(database)/documents/identityInvitations/$(resource.data.tokenHash))
+        );
+      }
+    }
+
+    match /identityInvitations/{invitationId} {
+      allow get: if invitationMatchesAuthenticatedEmail(resource.data) ||
+        canManageEmployees(resource.data.restaurantId);
+      allow list: if canManageEmployees(resource.data.restaurantId);
+      allow create: if canManageEmployees(request.resource.data.restaurantId) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'tokenHash',
+          'slotId',
+          'purpose',
+          'restaurantId',
+          'employeeId',
+          'permissionProfileId',
+          'emailNormalized',
+          'emailHash',
+          'targetAuthUid',
+          'status',
+          'createdByAuthUid',
+          'createdAt',
+          'expiresAt'
+        ]) &&
+        request.resource.data.id == invitationId &&
+        request.resource.data.tokenHash == invitationId &&
+        request.resource.data.slotId ==
+          request.resource.data.restaurantId + '__' +
+          request.resource.data.employeeId &&
+        request.resource.data.purpose in [
+          'ACCOUNT_ACTIVATION',
+          'DEVICE_ENROLLMENT'
+        ] &&
+        request.resource.data.restaurantId is string &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.permissionProfileId == employeeDocument(
+          request.resource.data.restaurantId,
+          request.resource.data.employeeId
+        ).data.permissionProfileId &&
+        request.resource.data.emailNormalized is string &&
+        request.resource.data.emailHash is string &&
+        request.resource.data.emailHash.size() == 64 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdByAuthUid == request.auth.uid &&
+        invitationWindowIsValid(request.resource.data) &&
+        (
+          (
+            request.resource.data.purpose == 'ACCOUNT_ACTIVATION' &&
+            request.resource.data.targetAuthUid == null
+          ) ||
+          (
+            request.resource.data.purpose == 'DEVICE_ENROLLMENT' &&
+            request.resource.data.targetAuthUid is string &&
+            activeDeviceInvitationTargetMatches(
+              request.resource.data.restaurantId,
+              request.resource.data.employeeId,
+              request.resource.data.targetAuthUid
+            )
+          )
+        ) &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.tokenHash == invitationId &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.emailHash == request.resource.data.emailHash &&
+        getAfter(/databases/$(database)/documents/activationInvitations/$(invitationId)).data.purpose == request.resource.data.purpose &&
+        getAfter(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/identityInvitationSlots/$(request.resource.data.slotId)).data.tokenHash == invitationId;
+      allow update: if false;
+      allow delete: if (
+        canManageEmployees(resource.data.restaurantId) &&
+        invitationArtifactsWereRemoved(resource.data, invitationId)
+      ) || (
+        pendingInvitationIsValid(resource.data, invitationId) &&
+        invitationWasConsumedAtomically(invitationId) &&
+        approvedSessionExistsAfter(
+          resource.data.restaurantId,
+          resource.data.employeeId,
+          invitationId
+        )
+      );
+    }
+
+    match /activationInvitations/{invitationId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if canManageEmployees(
+        getAfter(/databases/$(database)/documents/identityInvitations/$(invitationId)).data.restaurantId
+      ) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'tokenHash',
+          'purpose',
+          'restaurantNameSnapshot',
+          'maskedEmail',
+          'emailHash',
+          'status',
+          'createdAt',
+          'expiresAt'
+        ]) &&
+        request.resource.data.id == invitationId &&
+        request.resource.data.tokenHash == invitationId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.emailHash is string &&
+        request.resource.data.emailHash.size() == 64 &&
+        request.resource.data.maskedEmail is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.expiresAt is timestamp &&
+        request.resource.data.createdAt == getAfter(
+          /databases/$(database)/documents/identityInvitations/$(invitationId)
+        ).data.createdAt &&
+        request.resource.data.expiresAt == getAfter(
+          /databases/$(database)/documents/identityInvitations/$(invitationId)
+        ).data.expiresAt;
+      allow update: if false;
+      allow delete: if (
+        canManageEmployees(
+          get(/databases/$(database)/documents/identityInvitations/$(invitationId)).data.restaurantId
+        ) &&
+        !existsAfter(/databases/$(database)/documents/identityInvitations/$(invitationId))
+      ) || (
+        invitationMatchesAuthenticatedEmail(
+          get(/databases/$(database)/documents/identityInvitations/$(invitationId)).data
+        ) &&
+        !existsAfter(/databases/$(database)/documents/identityInvitations/$(invitationId))
+      );
+    }
+
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() &&
+        resource.data.authUid == request.auth.uid;
+    }
+
+    match /{path=**}/deviceSessions/{sessionId} {
+      allow list: if canManageEmployees(resource.data.restaurantId);
+    }
+
+    match /pairing_codes/{codeId} {
+      allow read: if isSignedIn() &&
+        hasActiveMembership(resource.data.companyUid);
+      allow create: if isSignedIn() &&
+        canManageEmployees(request.resource.data.companyUid);
+      allow update, delete: if isSignedIn() &&
+        canManageEmployees(resource.data.companyUid);
+    }
+
+    match /users/{restaurantId} {
+      allow read: if hasActiveMembership(restaurantId);
+      allow create, update: if isRestaurantOwner(restaurantId);
+      allow delete: if false;
+
+      match /employees/{employeeId} {
+        allow read: if isOwnEmployee(restaurantId, employeeId) ||
+          canManageSchedule(restaurantId) ||
+          canManageEmployees(restaurantId);
+        allow create, update, delete: if canManageEmployees(restaurantId);
+      }
+
+      match /permissionProfiles/{profileId} {
+        allow read: if hasActiveMembership(restaurantId) && (
+          memberDocument(restaurantId).data.permissionProfileId == profileId ||
+          canManageEmployees(restaurantId) ||
+          canManageRoles(restaurantId)
+        );
+        allow create, update, delete: if canManageRoles(restaurantId);
+      }
+
+      match /positions/{positionId} {
+        allow read: if canViewSchedule(restaurantId) ||
+          canManageEmployees(restaurantId) ||
+          canManageRoles(restaurantId);
+        allow create, update, delete: if canManageRoles(restaurantId);
+      }
+
+      match /employeeGroups/{groupId} {
+        allow read, create, update, delete: if canManageEmployees(restaurantId);
+      }
+
+      match /scheduleDemandModels/{modelId} {
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafik_dyspozycyjnosc/{availabilityId} {
+        allow read: if canManageSchedule(restaurantId) || (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId
+        );
+        allow create: if (
+          hasActiveMembership(restaurantId) &&
+          ownAvailabilityPayloadIsValid(
+            restaurantId,
+            availabilityId,
+            request.resource.data
+          )
+        ) || canManageSchedule(restaurantId);
+        allow update: if (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
+          request.resource.data.employeeId == resource.data.employeeId &&
+          (
+            ownAvailabilityPayloadIsValid(
+              restaurantId,
+              availabilityId,
+              request.resource.data
+            ) ||
+            ownAvailabilityManagerEntryIsPreserved(
+              restaurantId,
+              availabilityId,
+              request.resource.data,
+              resource.data
+            )
+          )
+        ) || canManageSchedule(restaurantId);
+        allow delete: if (
+          hasActiveMembership(restaurantId) &&
+          resource.data.employeeId == memberDocument(restaurantId).data.employeeId &&
+          availabilityId == resource.data.employeeId + '_' + resource.data.date &&
+          !resource.data.keys().hasAny(['managerEntry']) &&
+          availabilityDayIsOpen(restaurantId, resource.data.date)
+        ) || canManageSchedule(restaurantId);
+      }
+
+      match /grafik_dyspozycyjnosc_wersje/{dateKey} {
+        allow read: if hasActiveMembership(restaurantId);
+        allow create: if (
+          (
+            hasActiveMembership(restaurantId) &&
+            availabilityDayIsOpen(restaurantId, dateKey)
+          ) ||
+          canManageSchedule(restaurantId)
+        ) &&
+          request.resource.data.keys().hasOnly([
+            'date',
+            'version',
+            'updatedAt'
+          ]) &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.version == 1 &&
+          request.resource.data.updatedAt is timestamp;
+        allow update: if (
+          (
+            hasActiveMembership(restaurantId) &&
+            availabilityDayIsOpen(restaurantId, dateKey)
+          ) ||
+          canManageSchedule(restaurantId)
+        ) &&
+          request.resource.data.keys().hasOnly([
+            'date',
+            'version',
+            'updatedAt'
+          ]) &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.date == resource.data.date &&
+          request.resource.data.version == resource.data.version + 1 &&
+          request.resource.data.updatedAt is timestamp;
+        allow delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafik_okresy_dyspozycji/{periodId} {
+        allow read: if hasActiveMembership(restaurantId);
+        allow create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /dyspozycje_dni/{dateKey} {
+        allow read: if hasActiveMembership(restaurantId);
+        allow create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafik_ustawienia/{settingsId} {
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafik_profile_zatrudnienia/{profileId} {
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafiki/{scheduleId} {
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /grafik_dni/{scheduleDayId} {
+        allow read, delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
+          scheduleDayId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.id == scheduleDayId &&
+          request.resource.data.date == scheduleDayId &&
+          request.resource.data.scheduleId is string &&
+          request.resource.data.scheduleId.size() > 0;
+      }
+
+      match /grafiki_opublikowane/{scheduleId} {
+        allow read: if canViewSchedule(restaurantId);
+        allow delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'scheduleId',
+            'name',
+            'dateFrom',
+            'dateTo',
+            'publicationStatus',
+            'publishedUntil',
+            'publishedDaysCount',
+            'publishedRevision',
+            'publishedAt',
+            'lastPublishedAt',
+            'schemaVersion',
+            'updatedAt'
+          ]) &&
+          request.resource.data.keys().hasAll([
+            'id',
+            'scheduleId',
+            'name',
+            'dateFrom',
+            'dateTo',
+            'publicationStatus',
+            'publishedUntil',
+            'publishedDaysCount',
+            'publishedRevision',
+            'publishedAt',
+            'lastPublishedAt',
+            'schemaVersion',
+            'updatedAt'
+          ]) &&
+          request.resource.data.id == scheduleId &&
+          request.resource.data.scheduleId == scheduleId &&
+          request.resource.data.publicationStatus in [
+            'partially_published',
+            'published'
+          ] &&
+          request.resource.data.publishedUntil is string &&
+          request.resource.data.publishedDaysCount is int &&
+          request.resource.data.publishedDaysCount > 0 &&
+          request.resource.data.publishedRevision is int &&
+          request.resource.data.publishedRevision > 0 &&
+          request.resource.data.publishedAt is timestamp &&
+          request.resource.data.lastPublishedAt is timestamp &&
+          request.resource.data.schemaVersion == 1 &&
+          request.resource.data.updatedAt is timestamp;
+      }
+
+      match /grafik_opublikowane_dni/{dateKey} {
+        allow read: if canViewSchedule(restaurantId);
+        allow delete: if canManageSchedule(restaurantId);
+        allow create, update: if canManageSchedule(restaurantId) &&
+          dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.keys().hasOnly([
+            'id',
+            'date',
+            'scheduleId',
+            'publishedRevision',
+            'employeeIds',
+            'shifts',
+            'schemaVersion',
+            'publishedAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.keys().hasAll([
+            'id',
+            'date',
+            'scheduleId',
+            'publishedRevision',
+            'employeeIds',
+            'shifts',
+            'schemaVersion',
+            'publishedAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.id == dateKey &&
+          request.resource.data.date == dateKey &&
+          request.resource.data.scheduleId is string &&
+          request.resource.data.scheduleId.size() > 0 &&
+          request.resource.data.publishedRevision is int &&
+          request.resource.data.publishedRevision > 0 &&
+          request.resource.data.employeeIds is list &&
+          request.resource.data.shifts is list &&
+          request.resource.data.schemaVersion == 1 &&
+          request.resource.data.publishedAt is timestamp &&
+          request.resource.data.updatedAt is timestamp;
+      }
+
+      match /grafik_aktualizacje/{updateId} {
+        allow read, create, update, delete: if canManageSchedule(restaurantId);
+      }
+
+      match /cartItems/{itemId} {
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders') ||
+          hasPermission(restaurantId, 'can_edit_products');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_create_orders'
+        );
+      }
+
+      match /orders/{orderId} {
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_create_orders'
+        );
+      }
+
+      match /towary/{towarId} {
+        allow read: if hasPermission(restaurantId, 'can_view_zamawiarka') ||
+          hasPermission(restaurantId, 'can_create_orders') ||
+          hasPermission(restaurantId, 'can_edit_products');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_edit_products'
+        );
+      }
+
+      match /menuItems/{dishId} {
+        allow read: if hasPermission(restaurantId, 'can_view_foodcost') ||
+          hasPermission(restaurantId, 'can_edit_menu');
+        allow create, update, delete: if hasPermission(
+          restaurantId,
+          'can_edit_menu'
+        );
+      }
+
+      match /app/state {
+        allow read: if hasActiveMembership(restaurantId) || (
+          canReadOwnLegacyBootstrapMarker(restaurantId)
+        );
+        allow create: if isRestaurantOwner(restaurantId);
+        allow update: if isRestaurantOwner(restaurantId) ||
+          canUpdateZamawiarkaSettings(restaurantId) ||
+          canUpdateMenuSettings(restaurantId);
+        allow delete: if isRestaurantOwner(restaurantId);
+      }
+
+      match /{allPaths=**} {
+        allow read, write: if false;
+      }
+    }
+  }
+}
